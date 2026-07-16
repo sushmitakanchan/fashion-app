@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(bun install)",
+      "Bash(bun add *)",
+      "Bash(bun run lint)",
+      "Bash(bun run typecheck)",
+      "Bash(bun run build)",
+      "Bash(bun run db:generate)",
+      "Bash(bunx prisma generate)",
+      "Bash(bunx tsc *)",
+      "Bash(bunx shadcn@latest add *)",
+      "Bash(bunx shadcn@latest mcp)",
+      "Read(node_modules/next/dist/docs/**)"
+    ]
+  }
+}

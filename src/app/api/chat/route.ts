@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 
-import { getOpenAI, OPENAI_MODEL } from "@/lib/openai";
+import { AiProviderConfigError, aiProviderSchema, generateText } from "@/lib/ai";
 
 const bodySchema = z.object({
   prompt: z.string().trim().min(1, "Prompt is required").max(500),
+  // Omit to use the default provider (OpenAI).
+  provider: aiProviderSchema.optional(),
 });
 
 export async function POST(req: Request) {
@@ -23,20 +25,24 @@ export async function POST(req: Request) {
     );
   }
 
-  const openai = getOpenAI();
-  const completion = await openai.chat.completions.create({
-    model: OPENAI_MODEL,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a helpful fashion stylist. Give concise, friendly outfit advice.",
-      },
-      { role: "user", content: parsed.data.prompt },
-    ],
-  });
-
-  return NextResponse.json({
-    reply: completion.choices[0]?.message?.content ?? "",
-  });
+  try {
+    const { text, provider } = await generateText({
+      prompt: parsed.data.prompt,
+      provider: parsed.data.provider,
+      system:
+        "You are a helpful fashion stylist. Give concise, friendly outfit advice.",
+    });
+    return NextResponse.json({ reply: text, provider });
+  } catch (error) {
+    // A misconfigured provider is an operator problem, not a client one — say
+    // so plainly instead of falling through to a generic 500.
+    if (error instanceof AiProviderConfigError) {
+      console.error("AI provider not configured", error);
+      return NextResponse.json(
+        { error: error.message, provider: error.provider },
+        { status: 503 },
+      );
+    }
+    throw error;
+  }
 }

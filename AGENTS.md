@@ -42,7 +42,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
   the typed `src/lib/env.ts`.
 - **Zod 4:** prefer top-level string formats (`z.email()`, `z.url()`).
 - **AI clients** are lazy getters (`getOpenAI()`, `getAnthropic()`) so imports never
-  throw when keys are absent.
+  throw when keys are absent. Don't call them from feature code — go through
+  `generateText()` in `@/lib/ai`, the provider-neutral (non-streaming) boundary.
+  Omitting `provider` means OpenAI; a selected provider with no key throws
+  `AiProviderConfigError` rather than falling back to the other one.
 
 Before committing non-trivial changes: `bun run typecheck && bun run lint`.
 
@@ -74,4 +77,4 @@ Read the bundled guide (per the rule up top) under `node_modules/next/dist/docs/
 - Data: `01-app/01-getting-started/{06-fetching-data,07-mutating-data,08-caching,09-revalidating}.md`
 - Middleware: `01-app/01-getting-started/16-proxy.md` · Guides: `01-app/02-guides/{authentication,forms,environment-variables}.md`
 
-There is **no test framework configured yet** — verify with `bun run typecheck && bun run lint` (plus `bun run build` for anything non-trivial), or by driving the app.
+Tests use the **built-in Bun test runner** (`bun test`, no config) — colocated `*.test.ts` files, for pure logic only; there is no React/DOM testing setup. Verify with `bun run typecheck && bun run lint && bun test` (plus `bun run build` for anything non-trivial), or by driving the app.

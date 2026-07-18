@@ -24,6 +24,27 @@ export const PROVIDER_API_KEY_ENV: Record<AiProvider, string> = {
 export type ProviderCredentials = Record<AiProvider, boolean>;
 
 /**
+ * Read which providers hold credentials out of an environment.
+ *
+ * Takes the environment as an argument rather than importing `@/lib/env`, so
+ * this module stays a pure core — and so callers that run outside the Next.js
+ * server (the healthcheck script) can pass their own.
+ *
+ * Blank and whitespace-only values count as unset: that is how an unconfigured
+ * key is spelled in a `.env` file kept around as a template.
+ */
+export function readProviderCredentials(
+  env: Record<string, string | undefined>,
+): ProviderCredentials {
+  const isSet = (name: string) => Boolean(env[name]?.trim());
+
+  return {
+    openai: isSet(PROVIDER_API_KEY_ENV.openai),
+    anthropic: isSet(PROVIDER_API_KEY_ENV.anthropic),
+  };
+}
+
+/**
  * Thrown when the selected provider has no credentials. Distinct from an
  * upstream API failure so callers can tell "this deployment is misconfigured"
  * apart from "the provider rejected our request".

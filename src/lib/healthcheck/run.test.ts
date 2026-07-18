@@ -104,6 +104,18 @@ describe("runHealthcheck", () => {
     expect(outcomeFor(outcomes, "database").message).toBe("failed to connect");
   });
 
+  it("fails a probe that hangs instead of hanging the command", async () => {
+    // An unreachable host must produce a non-zero exit, not stall forever.
+    const { probes } = spyProbes({ database: () => new Promise<string>(() => {}) });
+
+    const outcomes = await runHealthcheck(configured, probes, { timeoutMs: 20 });
+
+    const database = outcomeFor(outcomes, "database");
+    expect(database.status).toBe("failed");
+    expect(database.message).toContain("timed out");
+    expect(exitCodeFor(outcomes)).toBe(1);
+  });
+
   it("keeps checking the other services after one fails", async () => {
     const { probes, probed } = spyProbes({
       clerk: async () => {

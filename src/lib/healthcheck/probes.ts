@@ -33,13 +33,20 @@ async function probeFetch(
   return response;
 }
 
-/** Reads the user count — the cheapest read-only call on the Clerk backend API. */
+/**
+ * Reads the user count — the cheapest read-only call on the Clerk backend API.
+ *
+ * This exercises `CLERK_SECRET_KEY` only. The publishable key is still required
+ * to call Clerk configured (the browser cannot sign anyone in without it), but
+ * validating it means a Frontend API call derived from the key itself, which
+ * this probe does not do — so the report says which key it checked.
+ */
 async function probeClerk(env: EnvRecord): Promise<string> {
   await probeFetch("https://api.clerk.com/v1/users/count", {
     headers: { Authorization: `Bearer ${env.CLERK_SECRET_KEY}` },
   });
 
-  return "backend API reachable";
+  return "backend API reachable (secret key verified)";
 }
 
 /** `SELECT 1` — proves the adapter, connection string, and Neon host all work. */

@@ -1,7 +1,11 @@
+// Imports the pure provider core rather than the `@/lib/ai` boundary on
+// purpose: the boundary is `server-only` and this runs in a Bun script, and
+// what the healthcheck needs is provider *selection*, not text generation.
 import {
   aiProviderSchema,
   DEFAULT_AI_PROVIDER,
   PROVIDER_API_KEY_ENV,
+  readProviderCredentials,
   resolveProvider,
   type AiProvider,
 } from "@/lib/ai/provider";
@@ -100,10 +104,7 @@ export type AiSelection =
 
 export function selectAiProvider(env: EnvRecord): AiSelection {
   const selection = env.AI_PROVIDER?.trim();
-  const credentials = {
-    openai: isSet(env, PROVIDER_API_KEY_ENV.openai),
-    anthropic: isSet(env, PROVIDER_API_KEY_ENV.anthropic),
-  };
+  const credentials = readProviderCredentials(env);
 
   // No selection and no keys: AI is simply not set up here.
   if (!selection && !credentials.openai && !credentials.anthropic) {

@@ -27,7 +27,7 @@ export type CheckOutcome = {
  * `ErrorEvent`, which stringifies to a useless "[object ErrorEvent]". Read the
  * message off anything that carries one, so the report stays actionable.
  */
-function describe(error: unknown): string {
+function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
 
   if (typeof error === "object" && error !== null && "message" in error) {
@@ -36,6 +36,35 @@ function describe(error: unknown): string {
   }
 
   return String(error);
+}
+
+/** How long any single probe may take before it counts as unreachable. */
+export const DEFAULT_TIMEOUT_MS = 10_000;
+
+/**
+ * Bound a probe, so an unreachable host fails the check rather than hanging it.
+ *
+ * Enforced here rather than inside each probe: a probe that forgets its own
+ * timeout would stall the whole command, and not every client exposes one
+ * (Neon's WebSocket driver and the Cloudinary SDK take no abort signal).
+ */
+async function withTimeout(probe: Probe, timeoutMs: number): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      probe(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    // Without this the pending timer keeps the process alive after a fast pass.
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -50,6 +79,7 @@ function describe(error: unknown): string {
 export async function runHealthcheck(
   env: EnvRecord,
   probes: Probes,
+  { timeoutMs = DEFAULT_TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<CheckOutcome[]> {
   // Probes run concurrently: they are independent, and one broken integration
   // should not delay or hide the state of the rest.
@@ -70,10 +100,10 @@ export async function runHealthcheck(
       }
 
       try {
-        const detail = await probes[service]();
+        const detail = await withTimeout(probes[service], timeoutMs);
         return { service, status: "ok", message: detail };
       } catch (error) {
-        return { service, status: "failed", message: describe(error) };
+        return { service, status: "failed", message: errorMessage(error) };
       }
     }),
   );

@@ -53,6 +53,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Raw AI clients** are lazy getters (`getOpenAI()`, `getAnthropic()`) so imports
   never throw when keys are absent. They're an escape hatch for anything the
   boundary doesn't cover yet — not the default path for feature code.
+- **`bun run healthcheck`** is a non-mutating smoke check of the optional
+  integrations (`src/lib/healthcheck/`). Each service is *absent* (skipped, so a
+  credential-free checkout passes), *incomplete* (fails without probing) or
+  *configured* (live-probed). Adding an integration means adding it to
+  `SERVICE_LABELS` + `CREDENTIALS` in `config.ts` and a probe in `probes.ts`;
+  keep probes **read-only** and note that the runner bounds each one by timeout,
+  so a probe needs no timeout of its own.
 
 Before committing non-trivial changes: `bun run typecheck && bun run lint`.
 
@@ -66,7 +73,8 @@ don't reintroduce them.
 
 - `src/app/` — routes. `aura/page.tsx` = Clerk-protected profile creation (`auth()` + `redirect()`); `api/aura/route.ts` = live submission (Cloudinary upload + Prisma upsert).
 - `src/components/` — `aura/` twin + form pieces; `ui/` shadcn (Base UI) primitives; `forms/` (`aura-form.tsx`); `three/`; `providers/` (Query + Theme); `mode-toggle.tsx`.
-- `src/lib/` — `prisma`, `env`, `aura-config`, `aura`, `ai` (text-generation boundary), `openai`, `anthropic`, `cloudinary`, `validations`, `utils` (`cn`).
+- `src/lib/` — `prisma`, `env`, `aura-config`, `aura`, `ai` (text-generation boundary), `openai`, `anthropic`, `cloudinary`, `validations`, `healthcheck` (see below), `utils` (`cn`).
+- `scripts/` — standalone Bun entry points, not part of the Next.js build.
 - `prisma/schema.prisma` — the data model: `User`, one `AuraProfile` per user, and the `Gender` / `BodyType` enums.
 
 Conventions the gotchas above don't already cover:

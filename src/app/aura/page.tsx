@@ -18,8 +18,10 @@ export const metadata: Metadata = {
   description: "Build the digital twin behind your personalised fit.",
 };
 
-// Same resource-based protection as /dashboard: the AURA profile is tied to a
-// Clerk user, so there's nothing to show — or save — when signed out.
+// Resource-based protection, the pattern Clerk recommends over middleware path
+// matching: the AURA profile is tied to a Clerk user, so there's nothing to
+// show — or save — when signed out. `auth()` + `redirect()` (rather than
+// `auth.protect()`) degrades to a redirect instead of erroring.
 export default async function AuraPage() {
   const { userId } = await auth();
   if (!userId) {

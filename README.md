@@ -1,15 +1,17 @@
-# Fashion App
+# AURA
 
-A full-stack starter for modern fashion commerce, wired for **fully local development**.
+AURA builds a user's digital twin — measurements plus five reference photos
+become a 3D twin that clothes can be fitted to. Wired for **fully local
+development**.
 
 ## Tech stack
 
 | Area        | Tools                                                                 |
 | ----------- | --------------------------------------------------------------------- |
 | Framework   | Next.js 16 (App Router, Turbopack), React 19, TypeScript              |
-| UI          | Tailwind CSS v4, shadcn/ui (Base UI · base-nova), Magic UI, Motion, Lucide |
+| UI          | Tailwind CSS v4, shadcn/ui (Base UI · base-nova), Lucide, React Three Fiber |
 | Forms       | React Hook Form, Zod                                                   |
-| State       | Zustand, TanStack Query                                                |
+| State       | TanStack Query                                                         |
 | Database    | PostgreSQL (Neon), Prisma 7 (driver adapter)                          |
 | Auth        | Clerk                                                                  |
 | AI          | OpenAI, Anthropic (optional)                                           |
@@ -39,8 +41,9 @@ bun run dev
 Open [http://localhost:3000](http://localhost:3000).
 
 **You can run the app with zero configuration.** Clerk starts in *keyless mode*
-(it provisions a temporary dev instance on first load), and the landing page has
-no external dependencies. Add credentials as you build out each feature.
+(it provisions a temporary dev instance on first load), and `/aura` falls back to
+a clearly labelled **local preview** that skips uploads and persistence. Add
+credentials to enable live submission.
 
 ## Environment variables
 
@@ -52,7 +55,7 @@ documented list. Summary:
 | --- | --- | --- |
 | `DATABASE_URL` | Prisma / database | [Neon](https://neon.tech) → pooled connection string |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | Auth (prod) | [Clerk](https://dashboard.clerk.com) → API keys (leave blank for keyless dev) |
-| `OPENAI_API_KEY` | AI stylist route | [OpenAI](https://platform.openai.com) |
+| `OPENAI_API_KEY` | AI features | [OpenAI](https://platform.openai.com) |
 | `ANTHROPIC_API_KEY` | Optional AI | [Anthropic](https://console.anthropic.com) |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Media | [Cloudinary](https://console.cloudinary.com) |
 
@@ -85,17 +88,18 @@ consumed through the lazy `getPrisma()` singleton in
 ```
 src/
 ├── app/
-│   ├── api/chat/route.ts     # Clerk-protected OpenAI route handler
-│   ├── dashboard/page.tsx    # resource-protected page (auth() + redirect)
+│   ├── api/aura/route.ts     # live AURA submission (Cloudinary + Prisma)
+│   ├── aura/page.tsx         # protected profile creation (auth() + redirect)
 │   ├── layout.tsx            # Clerk + Theme + TanStack Query providers
-│   └── page.tsx              # landing page (stack showcase)
+│   └── page.tsx              # AURA landing page
 ├── components/
-│   ├── forms/                # React Hook Form + Zod
+│   ├── aura/                 # twin, progress, photo upload
+│   ├── forms/                # React Hook Form + Zod (aura-form)
 │   ├── providers/            # Query + Theme providers
-│   └── ui/                   # shadcn/ui + Magic UI components
+│   ├── three/                # React Three Fiber scenes (client-only)
+│   └── ui/                   # shadcn/ui (Base UI · base-nova) primitives
 ├── generated/prisma/         # generated Prisma client (gitignored)
-├── lib/                      # prisma, openai, anthropic, cloudinary, env, utils
-├── stores/                   # Zustand stores
+├── lib/                      # prisma, aura, openai, anthropic, cloudinary, env, utils
 └── proxy.ts                  # Clerk middleware (Next 16 "proxy" convention)
 ```
 
@@ -103,7 +107,7 @@ src/
 
 ```bash
 bunx shadcn@latest add button dialog ...      # shadcn/ui
-bunx shadcn@latest add @magicui/marquee        # Magic UI (registered in components.json)
+bunx shadcn@latest add @magicui/marquee       # Magic UI (registry in components.json)
 ```
 
 ## AI-assisted development (MCP)

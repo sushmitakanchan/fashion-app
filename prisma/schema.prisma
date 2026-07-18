@@ -1,4 +1,4 @@
-// Prisma schema for the Fashion App.
+// Prisma schema for AURA.
 // Docs: https://pris.ly/d/prisma-schema
 //
 // Prisma 7 uses the `prisma-client` generator (query compiler, no Rust engine)
@@ -13,19 +13,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-}
-
-enum Role {
-  USER
-  ADMIN
-}
-
-enum OrderStatus {
-  PENDING
-  PAID
-  SHIPPED
-  DELIVERED
-  CANCELLED
 }
 
 enum Gender {
@@ -50,9 +37,6 @@ model User {
   email       String   @unique
   name        String?
   imageUrl    String?
-  role        Role     @default(USER)
-  orders      Order[]
-  favorites   Favorite[]
   auraProfile AuraProfile?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -84,77 +68,4 @@ model AuraProfile {
   consentedAt DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-}
-
-model Category {
-  id          String    @id @default(cuid())
-  name        String
-  slug        String    @unique
-  description String?
-  products    Product[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-}
-
-model Product {
-  id          String      @id @default(cuid())
-  name        String
-  slug        String      @unique
-  description String?
-  price       Decimal     @db.Decimal(10, 2)
-  currency    String      @default("USD")
-  images      String[]    @default([])
-  sizes       String[]    @default([])
-  colors      String[]    @default([])
-  stock       Int         @default(0)
-  featured    Boolean     @default(false)
-  category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  categoryId  String?
-  orderItems  OrderItem[]
-  favorites   Favorite[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  @@index([categoryId])
-  @@index([featured])
-}
-
-model Order {
-  id        String      @id @default(cuid())
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  status    OrderStatus @default(PENDING)
-  total     Decimal     @db.Decimal(10, 2)
-  items     OrderItem[]
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-
-  @@index([userId])
-}
-
-model OrderItem {
-  id        String  @id @default(cuid())
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId   String
-  product   Product @relation(fields: [productId], references: [id])
-  productId String
-  quantity  Int     @default(1)
-  // Unit price captured at purchase time.
-  price     Decimal @db.Decimal(10, 2)
-  size      String?
-  color     String?
-
-  @@index([orderId])
-  @@index([productId])
-}
-
-model Favorite {
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productId String
-  createdAt DateTime @default(now())
-
-  @@id([userId, productId])
-  @@index([productId])
 }

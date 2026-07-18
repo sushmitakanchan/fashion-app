@@ -43,8 +43,16 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Env:** a single `.env` file is read by both Next.js and the Prisma CLI. Access via
   the typed `src/lib/env.ts`.
 - **Zod 4:** prefer top-level string formats (`z.email()`, `z.url()`).
-- **AI clients** are lazy getters (`getOpenAI()`, `getAnthropic()`) so imports never
-  throw when keys are absent.
+- **AI text generation** goes through `generateText()` in `@/lib/ai` — the single
+  provider-neutral, non-streaming boundary (Vercel AI SDK + the direct
+  `@ai-sdk/openai` / `@ai-sdk/anthropic` packages, no AI Gateway). The provider is
+  a deployment concern: `AI_PROVIDER` env var, blank means OpenAI. A selected
+  provider with no key throws `AiProviderConfigError` — it never falls back to the
+  other one, since each has its own credentials and billing. Keep the interface
+  narrow (see `CONTEXT.md` → *Text generation*).
+- **Raw AI clients** are lazy getters (`getOpenAI()`, `getAnthropic()`) so imports
+  never throw when keys are absent. They're an escape hatch for anything the
+  boundary doesn't cover yet — not the default path for feature code.
 
 Before committing non-trivial changes: `bun run typecheck && bun run lint`.
 
@@ -58,7 +66,7 @@ don't reintroduce them.
 
 - `src/app/` — routes. `aura/page.tsx` = Clerk-protected profile creation (`auth()` + `redirect()`); `api/aura/route.ts` = live submission (Cloudinary upload + Prisma upsert).
 - `src/components/` — `aura/` twin + form pieces; `ui/` shadcn (Base UI) primitives; `forms/` (`aura-form.tsx`); `three/`; `providers/` (Query + Theme); `mode-toggle.tsx`.
-- `src/lib/` — `prisma`, `env`, `aura-config`, `aura`, `openai`, `anthropic`, `cloudinary`, `validations`, `utils` (`cn`).
+- `src/lib/` — `prisma`, `env`, `aura-config`, `aura`, `ai` (text-generation boundary), `openai`, `anthropic`, `cloudinary`, `validations`, `utils` (`cn`).
 - `prisma/schema.prisma` — the data model: `User`, one `AuraProfile` per user, and the `Gender` / `BodyType` enums.
 
 Conventions the gotchas above don't already cover:
@@ -77,4 +85,4 @@ Read the bundled guide (per the rule up top) under `node_modules/next/dist/docs/
 - Data: `01-app/01-getting-started/{06-fetching-data,07-mutating-data,08-caching,09-revalidating}.md`
 - Middleware: `01-app/01-getting-started/16-proxy.md` · Guides: `01-app/02-guides/{authentication,forms,environment-variables}.md`
 
-There is **no test framework configured yet** — verify with `bun run typecheck && bun run lint` (plus `bun run build` for anything non-trivial), or by driving the app.
+Tests use the **built-in Bun test runner** (`bun test`, no config) — colocated `*.test.ts` files, for pure logic only; there is no React/DOM testing setup. Verify with `bun run typecheck && bun run lint && bun test` (plus `bun run build` for anything non-trivial), or by driving the app.

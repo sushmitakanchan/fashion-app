@@ -15,10 +15,13 @@ function ShowcaseObject() {
       <mesh>
         {/* High subdivision so the distort material deforms smoothly. */}
         <icosahedronGeometry args={[1.3, 14]} />
+        {/* The reference's blue organic blob, as the showcase object. Lower
+            metalness than before: a mirror finish read as chrome-tech rather
+            than the flat, matte blue shape this is imitating. */}
         <MeshDistortMaterial
-          color="#8a8a8a"
-          roughness={0.1}
-          metalness={0.75}
+          color="#2147f5"
+          roughness={0.45}
+          metalness={0.1}
           distort={0.35}
           speed={1.8}
         />
@@ -42,10 +45,12 @@ export default function ProductScene() {
       <Suspense fallback={null}>
         <ambientLight intensity={0.6} />
         <directionalLight position={[5, 8, 5]} intensity={2.2} />
+        {/* Warm neutral rim. The object is already the accent, so tinting its
+            edge blue too would flatten it. */}
         <directionalLight
           position={[-6, -3, -4]}
           intensity={0.5}
-          color="#c8b6ff"
+          color="#ddd8cf"
         />
         <ShowcaseObject />
         <ContactShadows

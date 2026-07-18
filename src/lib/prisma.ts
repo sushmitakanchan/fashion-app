@@ -6,6 +6,8 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
+let client: PrismaClient | undefined;
+
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
 
@@ -29,10 +31,23 @@ function createPrismaClient() {
   });
 }
 
-// Reuse a single client across hot reloads in development to avoid exhausting
-// database connections.
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+/**
+ * Lazily construct the Prisma client, reusing a single instance.
+ *
+ * Using a getter (instead of a top-level `new PrismaClient()`) means importing
+ * this module never throws during build when DATABASE_URL is absent — the
+ * connection string is only required when a request is actually served. Same
+ * reasoning as `getOpenAI()` / `getAnthropic()`.
+ *
+ * In development the instance is cached on `globalThis` so hot reloads reuse it
+ * instead of exhausting database connections.
+ */
+export function getPrisma(): PrismaClient {
+  client ??= globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.prisma = client;
+  }
+
+  return client;
 }

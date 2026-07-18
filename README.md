@@ -66,8 +66,8 @@ bun run db:generate  # regenerate the client
 ```
 
 The Prisma client is generated to `src/generated/prisma` (gitignored) and
-consumed through a singleton in [`src/lib/prisma.ts`](./src/lib/prisma.ts) using
-the Neon driver adapter.
+consumed through the lazy `getPrisma()` singleton in
+[`src/lib/prisma.ts`](./src/lib/prisma.ts) using the Neon driver adapter.
 
 ## Scripts
 

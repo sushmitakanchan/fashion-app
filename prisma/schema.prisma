@@ -28,20 +28,62 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  UNDISCLOSED
+}
+
+/// Standard fashion body-shape taxonomy.
+enum BodyType {
+  RECTANGLE
+  TRIANGLE
+  INVERTED_TRIANGLE
+  HOURGLASS
+  OVAL
+}
+
 /// Application user, mirrored from Clerk via `clerkId`.
 model User {
-  id        String   @id @default(cuid())
-  clerkId   String   @unique
-  email     String   @unique
-  name      String?
-  imageUrl  String?
-  role      Role     @default(USER)
-  orders    Order[]
-  favorites Favorite[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  clerkId     String   @unique
+  email       String   @unique
+  name        String?
+  imageUrl    String?
+  role        Role     @default(USER)
+  orders      Order[]
+  favorites   Favorite[]
+  auraProfile AuraProfile?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([email])
+}
+
+/// Measurements and reference photos used to generate a user's digital twin
+/// ("AURA"). One per user — regenerating replaces the existing profile.
+model AuraProfile {
+  id       String @id @default(cuid())
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String @unique
+  name     String
+  age      Int
+  gender   Gender
+  // Always metric. The form collects either unit system and converts on submit,
+  // so downstream consumers never have to branch on units.
+  heightCm Float
+  weightKg Float
+  bodyType BodyType
+  // Cloudinary secure URLs, one per required angle.
+  photoFrontUrl   String
+  photoLeftUrl    String
+  photoRightUrl   String
+  photoCloseupUrl String
+  photoBackUrl    String
+  // Timestamp rather than a boolean: a consent record needs to say when.
+  consentedAt DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Category {

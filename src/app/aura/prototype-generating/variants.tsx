@@ -11,8 +11,6 @@
  */
 
 import * as React from "react";
-import Image from "next/image";
-import { LockKeyholeIcon } from "lucide-react";
 
 /** Honest copy, fixed by #20. Shared because it isn't the thing being varied. */
 const HEADLINE = "Generating your portrait…";
@@ -242,55 +240,22 @@ export function VariantB({ regenerating }: VariantProps) {
 VariantB.displayName = "Studio call sheet";
 
 /* ------------------------------------------------------------------ */
-/* C — Locked character: type-led, faceless game silhouette, soft bloom */
+/* C — Centered gradient: nothing competes with the generating message */
 /* ------------------------------------------------------------------ */
-
-function LockedCharacter() {
-  return (
-    <div className="relative size-40" aria-hidden="true">
-      <Image
-        src="/prototypes/aura-locked-character.svg"
-        alt=""
-        fill
-        sizes="160px"
-        className="object-contain p-2 opacity-55 dark:invert"
-      />
-      <div className="proto-character-scan pointer-events-none absolute inset-x-2 top-0 h-9 mix-blend-soft-light motion-reduce:hidden" />
-      <div className="proto-character-line bg-foreground/35 pointer-events-none absolute inset-x-3 top-0 h-px motion-reduce:hidden" />
-      <span className="bg-background/90 border-border/70 text-foreground absolute right-0 bottom-1 grid size-9 place-items-center rounded-full border shadow-sm backdrop-blur-sm">
-        <LockKeyholeIcon className="size-4" strokeWidth={1.7} />
-      </span>
-    </div>
-  );
-}
 
 export function VariantC({ regenerating }: VariantProps) {
   return (
     <Shell regenerating={regenerating}>
-      <div className="relative grid w-full justify-items-center gap-7 overflow-hidden rounded-xl py-9 text-center">
-        {/* The gradient is deliberately atmospheric: it reads as colour in a
-            portrait studio, not an effect applied to a digital interface. */}
+      <div className="relative flex min-h-72 w-full items-center justify-center overflow-hidden rounded-xl px-6 py-16 text-center">
         <div className="proto-portrait-bloom pointer-events-none absolute inset-0 motion-reduce:animate-none" />
-        <div className="bg-background/35 border-border/60 relative grid size-44 place-items-center overflow-hidden rounded-full border shadow-[inset_0_1px_18px_rgb(0_0_0_/_0.04)] backdrop-blur-[1px]">
-          <div className="proto-grain pointer-events-none absolute inset-0 opacity-25 motion-reduce:animate-none" />
-          <LockedCharacter />
-        </div>
-        <div className="relative grid gap-4 px-6">
-          <p className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-            {HEADLINE}
-          </p>
-          <p className="text-muted-foreground mx-auto max-w-sm text-pretty">
-            {SUBLINE}
-          </p>
-          <div className="bg-border/70 mx-auto mt-1 h-px w-24 overflow-hidden rounded-full">
-            <div className="proto-focus-mark bg-foreground/45 h-full w-5 motion-reduce:animate-none" />
-          </div>
-        </div>
+        <p className="relative text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+          {HEADLINE}
+        </p>
       </div>
     </Shell>
   );
 }
-VariantC.displayName = "Portrait signal";
+VariantC.displayName = "Centered gradient";
 
 /* ------------------------------------------------------------------ */
 /* D — Cyberpunk scan: A's frame + scanline, C's gradient bloom         */

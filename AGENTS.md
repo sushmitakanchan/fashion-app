@@ -10,7 +10,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
   hand-maintained. Keep it tight: this file loads on every turn, so density wins.
 -->
 
-# Fashion App — project conventions
+# AURA — project conventions
 
 **Package manager: Bun.** Use `bun install`, `bun add`, `bunx`, `bun run <script>`.
 
@@ -23,7 +23,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
     `<SignedIn>`/`<SignedOut>` components were removed.
   - `src/proxy.ts` runs `clerkMiddleware()` with no route matcher; `createRouteMatcher`
     is deprecated. Protect resources where they're accessed (e.g. `auth()` + `redirect()`
-    in a page, as in `src/app/dashboard/page.tsx`).
+    in a page, as in `src/app/aura/page.tsx`).
   - `auth()` is async: `const { userId } = await auth()`. Import from `@clerk/nextjs/server`.
   - Dev runs in **keyless mode** when Clerk env vars are blank.
 - **Prisma 7:**
@@ -37,7 +37,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **shadcn/ui is the `base-nova` style (Base UI, not Radix).** Components use Base UI
   APIs (`render` prop / `useRender`), not Radix's `asChild`. There is **no `<Form>`
   wrapper** — wire React Hook Form directly to `Input`/`Label` (see
-  `src/components/forms/newsletter-form.tsx`). Add Magic UI via `@magicui/<name>`.
+  `src/components/forms/aura-form.tsx`). The Magic UI registry is still wired up
+  (`bunx shadcn@latest add @magicui/<name>`), but nothing uses it — Magic UI's
+  `motion` peer dep is not installed, so add it if you pull one in.
 - **Env:** a single `.env` file is read by both Next.js and the Prisma CLI. Access via
   the typed `src/lib/env.ts`.
 - **Zod 4:** prefer top-level string formats (`z.email()`, `z.url()`).
@@ -56,23 +58,24 @@ Before committing non-trivial changes: `bun run typecheck && bun run lint`.
 
 # Project map & app conventions
 
-Infrastructure is fully wired; the **landing page** (`src/app/page.tsx`) and a
-**protected `/dashboard`** example are built. Product catalog, cart UI, and checkout
-pages are **not built yet** — add them on top of the plumbing below.
+This is an **AURA-first** app: the product is a user's digital twin, not commerce.
+The AURA landing page (`src/app/page.tsx`), the protected profile-creation page
+(`/aura`), its submission route, and the 3D twin are built. There is no catalog,
+cart, checkout, dashboard, or showcase — those were removed deliberately, so
+don't reintroduce them.
 
-- `src/app/` — routes. `api/chat/route.ts` = Clerk-guarded OpenAI stylist endpoint; `dashboard/page.tsx` = the `auth()` + `redirect()` protection example.
-- `src/components/` — `ui/` shadcn (Base UI) primitives; `forms/`; `providers/` (Query + Theme); `mode-toggle.tsx`.
-- `src/lib/` — `prisma`, `env`, `openai`, `anthropic`, `cloudinary`, `validations`, `utils` (`cn`).
-- `src/stores/` — Zustand (`cart-store.ts`). `prisma/schema.prisma` — the data model.
+- `src/app/` — routes. `aura/page.tsx` = Clerk-protected profile creation (`auth()` + `redirect()`); `api/aura/route.ts` = live submission (Cloudinary upload + Prisma upsert).
+- `src/components/` — `aura/` twin + form pieces; `ui/` shadcn (Base UI) primitives; `forms/` (`aura-form.tsx`); `three/`; `providers/` (Query + Theme); `mode-toggle.tsx`.
+- `src/lib/` — `prisma`, `env`, `aura-config`, `aura`, `ai` (text-generation boundary), `openai`, `anthropic`, `cloudinary`, `validations`, `utils` (`cn`).
+- `prisma/schema.prisma` — the data model: `User`, one `AuraProfile` per user, and the `Gender` / `BodyType` enums.
 
 Conventions the gotchas above don't already cover:
 
-- **Validation:** shared Zod schemas in `@/lib/validations`; in route handlers, `safeParse` the body and return `400` with `error.issues` (see `api/chat/route.ts`).
+- **Validation:** shared Zod schemas in `@/lib/validations`; in route handlers, `safeParse` the body and return `400` with `error.issues` (see `api/aura/route.ts`).
 - **Client data:** TanStack Query via `QueryProvider` (staleTime 60s, no refetch-on-focus). Server data: fetch directly in Server Components / route handlers.
-- **Client state:** Zustand; the cart line-item key is `productId + size + color` (`cartItemKey`) — reuse the exported selectors so components re-render narrowly.
 - **Styling:** Tailwind v4 + `cn()` + `class-variance-authority`; dark mode via `next-themes` (`ThemeProvider` in the layout, `ModeToggle` to switch); `toast` from `sonner` (`<Toaster/>` already mounted).
 - **Images:** `next/image` (remote hosts allowlisted in `next.config.ts`). Client display/upload via `next-cloudinary` (`<CldImage/>`); server-side ops via `@/lib/cloudinary`.
-- **3D (React Three Fiber):** scenes live in `src/components/three/`. Canvases are client-only — load them via `dynamic(() => import(...), { ssr: false })` (see `product-viewer.tsx`), keep them offline-safe (explicit lights, no CDN HDR), and load models with the `useGLTF` `Model` helper under `<Suspense>`. Route: `/showcase`.
+- **3D (React Three Fiber):** scenes live in `src/components/three/`. Canvases are client-only — load them via `dynamic(() => import(...), { ssr: false })` (see `src/components/aura/aura-twin.tsx`), keep them offline-safe (explicit lights, no CDN HDR), and load any GLTF with drei's `useGLTF` under `<Suspense>`. The twin renders on `/aura`.
 
 ## Before writing Next.js code
 

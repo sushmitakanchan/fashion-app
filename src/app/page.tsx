@@ -5,68 +5,36 @@ import {
   SignUpButton,
   UserButton,
 } from "@clerk/nextjs";
-import { PaletteIcon, ShoppingBagIcon, SparklesIcon } from "lucide-react";
+import { CameraIcon, RulerIcon, SparklesIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Marquee } from "@/components/ui/marquee";
 import { ModeToggle } from "@/components/mode-toggle";
-import { NewsletterForm } from "@/components/forms/newsletter-form";
 
-const techStack = [
-  "Next.js 16",
-  "React 19",
-  "Tailwind v4",
-  "shadcn/ui",
-  "Magic UI",
-  "Motion",
-  "Zustand",
-  "TanStack Query",
-  "React Hook Form",
-  "Zod",
-  "Prisma",
-  "Neon",
-  "Clerk",
-  "OpenAI",
-  "Cloudinary",
-];
-
-const brands = [
-  "ATELIER",
-  "NORD",
-  "MAISON",
-  "VELVET",
-  "LUMEN",
-  "AURA",
-  "ÉCLAT",
-  "STUDIO",
-];
-
-const features = [
+const steps = [
+  {
+    icon: RulerIcon,
+    title: "Your measurements",
+    description:
+      "Height, weight, age, and body type — in metric or imperial. AURA stores the metric values.",
+  },
+  {
+    icon: CameraIcon,
+    title: "Five reference photos",
+    description:
+      "Front, left, right, close-up, and back, so your twin reflects your real proportions.",
+  },
   {
     icon: SparklesIcon,
-    title: "AI stylist",
+    title: "Your 3D twin",
     description:
-      "Outfit recommendations powered by OpenAI, wired through a Clerk-protected API route.",
-  },
-  {
-    icon: ShoppingBagIcon,
-    title: "Persistent cart",
-    description:
-      "A Zustand store with localStorage persistence keeps the bag in sync across sessions.",
-  },
-  {
-    icon: PaletteIcon,
-    title: "Media pipeline",
-    description:
-      "Cloudinary handles uploads and on-the-fly transforms for every product image.",
+      "AURA builds a twin from your profile, ready for clothes to be fitted to you.",
   },
 ];
 
@@ -76,8 +44,8 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
           <span className="flex items-center gap-2 font-semibold tracking-tight">
-            <ShoppingBagIcon className="size-5" />
-            Fashion App
+            <SparklesIcon className="size-5" />
+            AURA
           </span>
           <nav className="flex items-center gap-2">
             <ModeToggle />
@@ -140,61 +108,24 @@ export default function Home() {
           </p>
         </section>
 
-        <section className="border-y bg-muted/30 py-6">
-          <Marquee pauseOnHover className="[--duration:30s]">
-            {brands.map((brand) => (
-              <span
-                key={brand}
-                className="text-muted-foreground mx-8 text-xl font-medium tracking-[0.3em]"
-              >
-                {brand}
-              </span>
-            ))}
-          </Marquee>
-        </section>
-
-        <section className="mx-auto grid w-full max-w-6xl gap-6 px-6 py-20 md:grid-cols-3">
-          {features.map((feature) => (
-            <Card key={feature.title}>
+        <section className="mx-auto grid w-full max-w-6xl gap-6 px-6 pb-24 md:grid-cols-3">
+          {steps.map((step) => (
+            <Card key={step.title}>
               <CardHeader>
-                <feature.icon className="text-muted-foreground size-6" />
-                <CardTitle className="mt-2">{feature.title}</CardTitle>
-                <CardDescription>{feature.description}</CardDescription>
+                <step.icon className="text-muted-foreground size-6" />
+                <CardTitle className="mt-2">{step.title}</CardTitle>
+                <CardDescription>{step.description}</CardDescription>
               </CardHeader>
             </Card>
           ))}
         </section>
-
-        <section className="mx-auto w-full max-w-6xl px-6 pb-24">
-          <Card className="mx-auto max-w-md">
-            <CardHeader>
-              <CardTitle>Join the waitlist</CardTitle>
-              <CardDescription>
-                A React Hook Form + Zod form with a Sonner toast on submit.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <NewsletterForm />
-            </CardContent>
-          </Card>
-        </section>
       </main>
 
       <footer className="border-t py-10">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4 px-6">
-          <div className="flex flex-wrap justify-center gap-2">
-            {techStack.map((tech) => (
-              <Badge key={tech} variant="outline">
-                {tech}
-              </Badge>
-            ))}
-          </div>
+        <div className="mx-auto w-full max-w-6xl px-6 text-center">
           <p className="text-muted-foreground text-sm">
-            Edit{" "}
-            <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">
-              src/app/page.tsx
-            </code>{" "}
-            to get started.
+            AURA — one profile per account. You can regenerate your twin at any
+            time.
           </p>
         </div>
       </footer>

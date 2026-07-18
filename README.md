@@ -1,7 +1,7 @@
 # AURA
 
-AURA builds a user's digital twin — measurements plus five reference photos
-become a 3D twin that clothes can be fitted to. Wired for **fully local
+AURA saves a user's body profile, two required AURA portrait reference photos,
+and optional future 3D-avatar reference photos. Wired for **fully local
 development**.
 
 ## Tech stack

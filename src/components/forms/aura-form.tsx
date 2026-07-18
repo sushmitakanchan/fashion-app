@@ -9,6 +9,8 @@ import { toast } from "sonner";
 
 import {
   auraFormSchema,
+  AURA_REFERENCE_PHOTO_ANGLES,
+  AVATAR_PHOTO_ANGLES,
   BODY_TYPES,
   GENDERS,
   PHOTO_ANGLES,
@@ -24,15 +26,13 @@ import {
   kgToLb,
   lbToKg,
   type AuraMode,
-  type BodyMeasurements,
 } from "@/lib/aura";
 import { cn } from "@/lib/utils";
 import {
   BODY_TYPE_LABELS,
   BodyTypeFigure,
 } from "@/components/aura/body-type-figure";
-import { AuraProgress, useAuraStages } from "@/components/aura/aura-progress";
-import { AuraTwinResult } from "@/components/aura/aura-twin-result";
+import { AuraProfileResult } from "@/components/aura/aura-profile-result";
 import { PhotoUploadField } from "@/components/aura/photo-upload-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -48,10 +48,10 @@ const GENDER_LABELS: Record<Gender, string> = {
 };
 
 const PHOTO_LABELS: Record<PhotoAngle, { label: string; hint: string }> = {
-  front: { label: "Front", hint: "Full body, facing the camera" },
+  front: { label: "Full body", hint: "Facing the camera" },
   left: { label: "Left", hint: "Full body, left side on" },
   right: { label: "Right", hint: "Full body, right side on" },
-  closeup: { label: "Close-up", hint: "Head and shoulders, facing forward" },
+  closeup: { label: "Face close-up", hint: "Head and shoulders, facing forward" },
   back: { label: "Back", hint: "Full body, facing away" },
 };
 
@@ -69,8 +69,8 @@ function FieldError({ message }: { message?: string }) {
 
 /**
  * Marks the form as a local preview so it can never be mistaken for a live
- * submission. Shown only when the environment lacks the Cloudinary/database
- * configuration a real submission needs.
+ * submission. Shown only when the environment lacks the Cloudinary, database,
+ * or OpenAI image configuration a real AURA journey needs.
  */
 function PreviewNotice() {
   return (
@@ -83,9 +83,9 @@ function PreviewNotice() {
         <p className="text-sm font-medium">Local preview</p>
         <p className="text-muted-foreground text-sm text-pretty">
           Your photos stay in this browser. Nothing is uploaded, saved to a
-          profile, or sent to AI — you&apos;ll get a twin derived from the
-          measurements you enter. Configure Cloudinary and the database to enable
-          live submission.
+          profile, or sent to AI. This preview shows a placeholder, not a
+          generated portrait. Configure Cloudinary, the database, and OpenAI
+          image access to enable live AURA.
         </p>
       </div>
     </div>
@@ -96,8 +96,7 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
   const preview = mode === "preview";
   const [unitSystem, setUnitSystem] = React.useState<UnitSystem>("metric");
   const [imperial, setImperial] = React.useState<ImperialDraft>(EMPTY_IMPERIAL);
-  const [twin, setTwin] = React.useState<BodyMeasurements | null>(null);
-  const { stage, start, settle, stop } = useAuraStages();
+  const [result, setResult] = React.useState<"preview" | "saved" | null>(null);
 
   const {
     register,
@@ -160,24 +159,11 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
     setValue("weightKg", valid ? lbToKg(lb) : NaN, revalidate);
   }
 
-  function revealTwin(values: AuraFormInput) {
-    setTwin({
-      heightCm: values.heightCm,
-      weightKg: values.weightKg,
-      gender: values.gender,
-      bodyType: values.bodyType,
-    });
-    stop();
-  }
-
-  // Local preview: the form has validated (all five photos included), but we do
-  // no upload, no persistence, and no AI work. The twin is derived from the
-  // measurements right here in the browser, so there's nothing to send.
-  async function onPreview(values: AuraFormInput) {
-    start();
-    // Let the reveal copy play through, then derive the twin locally.
-    await settle();
-    revealTwin(values);
+  // Local preview validates the two required portrait references but performs
+  // no upload, persistence, or generation. Its result is intentionally a
+  // placeholder rather than a fabricated portrait.
+  function onPreview() {
+    setResult("preview");
     toast.success("Local preview ready", {
       description: "Nothing was uploaded, saved, or sent to AI.",
     });
@@ -185,24 +171,23 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
 
   async function onSubmit(values: AuraFormInput) {
     if (preview) {
-      await onPreview(values);
+      onPreview();
       return;
     }
 
-    start();
-
-    let photos: Record<PhotoAngle, string>;
+    let photos: Partial<Record<PhotoAngle, string>>;
     try {
+      const photoFiles = PHOTO_ANGLES.flatMap((angle) => {
+        const photo = values.photos[angle];
+        return photo ? [{ angle, photo }] : [];
+      });
       const encoded = await Promise.all(
-        PHOTO_ANGLES.map((angle) =>
-          downscalePhoto(values.photos[angle], PHOTO_MAX_EDGE),
-        ),
+        photoFiles.map(({ photo }) => downscalePhoto(photo, PHOTO_MAX_EDGE)),
       );
       photos = Object.fromEntries(
-        PHOTO_ANGLES.map((angle, i) => [angle, encoded[i]]),
-      ) as Record<PhotoAngle, string>;
+        photoFiles.map(({ angle }, i) => [angle, encoded[i]]),
+      ) as Partial<Record<PhotoAngle, string>>;
     } catch {
-      stop();
       toast.error("We couldn't read one of your photos", {
         description: "Try re-taking or re-exporting it, then upload again.",
       });
@@ -217,7 +202,6 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
         body: JSON.stringify({ ...values, photos }),
       });
     } catch {
-      stop();
       toast.error("Couldn't reach the server", {
         description: "Check your connection and try again.",
       });
@@ -226,10 +210,9 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      stop();
       toast.error(
         response.status === 401
-          ? "Sign in to generate your AURA"
+          ? "Sign in to save your AURA profile"
           : "Couldn't save your AURA",
         {
           description:
@@ -241,31 +224,18 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
       return;
     }
 
-    // Saved. The twin is derived from the measurements rather than stored, so
-    // there's nothing further to fetch — just build it.
-    //
-    // Let the copy finish if the work beat it. When the upload runs long — the
-    // normal case — this returns immediately.
-    await settle();
+    setResult("saved");
 
-    revealTwin(values);
-
-    toast.success("Your AURA is ready", {
-      description: "Measurements and photos saved to your profile.",
+    toast.success("Your AURA profile is saved", {
+      description: "Portrait generation can begin after this completed save.",
     });
   }
 
-  // Checking `stage` rather than `generating` narrows away the null for TS.
-  if (stage !== null) {
-    return <AuraProgress stage={stage} mode={mode} />;
-  }
-
-  if (twin) {
+  if (result) {
     return (
-      <AuraTwinResult
-        measurements={twin}
+      <AuraProfileResult
         mode={mode}
-        onEdit={() => setTwin(null)}
+        onEdit={() => setResult(null)}
       />
     );
   }
@@ -496,14 +466,14 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
 
       <section className="grid gap-3">
         <div className="grid gap-1">
-          <Label>Photos</Label>
+          <Label>AURA reference photos</Label>
           <p className="text-muted-foreground text-sm">
-            All five are required. Wear fitted clothing and stand against a plain
-            background for the best fit.
+            Required to create your AURA portrait: a full-body front photo and a
+            face close-up. Wear fitted clothing and use a plain background.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          {PHOTO_ANGLES.map((angle) => (
+        <div className="grid grid-cols-2 gap-4">
+          {AURA_REFERENCE_PHOTO_ANGLES.map((angle) => (
             <Controller
               key={angle}
               control={control}
@@ -523,6 +493,40 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
         </div>
         {/* `photos` itself errors when the object is missing entirely. */}
         <FieldError message={errors.photos?.root?.message} />
+      </section>
+
+      <section className="grid gap-3">
+        <div className="grid gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Label>3D avatar reference photos</Label>
+            <span className="text-muted-foreground rounded-full border px-2 py-0.5 text-xs font-medium">
+              Coming soon
+            </span>
+          </div>
+          <p className="text-muted-foreground text-sm">
+            Optional left, right, and back photos are retained for a future 3D
+            avatar. They are not used to create your AURA portrait.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {AVATAR_PHOTO_ANGLES.map((angle) => (
+            <Controller
+              key={angle}
+              control={control}
+              name={`photos.${angle}`}
+              render={({ field }) => (
+                <PhotoUploadField
+                  id={`photo-${angle}`}
+                  label={PHOTO_LABELS[angle].label}
+                  hint={PHOTO_LABELS[angle].hint}
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.photos?.[angle]?.message}
+                />
+              )}
+            />
+          ))}
+        </div>
       </section>
 
       <Separator />
@@ -546,7 +550,8 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
             htmlFor="consent"
             className="text-sm leading-snug font-normal text-pretty"
           >
-            I agree to the use of my photos to generate my digital twin.
+            I agree to the use of my photos by a third-party AI provider to
+            generate my AURA portrait.
           </Label>
         </div>
         <FieldError message={errors.consent?.message} />
@@ -561,10 +566,10 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
           {preview
             ? isSubmitting
               ? "Previewing…"
-              : "Preview my twin"
+              : "Preview portrait placeholder"
             : isSubmitting
-              ? "Generating…"
-              : "Generate AURA"}
+              ? "Saving…"
+              : "Save AURA profile"}
         </Button>
       </section>
     </form>

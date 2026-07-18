@@ -1,6 +1,6 @@
 /**
- * Helpers for the AURA digital-twin form: unit conversion, photo encoding, and
- * turning measurements into the proportions the 3D twin is built from.
+ * Helpers for the AURA profile form: unit conversion, photo encoding, and the
+ * legacy body-shape proportions still used by the 2D picker.
  *
  * Heights and weights are stored in metric everywhere (see `AuraProfile`), so
  * these conversions exist purely to let the form accept imperial input.
@@ -11,10 +11,10 @@ import type { BodyType, Gender } from "@/lib/validations";
 /**
  * Which mode the AURA journey runs in.
  *
- * - `"live"` — Cloudinary and the database are configured, so a submission
- *   uploads the five reference photos and persists (or replaces) the profile.
+ * - `"live"` — Cloudinary, the database, and OpenAI image access are
+ *   configured, so a submission can save (or replace) the profile.
  * - `"preview"` — one or both are absent, so the journey is a local preview:
- *   the form still validates and derives a twin, but nothing is uploaded,
+ *   the form validates and displays a placeholder, but nothing is uploaded,
  *   persisted, or sent to any AI provider.
  *
  * Resolved server-side by `isAuraLiveConfigured()` (see `@/lib/aura-config`);

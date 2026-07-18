@@ -14,8 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { AuraForm } from "@/components/forms/aura-form";
 
 export const metadata: Metadata = {
-  title: "Generate AURA",
-  description: "Build the digital twin behind your personalised fit.",
+  title: "Create your AURA profile",
+  description: "Save the profile and reference photos for your AURA portrait.",
 };
 
 // Resource-based protection, the pattern Clerk recommends over middleware path
@@ -35,13 +35,13 @@ export default async function AuraPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-3">
-            <CardTitle className="text-2xl">Generate your AURA</CardTitle>
+            <CardTitle className="text-2xl">Create your AURA profile</CardTitle>
             {mode === "preview" && <Badge variant="secondary">Local preview</Badge>}
           </div>
           <CardDescription className="text-pretty">
-            Your AURA is the digital twin we fit clothes to. Tell us about your
-            body and upload five reference photos — you can update any of it
-            later.
+            Save the body-profile information used for fit and two AURA
+            reference photos for your portrait. Optional 3D avatar photos are
+            clearly marked in the form and can be updated later.
           </CardDescription>
         </CardHeader>
         <CardContent>

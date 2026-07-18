@@ -10,6 +10,11 @@ import { PHOTO_ANGLES, type PhotoAngle } from "@/lib/validations";
  * module boundary so every branch a real submission can take — unauthorized,
  * invalid, unconfigured, upload failure, persistence failure, success — is
  * observable as a response plus whatever it did or didn't persist.
+ *
+ * Note that `mock.module` patches the module registry for the whole test
+ * process, not just this file. Any future test that wants the real
+ * `@/lib/prisma`, `@/lib/cloudinary`, `@/lib/aura-config`, or Clerk must run in
+ * its own file *and* not share a process with this one.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -36,6 +41,8 @@ let clerkUser: {
   lastName: string | null;
   imageUrl: string;
 } | null = null;
+
+const profiles = new Map<string, Record<string, unknown> & { id: string }>();
 
 let upload: ReturnType<typeof mock<UploadStub>>;
 let userUpsert: ReturnType<typeof mock<UpsertStub>>;
@@ -110,7 +117,19 @@ beforeEach(() => {
     secure_url: `https://res.cloudinary.test/v1/${options.public_id}.jpg`,
   }));
   userUpsert = mock(async () => ({ id: "db_user_1" }));
-  auraUpsert = mock(async () => ({ id: "aura_1" }));
+
+  // Modelled as a store keyed the way the real unique constraint is, so
+  // "creates *or replaces*" is observable rather than merely asserted about
+  // the arguments: a second submission has to land on the same row.
+  profiles.clear();
+  auraUpsert = mock(async ({ where, create, update }: UpsertArgs) => {
+    const existing = profiles.get(where.userId);
+    profiles.set(where.userId, {
+      id: existing?.id ?? `aura_${profiles.size + 1}`,
+      ...(existing ? { ...existing, ...update } : create),
+    });
+    return { id: profiles.get(where.userId)!.id as string };
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -194,27 +213,44 @@ describe("POST /api/aura — a valid live submission", () => {
     expect(options.every((opts) => opts.overwrite)).toBe(true);
   });
 
-  it("creates or replaces exactly one profile, holding the uploaded URLs", async () => {
+  it("creates a profile holding the five uploaded URLs", async () => {
     const response = await post(validBody());
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({ id: "aura_1" });
 
-    expect(auraUpsert).toHaveBeenCalledTimes(1);
-    const [args] = auraUpsert.mock.calls[0];
+    const profile = profiles.get("db_user_1");
+    expect(profile).toMatchObject({
+      userId: "db_user_1",
+      name: "Ada Lovelace",
+      heightCm: 168,
+      weightKg: 61,
+      bodyType: "HOURGLASS",
+      photoFrontUrl:
+        "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/front.jpg",
+      photoBackUrl:
+        "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/back.jpg",
+    });
+    expect(profile?.consentedAt).toBeInstanceOf(Date);
+  });
 
-    // Keyed on the one-per-user relation, so a second submission replaces
-    // rather than duplicates.
-    expect(args.where).toEqual({ userId: "db_user_1" });
-    expect(args.update.photoFrontUrl).toBe(
-      "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/front.jpg",
+  it("replaces the profile on regeneration rather than adding a second", async () => {
+    const first = await post(validBody());
+    const second = await post({ ...validBody(), weightKg: 64, name: "Ada L." });
+
+    expect(second.status).toBe(201);
+    // One row, still the same one — regeneration must not duplicate.
+    expect(profiles.size).toBe(1);
+    await expect(second.json()).resolves.toEqual(await first.json());
+
+    expect(profiles.get("db_user_1")).toMatchObject({
+      weightKg: 64,
+      name: "Ada L.",
+    });
+    // Five assets, not ten: the deterministic ids were overwritten in place.
+    expect(new Set(upload.mock.calls.map(([, opts]) => opts.public_id)).size).toBe(
+      PHOTO_ANGLES.length,
     );
-    expect(args.update.photoBackUrl).toBe(
-      "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/back.jpg",
-    );
-    expect(args.update.heightCm).toBe(168);
-    expect(args.create).toMatchObject({ userId: "db_user_1", name: "Ada Lovelace" });
-    expect(args.update.consentedAt).toBeInstanceOf(Date);
   });
 });
 

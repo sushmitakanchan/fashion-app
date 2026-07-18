@@ -13,6 +13,9 @@ import {
 // Persistence is the one failure the user can do nothing about except retry,
 // and retrying is always safe here — the profile is upserted and the five
 // assets have deterministic ids — so say so rather than leaking a driver error.
+// Sent as a 500, deliberately not the 503 the unconfigured-environment backstop
+// below returns: one is a broken request, the other is a permanent property of
+// this deployment, and a client shouldn't have to guess which it hit.
 const SAVE_FAILED =
   "We couldn't save your AURA. Your photos are safe — please try again.";
 
@@ -80,7 +83,7 @@ export async function POST(req: Request) {
     // Before any upload, so there's nothing to unwind — but the caller still
     // needs to be told this failed rather than shown a half-finished AURA.
     console.error("AURA user mirroring failed", error);
-    return NextResponse.json({ error: SAVE_FAILED }, { status: 503 });
+    return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
   }
 
   let urls: Record<PhotoAngle, string>;
@@ -88,11 +91,7 @@ export async function POST(req: Request) {
     // Deterministic public_ids (rather than `uploadImage`'s random ones) so
     // regenerating an AURA overwrites the previous five assets instead of
     // orphaning them. `secure_url` is version-stamped, so it still cache-busts.
-    //
-    // `allSettled` rather than `all`: on a partial failure `all` rejects at the
-    // first error and leaves its siblings' rejections unhandled, which surfaces
-    // as an unhandled rejection well after the response has gone out.
-    const uploads = await Promise.allSettled(
+    const uploads = await Promise.all(
       PHOTO_ANGLES.map((angle) =>
         cloudinary.uploader.upload(photos[angle], {
           public_id: `fashion-app/aura/${userId}/${angle}`,
@@ -101,15 +100,8 @@ export async function POST(req: Request) {
         }),
       ),
     );
-
-    const failed = uploads.find((result) => result.status === "rejected");
-    if (failed?.status === "rejected") throw failed.reason;
-
     urls = Object.fromEntries(
-      uploads.map((result, i) => [
-        PHOTO_ANGLES[i],
-        result.status === "fulfilled" ? result.value.secure_url : "",
-      ]),
+      PHOTO_ANGLES.map((angle, i) => [angle, uploads[i].secure_url]),
     ) as Record<PhotoAngle, string>;
   } catch (error) {
     // Any assets that did land keep their deterministic public_id, so a retry
@@ -149,7 +141,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("AURA profile persistence failed", error);
-    return NextResponse.json({ error: SAVE_FAILED }, { status: 503 });
+    return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
   }
 
   return NextResponse.json({ id: aura.id }, { status: 201 });

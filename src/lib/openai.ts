@@ -17,3 +17,8 @@ export function getOpenAI(): OpenAI {
 
 /** Default chat model — override with the OPENAI_MODEL env var. */
 export const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+
+/** Read-only credential and model-availability probe for the healthcheck. */
+export async function probeOpenAI(model = OPENAI_MODEL): Promise<void> {
+  await getOpenAI().models.retrieve(model);
+}

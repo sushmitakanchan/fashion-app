@@ -17,3 +17,8 @@ export function getAnthropic(): Anthropic {
 /** Default model — override with the ANTHROPIC_MODEL env var. */
 export const ANTHROPIC_MODEL =
   process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5";
+
+/** Read-only credential and model-availability probe for the healthcheck. */
+export async function probeAnthropic(model = ANTHROPIC_MODEL): Promise<void> {
+  await getAnthropic().models.retrieve(model);
+}

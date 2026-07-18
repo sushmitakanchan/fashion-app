@@ -2,13 +2,20 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 
 import { isAuraLiveConfigured } from "@/lib/aura-config";
-import { cloudinary } from "@/lib/cloudinary";
+import { cloudinary, configureCloudinary } from "@/lib/cloudinary";
+import { env } from "@/lib/env";
 import { getPrisma } from "@/lib/prisma";
 import {
   auraSubmissionSchema,
   PHOTO_ANGLES,
   type PhotoAngle,
 } from "@/lib/validations";
+
+configureCloudinary({
+  cloudName: env.CLOUDINARY_CLOUD_NAME ?? env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  apiKey: env.CLOUDINARY_API_KEY,
+  apiSecret: env.CLOUDINARY_API_SECRET,
+});
 
 export async function POST(req: Request) {
   // Live submission uploads photos and persists a profile; without Cloudinary

@@ -81,6 +81,7 @@ consumed through the lazy `getPrisma()` singleton in
 | `bun run start` | Start the production server |
 | `bun run lint` | ESLint |
 | `bun run typecheck` | `tsc --noEmit` |
+| `bun run healthcheck` | Read-only credential and integration checks |
 | `bun run db:*` | Prisma helpers (see above) |
 
 ## Project structure

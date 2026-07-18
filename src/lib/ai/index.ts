@@ -8,7 +8,11 @@ import { ANTHROPIC_MODEL } from "@/lib/anthropic";
 import { env } from "@/lib/env";
 import { OPENAI_MODEL } from "@/lib/openai";
 
-import { resolveProvider, type AiProvider } from "./provider";
+import {
+  readProviderCredentials,
+  resolveProvider,
+  type AiProvider,
+} from "./provider";
 
 export {
   AI_PROVIDERS,
@@ -54,10 +58,10 @@ export async function generateText({
 }: GenerateTextOptions): Promise<GeneratedText> {
   // Throws AiProviderConfigError when the selected provider has no key — it
   // never silently reroutes the prompt to whichever provider is set up.
-  const provider = resolveProvider(env.AI_PROVIDER, {
-    openai: Boolean(env.OPENAI_API_KEY),
-    anthropic: Boolean(env.ANTHROPIC_API_KEY),
-  });
+  const provider = resolveProvider(
+    env.AI_PROVIDER,
+    readProviderCredentials(process.env),
+  );
 
   const { text } = await aiGenerateText({
     model: MODELS[provider](),

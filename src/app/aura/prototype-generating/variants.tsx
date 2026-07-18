@@ -248,9 +248,17 @@ export function VariantC({ regenerating }: VariantProps) {
     <Shell regenerating={regenerating}>
       <div className="relative flex min-h-72 w-full items-center justify-center overflow-hidden rounded-xl px-6 py-16 text-center">
         <div className="proto-portrait-bloom pointer-events-none absolute inset-0 motion-reduce:animate-none" />
-        <p className="relative text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-          {HEADLINE}
-        </p>
+        <div className="relative grid justify-items-center gap-5">
+          <p className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+            {HEADLINE}
+          </p>
+          <div
+            aria-hidden="true"
+            className="h-px w-32 overflow-hidden rounded-full bg-foreground/20"
+          >
+            <div className="proto-focus-mark h-full w-9 rounded-full bg-foreground/75 motion-reduce:animate-none" />
+          </div>
+        </div>
       </div>
     </Shell>
   );

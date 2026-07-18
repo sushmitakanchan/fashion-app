@@ -159,21 +159,32 @@ const PROTOTYPE_KEYFRAMES = `
 
 .proto-portrait-bloom {
   background:
-    radial-gradient(52% 68% at 27% 28%, rgb(247 181 169 / 0.52), transparent 70%),
-    radial-gradient(58% 70% at 74% 64%, rgb(184 194 244 / 0.48), transparent 72%),
-    radial-gradient(44% 52% at 53% 92%, rgb(229 182 214 / 0.38), transparent 74%);
+    radial-gradient(56% 74% at 21% 23%, rgb(255 105 124 / 0.72), transparent 70%),
+    radial-gradient(62% 78% at 80% 66%, rgb(113 121 255 / 0.66), transparent 74%),
+    radial-gradient(45% 58% at 53% 96%, rgb(238 104 195 / 0.52), transparent 72%),
+    linear-gradient(135deg, rgb(255 246 249 / 0.92), rgb(243 246 255 / 0.92));
   animation: proto-portrait-bloom 15s ease-in-out infinite alternate;
 }
 .dark .proto-portrait-bloom {
   background:
-    radial-gradient(52% 68% at 27% 28%, rgb(147 76 87 / 0.34), transparent 70%),
-    radial-gradient(58% 70% at 74% 64%, rgb(86 96 157 / 0.32), transparent 72%),
-    radial-gradient(44% 52% at 53% 92%, rgb(121 76 112 / 0.26), transparent 74%);
+    radial-gradient(56% 74% at 21% 23%, rgb(239 72 104 / 0.52), transparent 70%),
+    radial-gradient(62% 78% at 80% 66%, rgb(86 82 255 / 0.5), transparent 74%),
+    radial-gradient(45% 58% at 53% 96%, rgb(204 70 188 / 0.4), transparent 72%),
+    linear-gradient(135deg, rgb(29 12 29 / 0.92), rgb(12 14 42 / 0.92));
 }
 @keyframes proto-portrait-bloom {
-  0%   { transform: translate3d(-2%, 1%, 0) scale(1.03); }
-  50%  { transform: translate3d(2%, -2%, 0) scale(1.1); }
-  100% { transform: translate3d(-1%, 2%, 0) scale(1.06); }
+  0%   { transform: translate3d(-2%, 1%, 0) scale(1.05); }
+  50%  { transform: translate3d(3%, -2%, 0) scale(1.15); }
+  100% { transform: translate3d(-1%, 2%, 0) scale(1.08); }
+}
+
+.proto-focus-mark {
+  animation: proto-focus-mark 2.8s ease-in-out infinite;
+}
+
+@keyframes proto-focus-mark {
+  0%, 100% { transform: translateX(-2.25rem); opacity: 0.35; }
+  50% { transform: translateX(7.25rem); opacity: 1; }
 }
 
 /* --- variant D: cyberpunk scan --- */
@@ -305,7 +316,7 @@ const PROTOTYPE_KEYFRAMES = `
 @media (prefers-reduced-motion: reduce) {
   .proto-grain, .proto-develop, .proto-sweep, .proto-breathe,
   .proto-key, .proto-fill, .proto-aurora, .proto-shimmer,
-  .proto-portrait-bloom,
+  .proto-portrait-bloom, .proto-focus-mark,
   .proto-bloom, .proto-figure, .proto-scan, .proto-floor,
   .proto-band, .proto-outline, .proto-twinkle, .proto-ringpulse,
   .proto-ringticks, .proto-orbit-a, .proto-orbit-b, .proto-mesh,

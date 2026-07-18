@@ -28,7 +28,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
   - Dev runs in **keyless mode** when Clerk env vars are blank.
 - **Prisma 7:**
   - Generated client lives at `src/generated/prisma`; import `PrismaClient` from
-    `@/generated/prisma/client`. Use the singleton in `src/lib/prisma.ts`.
+    `@/generated/prisma/client`. Use the lazy singleton getter `getPrisma()` from
+    `src/lib/prisma.ts` — call it inside the handler, never at module scope, so
+    importing the module can't throw at build time when `DATABASE_URL` is blank.
   - The runtime **requires** the Neon driver adapter (no query-engine binary).
   - The CLI connection URL is configured in `prisma.config.ts`; the schema `datasource`
     has no `url`. Run `bun run db:generate` after editing `prisma/schema.prisma`.

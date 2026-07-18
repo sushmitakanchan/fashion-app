@@ -59,6 +59,7 @@ type UnitSystem = "metric" | "imperial";
 
 /** Imperial inputs are display-only; `heightCm`/`weightKg` stay canonical. */
 type ImperialDraft = { feet: string; inches: string; pounds: string };
+type PortraitResponse = { portraitUrl?: string; error?: string };
 
 const EMPTY_IMPERIAL: ImperialDraft = { feet: "", inches: "", pounds: "" };
 
@@ -97,6 +98,9 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
   const [unitSystem, setUnitSystem] = React.useState<UnitSystem>("metric");
   const [imperial, setImperial] = React.useState<ImperialDraft>(EMPTY_IMPERIAL);
   const [result, setResult] = React.useState<"preview" | "saved" | null>(null);
+  const [portraitUrl, setPortraitUrl] = React.useState<string>();
+  const [portraitError, setPortraitError] = React.useState<string>();
+  const [isGeneratingPortrait, setIsGeneratingPortrait] = React.useState(false);
 
   const {
     register,
@@ -169,6 +173,31 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
     });
   }
 
+  async function requestPortrait() {
+    setPortraitError(undefined);
+    setIsGeneratingPortrait(true);
+
+    try {
+      const response = await fetch("/api/aura/portrait", { method: "POST" });
+      const body = (await response.json().catch(() => null)) as PortraitResponse | null;
+      if (!response.ok || !body?.portraitUrl) {
+        const error = body?.error ?? "We couldn't create your portrait. Please try again.";
+        setPortraitError(error);
+        toast.error("Couldn't create your AURA portrait", { description: error });
+        return;
+      }
+
+      setPortraitUrl(body.portraitUrl);
+      toast.success("Your AURA portrait is ready");
+    } catch {
+      const error = "Check your connection and try again.";
+      setPortraitError(error);
+      toast.error("Couldn't reach the server", { description: error });
+    } finally {
+      setIsGeneratingPortrait(false);
+    }
+  }
+
   async function onSubmit(values: AuraFormInput) {
     if (preview) {
       onPreview();
@@ -227,7 +256,7 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
     setResult("saved");
 
     toast.success("Your AURA profile is saved", {
-      description: "Portrait generation can begin after this completed save.",
+      description: "You can now create your studio-style portrait.",
     });
   }
 
@@ -235,7 +264,15 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
     return (
       <AuraProfileResult
         mode={mode}
-        onEdit={() => setResult(null)}
+        portraitUrl={portraitUrl}
+        portraitError={portraitError}
+        isGenerating={isGeneratingPortrait}
+        onGenerate={preview ? undefined : requestPortrait}
+        onEdit={() => {
+          setResult(null);
+          setPortraitUrl(undefined);
+          setPortraitError(undefined);
+        }}
       />
     );
   }

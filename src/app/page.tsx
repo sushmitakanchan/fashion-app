@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   Show,
   SignInButton,
@@ -16,7 +17,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Marquee } from "@/components/ui/marquee";
-import { ShimmerButton } from "@/components/ui/shimmer-button";
 import { ModeToggle } from "@/components/mode-toggle";
 import { NewsletterForm } from "@/components/forms/newsletter-form";
 
@@ -101,23 +101,43 @@ export default function Home() {
       <main className="flex-1">
         <section className="mx-auto flex w-full max-w-6xl flex-col items-center px-6 py-24 text-center">
           <Badge variant="secondary" className="mb-6">
-            <SparklesIcon /> Local dev environment ready
+            <SparklesIcon /> Your digital twin, fitted to you
           </Badge>
           <h1 className="max-w-3xl text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
-            The full-stack starter for modern fashion commerce
+            Meet AURA — the digital twin behind your perfect fit
           </h1>
-          <p className="text-muted-foreground mt-6 max-w-xl text-lg text-pretty">
-            Next.js 16, an authenticated API, a type-safe database, and an AI
-            stylist — all pre-wired and running locally.
+          <p className="text-muted-foreground mt-6 max-w-xl text-lg leading-relaxed text-pretty italic">
+            Share your measurements and a few reference photos, and AURA builds a
+            3D twin with your proportions — so clothes are fitted to your body,
+            not a generic size chart.
           </p>
           <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row">
-            <ShimmerButton className="shadow-2xl">
-              <span className="text-sm font-medium">Browse the collection</span>
-            </ShimmerButton>
-            <Button variant="outline" size="lg">
-              View documentation
-            </Button>
+            {/* /aura is protected, so signed-out visitors get the sign-up modal
+                here rather than bouncing off the page's redirect — they sign in
+                before any profile is created. */}
+            <Show when="signed-in">
+              {/* Renders an <a>, so tell Base UI this isn't a native button —
+                  otherwise it warns and drops correct link semantics. */}
+              <Button size="lg" nativeButton={false} render={<Link href="/aura" />}>
+                <SparklesIcon />
+                Generate your AURA
+              </Button>
+            </Show>
+            <Show when="signed-out">
+              {/* Sign up, then land straight on the protected AURA page rather
+                  than back here — the CTA leads into profile creation. */}
+              <SignUpButton mode="modal" forceRedirectUrl="/aura">
+                <Button size="lg">
+                  <SparklesIcon />
+                  Sign up to create your AURA
+                </Button>
+              </SignUpButton>
+            </Show>
           </div>
+          <p className="text-muted-foreground mt-4 text-sm">
+            Your AURA profile is tied to your account, so you&apos;ll sign in
+            first.
+          </p>
         </section>
 
         <section className="border-y bg-muted/30 py-6">

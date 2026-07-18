@@ -85,4 +85,6 @@ Read the bundled guide (per the rule up top) under `node_modules/next/dist/docs/
 - Data: `01-app/01-getting-started/{06-fetching-data,07-mutating-data,08-caching,09-revalidating}.md`
 - Middleware: `01-app/01-getting-started/16-proxy.md` · Guides: `01-app/02-guides/{authentication,forms,environment-variables}.md`
 
-Tests use the **built-in Bun test runner** (`bun test`, no config) — colocated `*.test.ts` files, for pure logic only; there is no React/DOM testing setup. Verify with `bun run typecheck && bun run lint && bun test` (plus `bun run build` for anything non-trivial), or by driving the app.
+Tests use the **built-in Bun test runner** (`bun test`, no config) — colocated `*.test.ts` files; there is no React/DOM testing setup. Verify with `bun run typecheck && bun run lint && bun test` (plus `bun run build` for anything non-trivial), or by driving the app.
+
+Mostly pure logic. **Route handlers are the one exception**: a handler orchestrates integrations that are the whole point of testing it, so stub them at the module boundary with `mock.module` and drive the exported `POST`/`GET` with a real `Request` (see `src/app/api/aura/route.test.ts`). Two constraints — `mock.module` patches the registry for the entire test process, so a file that mocks a module and a file that needs the real one must not share a process; and stub a store rather than a fixed return value where the behaviour under test *is* the persistence (create-vs-replace can't be observed from call arguments alone).

@@ -10,6 +10,15 @@ import {
   type PhotoAngle,
 } from "@/lib/validations";
 
+// Persistence is the one failure the user can do nothing about except retry,
+// and retrying is always safe here — the profile is upserted and the five
+// assets have deterministic ids — so say so rather than leaking a driver error.
+// Sent as a 500, deliberately not the 503 the unconfigured-environment backstop
+// below returns: one is a broken request, the other is a permanent property of
+// this deployment, and a client shouldn't have to guess which it hit.
+const SAVE_FAILED =
+  "We couldn't save your AURA. Your photos are safe — please try again.";
+
 export async function POST(req: Request) {
   // Live submission uploads photos and persists a profile; without Cloudinary
   // and the database configured this environment can only run the local
@@ -54,17 +63,28 @@ export async function POST(req: Request) {
     );
   }
 
-  const prisma = getPrisma();
-  const user = await prisma.user.upsert({
-    where: { clerkId: userId },
-    create: {
-      clerkId: userId,
-      email,
-      name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" "),
-      imageUrl: clerkUser.imageUrl,
-    },
-    update: { email, imageUrl: clerkUser.imageUrl },
-  });
+  let prisma: ReturnType<typeof getPrisma>;
+  let user: { id: string };
+  try {
+    prisma = getPrisma();
+    user = await prisma.user.upsert({
+      where: { clerkId: userId },
+      create: {
+        clerkId: userId,
+        email,
+        name: [clerkUser.firstName, clerkUser.lastName]
+          .filter(Boolean)
+          .join(" "),
+        imageUrl: clerkUser.imageUrl,
+      },
+      update: { email, imageUrl: clerkUser.imageUrl },
+    });
+  } catch (error) {
+    // Before any upload, so there's nothing to unwind — but the caller still
+    // needs to be told this failed rather than shown a half-finished AURA.
+    console.error("AURA user mirroring failed", error);
+    return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
+  }
 
   let urls: Record<PhotoAngle, string>;
   try {
@@ -84,6 +104,8 @@ export async function POST(req: Request) {
       PHOTO_ANGLES.map((angle, i) => [angle, uploads[i].secure_url]),
     ) as Record<PhotoAngle, string>;
   } catch (error) {
+    // Any assets that did land keep their deterministic public_id, so a retry
+    // overwrites them rather than accumulating orphans.
     console.error("AURA photo upload failed", error);
     return NextResponse.json(
       { error: "We couldn't upload your photos. Please try again." },
@@ -107,11 +129,20 @@ export async function POST(req: Request) {
     consentedAt: new Date(),
   };
 
-  const aura = await prisma.auraProfile.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id, ...profile },
-    update: profile,
-  });
+  let aura: { id: string };
+  try {
+    // Keyed on the one-per-user relation, so regenerating replaces the profile
+    // instead of duplicating it — and a retry after this fails is safe for the
+    // same reason.
+    aura = await prisma.auraProfile.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, ...profile },
+      update: profile,
+    });
+  } catch (error) {
+    console.error("AURA profile persistence failed", error);
+    return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
+  }
 
   return NextResponse.json({ id: aura.id }, { status: 201 });
 }

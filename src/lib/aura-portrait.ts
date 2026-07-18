@@ -1,5 +1,7 @@
 import "server-only";
 
+import { resolveAuraPortraitModel } from "@/lib/aura-portrait-config";
+import { env } from "@/lib/env";
 import { getOpenAI } from "@/lib/openai";
 
 const REFERENCE_DOWNLOAD_TIMEOUT_MS = 10_000;
@@ -101,7 +103,7 @@ export async function generateAuraPortrait({
     const result = await getOpenAI().images.edit(
       {
         image: images,
-        model: "gpt-image-2",
+        model: resolveAuraPortraitModel(env),
         prompt: AURA_STUDIO_PROMPT,
         n: 1,
         size: "1024x1536",

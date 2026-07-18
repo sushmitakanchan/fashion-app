@@ -32,7 +32,7 @@ describe("bun run healthcheck", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout).toContain("not configured");
-    expect(stdout).toContain("4 skipped");
+    expect(stdout).toContain("5 skipped");
   });
 
   it("exits non-zero with an actionable diagnostic on partial configuration", async () => {

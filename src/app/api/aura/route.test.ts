@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 
-import { PHOTO_ANGLES, type PhotoAngle } from "@/lib/validations";
+import {
+  AVATAR_PHOTO_ANGLES,
+  AURA_REFERENCE_PHOTO_ANGLES,
+  type PhotoAngle,
+} from "@/lib/validations";
 
 /**
  * Route-level tests for live AURA submission.
@@ -90,8 +94,8 @@ const validBody = () => ({
   bodyType: "HOURGLASS",
   consent: true,
   photos: Object.fromEntries(
-    PHOTO_ANGLES.map((angle) => [angle, photo(angle)]),
-  ) as Record<PhotoAngle, string>,
+    AURA_REFERENCE_PHOTO_ANGLES.map((angle) => [angle, photo(angle)]),
+  ) as Record<"front" | "closeup", string>,
 });
 
 const post = (body: unknown) =>
@@ -172,6 +176,23 @@ describe("POST /api/aura — refused submissions", () => {
     expect(auraUpsert).not.toHaveBeenCalled();
   });
 
+  it("requires both AURA portrait reference photos, without persisting", async () => {
+    const body = validBody();
+    delete (body.photos as Partial<Record<PhotoAngle, string>>).closeup;
+
+    const response = await post(body);
+
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as {
+      issues?: { path: string[] }[];
+    };
+    expect(payload.issues?.some((issue) => issue.path.join(".") === "photos.closeup")).toBe(
+      true,
+    );
+    expect(upload).not.toHaveBeenCalled();
+    expect(auraUpsert).not.toHaveBeenCalled();
+  });
+
   it("rejects a malformed body, without persisting", async () => {
     const response = await POST(
       new Request("http://localhost/api/aura", {
@@ -200,20 +221,22 @@ describe("POST /api/aura — refused submissions", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("POST /api/aura — a valid live submission", () => {
-  it("stores five deterministic per-angle assets that overwrite the previous ones", async () => {
+  it("stores the two required AURA reference photos with deterministic ids", async () => {
     await post(validBody());
 
-    expect(upload).toHaveBeenCalledTimes(PHOTO_ANGLES.length);
+    expect(upload).toHaveBeenCalledTimes(AURA_REFERENCE_PHOTO_ANGLES.length);
     const options = upload.mock.calls.map(([, opts]) => opts);
 
     expect(options.map((opts) => opts.public_id)).toEqual(
-      PHOTO_ANGLES.map((angle) => `fashion-app/aura/clerk_user_1/${angle}`),
+      AURA_REFERENCE_PHOTO_ANGLES.map(
+        (angle) => `fashion-app/aura/clerk_user_1/${angle}`,
+      ),
     );
-    // Overwriting is what keeps regeneration from orphaning the old five.
+    // Overwriting is what keeps a re-save from orphaning the old assets.
     expect(options.every((opts) => opts.overwrite)).toBe(true);
   });
 
-  it("creates a profile holding the five uploaded URLs", async () => {
+  it("creates a profile from just the two AURA reference photos", async () => {
     const response = await post(validBody());
 
     expect(response.status).toBe(201);
@@ -228,10 +251,51 @@ describe("POST /api/aura — a valid live submission", () => {
       bodyType: "HOURGLASS",
       photoFrontUrl:
         "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/front.jpg",
+      photoCloseupUrl:
+        "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/closeup.jpg",
+      photoLeftUrl: null,
+      photoRightUrl: null,
+      photoBackUrl: null,
+    });
+    expect(profile?.consentedAt).toBeInstanceOf(Date);
+  });
+
+  it("retains supplied optional 3D avatar references", async () => {
+    const first = await post({
+      ...validBody(),
+      photos: {
+        ...validBody().photos,
+        left: photo("left"),
+        right: photo("right"),
+        back: photo("back"),
+      },
+    });
+
+    expect(first.status).toBe(201);
+    expect(upload).toHaveBeenCalledTimes(
+      AURA_REFERENCE_PHOTO_ANGLES.length + AVATAR_PHOTO_ANGLES.length,
+    );
+    expect(profiles.get("db_user_1")).toMatchObject({
+      photoLeftUrl:
+        "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/left.jpg",
+      photoRightUrl:
+        "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/right.jpg",
       photoBackUrl:
         "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/back.jpg",
     });
-    expect(profile?.consentedAt).toBeInstanceOf(Date);
+
+    const second = await post({ ...validBody(), name: "Ada L." });
+
+    expect(second.status).toBe(201);
+    expect(profiles.get("db_user_1")).toMatchObject({
+      name: "Ada L.",
+      photoLeftUrl:
+        "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/left.jpg",
+      photoRightUrl:
+        "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/right.jpg",
+      photoBackUrl:
+        "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/back.jpg",
+    });
   });
 
   it("replaces the profile on regeneration rather than adding a second", async () => {
@@ -249,8 +313,24 @@ describe("POST /api/aura — a valid live submission", () => {
     });
     // Five assets, not ten: the deterministic ids were overwritten in place.
     expect(new Set(upload.mock.calls.map(([, opts]) => opts.public_id)).size).toBe(
-      PHOTO_ANGLES.length,
+      AURA_REFERENCE_PHOTO_ANGLES.length,
     );
+  });
+
+  it("keeps an existing portrait when profile data is replaced", async () => {
+    await post(validBody());
+    profiles.set("db_user_1", {
+      ...profiles.get("db_user_1")!,
+      portraitUrl: "https://res.cloudinary.test/aura-portrait.jpg",
+    });
+
+    const response = await post({ ...validBody(), name: "Ada L." });
+
+    expect(response.status).toBe(201);
+    expect(profiles.get("db_user_1")).toMatchObject({
+      name: "Ada L.",
+      portraitUrl: "https://res.cloudinary.test/aura-portrait.jpg",
+    });
   });
 });
 
@@ -261,7 +341,7 @@ describe("POST /api/aura — a valid live submission", () => {
 describe("POST /api/aura — failures never report success", () => {
   it("does not persist a profile when a photo upload fails", async () => {
     upload = mock(async (_file: string, options: { public_id: string }) => {
-      if (options.public_id.endsWith("/right")) throw new Error("Cloudinary 500");
+      if (options.public_id.endsWith("/closeup")) throw new Error("Cloudinary 500");
       return { secure_url: `https://res.cloudinary.test/v1/${options.public_id}.jpg` };
     });
 

@@ -15,13 +15,22 @@ export function isDatabaseConfigured(): boolean {
   return Boolean(env.DATABASE_URL);
 }
 
+/** v1 portrait generation is OpenAI-only, independent of text-provider choice. */
+export function isOpenAIImageConfigured(): boolean {
+  return Boolean(env.OPENAI_API_KEY);
+}
+
 /**
- * A live AURA submission both uploads reference photos (Cloudinary) and persists
- * the profile (Neon/Prisma), so both stacks must be configured. When either is
- * missing the journey falls back to a local preview — see {@link AuraMode}.
+ * A live AURA journey saves reference photos, persists a profile, and can then
+ * generate an OpenAI portrait. All three capabilities must be configured;
+ * otherwise this deployment presents an explicitly local preview.
  */
 export function isAuraLiveConfigured(): boolean {
-  return isCloudinaryConfigured() && isDatabaseConfigured();
+  return (
+    isCloudinaryConfigured() &&
+    isDatabaseConfigured() &&
+    isOpenAIImageConfigured()
+  );
 }
 
 export function auraMode(): AuraMode {

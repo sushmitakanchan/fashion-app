@@ -44,8 +44,8 @@ model User {
   @@index([email])
 }
 
-/// Measurements and reference photos used to generate a user's digital twin
-/// ("AURA"). One per user — regenerating replaces the existing profile.
+/// Measurements and reference photos for one user's AURA portrait profile.
+/// Re-saving replaces profile data and references without clearing a portrait.
 model AuraProfile {
   id       String @id @default(cuid())
   user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -58,12 +58,15 @@ model AuraProfile {
   heightCm Float
   weightKg Float
   bodyType BodyType
-  // Cloudinary secure URLs, one per required angle.
+  // Cloudinary secure URLs for the two portrait references.
   photoFrontUrl   String
-  photoLeftUrl    String
-  photoRightUrl   String
   photoCloseupUrl String
-  photoBackUrl    String
+  // Future 3D-avatar references are optional, but retained if supplied.
+  photoLeftUrl    String?
+  photoRightUrl   String?
+  photoBackUrl    String?
+  // Saved only by the separate portrait-generation operation.
+  portraitUrl     String?
   // Timestamp rather than a boolean: a consent record needs to say when.
   consentedAt DateTime
   createdAt   DateTime @default(now())

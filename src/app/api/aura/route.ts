@@ -11,7 +11,7 @@ import {
 } from "@/lib/validations";
 
 // Persistence is the one failure the user can do nothing about except retry,
-// and retrying is always safe here — the profile is upserted and the five
+// and retrying is always safe here — the profile is upserted and supplied
 // assets have deterministic ids — so say so rather than leaking a driver error.
 // Sent as a 500, deliberately not the 503 the unconfigured-environment backstop
 // below returns: one is a broken request, the other is a permanent property of
@@ -86,14 +86,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
   }
 
-  let urls: Record<PhotoAngle, string>;
+  let urls: Partial<Record<PhotoAngle, string>>;
   try {
-    // Deterministic public_ids (rather than `uploadImage`'s random ones) so
-    // regenerating an AURA overwrites the previous five assets instead of
-    // orphaning them. `secure_url` is version-stamped, so it still cache-busts.
+    // Deterministic public_ids (rather than `uploadImage`'s random ones) make
+    // every profile retry replace the same assets instead of orphaning files.
+    // The portrait references are required by the schema; future-avatar angles
+    // are uploaded only when the user supplied them.
+    const suppliedPhotos = PHOTO_ANGLES.flatMap((angle) => {
+      const photo = photos[angle];
+      return photo ? [{ angle, photo }] : [];
+    });
     const uploads = await Promise.all(
-      PHOTO_ANGLES.map((angle) =>
-        cloudinary.uploader.upload(photos[angle], {
+      suppliedPhotos.map(({ angle, photo }) =>
+        cloudinary.uploader.upload(photo, {
           public_id: `fashion-app/aura/${userId}/${angle}`,
           overwrite: true,
           resource_type: "image",
@@ -101,8 +106,8 @@ export async function POST(req: Request) {
       ),
     );
     urls = Object.fromEntries(
-      PHOTO_ANGLES.map((angle, i) => [angle, uploads[i].secure_url]),
-    ) as Record<PhotoAngle, string>;
+      suppliedPhotos.map(({ angle }, i) => [angle, uploads[i].secure_url]),
+    ) as Partial<Record<PhotoAngle, string>>;
   } catch (error) {
     // Any assets that did land keep their deterministic public_id, so a retry
     // overwrites them rather than accumulating orphans.
@@ -120,13 +125,19 @@ export async function POST(req: Request) {
     heightCm: parsed.data.heightCm,
     weightKg: parsed.data.weightKg,
     bodyType: parsed.data.bodyType,
-    photoFrontUrl: urls.front,
-    photoLeftUrl: urls.left,
-    photoRightUrl: urls.right,
-    photoCloseupUrl: urls.closeup,
-    photoBackUrl: urls.back,
+    photoFrontUrl: urls.front!,
+    photoCloseupUrl: urls.closeup!,
     // The schema already refused anything but `true`; record when they agreed.
     consentedAt: new Date(),
+  };
+
+  // An omitted optional photo means the user chose not to replace it. The form
+  // has no separate delete action, so retain an existing future-avatar reference
+  // rather than turning a valid two-photo profile update into data loss.
+  const suppliedAvatarPhotos = {
+    ...(urls.left ? { photoLeftUrl: urls.left } : {}),
+    ...(urls.right ? { photoRightUrl: urls.right } : {}),
+    ...(urls.back ? { photoBackUrl: urls.back } : {}),
   };
 
   let aura: { id: string };
@@ -136,8 +147,14 @@ export async function POST(req: Request) {
     // same reason.
     aura = await prisma.auraProfile.upsert({
       where: { userId: user.id },
-      create: { userId: user.id, ...profile },
-      update: profile,
+      create: {
+        userId: user.id,
+        ...profile,
+        photoLeftUrl: urls.left ?? null,
+        photoRightUrl: urls.right ?? null,
+        photoBackUrl: urls.back ?? null,
+      },
+      update: { ...profile, ...suppliedAvatarPhotos },
     });
   } catch (error) {
     console.error("AURA profile persistence failed", error);

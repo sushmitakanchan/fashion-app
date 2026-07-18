@@ -15,11 +15,18 @@ export const BODY_TYPES = [
   "HOURGLASS",
   "OVAL",
 ] as const;
+/** The two photos that are required to save an AURA portrait profile. */
+export const AURA_REFERENCE_PHOTO_ANGLES = ["front", "closeup"] as const;
+
+/** Future 3D-avatar inputs. They are stored when supplied, never required. */
+export const AVATAR_PHOTO_ANGLES = ["left", "right", "back"] as const;
+
+/** Every profile photo field, in deterministic Cloudinary upload order. */
 export const PHOTO_ANGLES = [
   "front",
+  "closeup",
   "left",
   "right",
-  "closeup",
   "back",
 ] as const;
 
@@ -83,10 +90,10 @@ export const auraFormSchema = z.object({
   ...auraFields,
   photos: z.object({
     front: photoFile,
-    left: photoFile,
-    right: photoFile,
     closeup: photoFile,
-    back: photoFile,
+    left: photoFile.optional(),
+    right: photoFile.optional(),
+    back: photoFile.optional(),
   }),
 });
 
@@ -101,10 +108,10 @@ export const auraSubmissionSchema = z.object({
   ...auraFields,
   photos: z.object({
     front: photoDataUri,
-    left: photoDataUri,
-    right: photoDataUri,
     closeup: photoDataUri,
-    back: photoDataUri,
+    left: photoDataUri.optional(),
+    right: photoDataUri.optional(),
+    back: photoDataUri.optional(),
   }),
 });
 

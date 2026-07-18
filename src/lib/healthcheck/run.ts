@@ -120,6 +120,23 @@ const ICONS: Record<CheckOutcome["status"], string> = {
   failed: "✗",
 };
 
+const AURA_LIVE_CAPABILITIES = [
+  ["database", "persistence"],
+  ["cloudinary", "image storage"],
+  ["auraPortrait", "portrait generation"],
+] as const satisfies ReadonlyArray<readonly [ServiceId, string]>;
+
+function auraReadiness(outcomes: CheckOutcome[]): string {
+  const unavailable = AURA_LIVE_CAPABILITIES.flatMap(([service, capability]) => {
+    const outcome = outcomes.find((item) => item.service === service);
+    return outcome?.status === "ok" ? [] : [capability];
+  });
+
+  return unavailable.length === 0
+    ? "AURA live readiness: ready."
+    : `AURA live readiness: unavailable — ${unavailable.join(", ")}.`;
+}
+
 /** Render the outcomes as the lines the command prints. */
 export function formatReport(outcomes: CheckOutcome[]): string[] {
   const lines = outcomes.map(
@@ -130,8 +147,8 @@ export function formatReport(outcomes: CheckOutcome[]): string[] {
   const failed = outcomes.filter((outcome) => outcome.status === "failed");
   const skipped = outcomes.filter((outcome) => outcome.status === "skipped");
 
+  lines.push("", auraReadiness(outcomes), "");
   lines.push(
-    "",
     failed.length > 0
       ? `${failed.length} of ${outcomes.length} checks failed.`
       : `All configured checks passed (${skipped.length} skipped).`,

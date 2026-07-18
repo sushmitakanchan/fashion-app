@@ -9,6 +9,7 @@ import {
   resolveProvider,
   type AiProvider,
 } from "@/lib/ai/provider";
+import { AURA_PORTRAIT_MODEL_ENV } from "@/lib/aura-portrait-config";
 
 /**
  * The optional integrations the healthcheck knows about. Kept free of SDK and
@@ -20,6 +21,7 @@ export const SERVICE_LABELS = {
   database: "Prisma/Neon",
   cloudinary: "Cloudinary",
   ai: "AI provider",
+  auraPortrait: "AURA portrait generation",
 } as const;
 
 export type ServiceId = keyof typeof SERVICE_LABELS;
@@ -57,6 +59,9 @@ const CREDENTIALS: Record<Exclude<ServiceId, "ai">, Credential[]> = {
     { envVars: ["CLOUDINARY_API_KEY"] },
     { envVars: ["CLOUDINARY_API_SECRET"] },
   ],
+  // Portrait generation deliberately does not follow AI_PROVIDER: v1 AURA
+  // portraits always use OpenAI's image API, including when text uses Anthropic.
+  auraPortrait: [{ envVars: ["OPENAI_API_KEY"] }],
 };
 
 export type EnvRecord = Record<string, string | undefined>;
@@ -137,9 +142,30 @@ function classifyAi(env: EnvRecord): ServiceConfig {
     : { service, ...selection };
 }
 
+function classifyAuraPortrait(env: EnvRecord): ServiceConfig {
+  const imageCapability = classifyCredentials("auraPortrait", env);
+
+  // The runtime defaults to gpt-image-2, but an explicit model override is a
+  // deliberate portrait configuration. With no OpenAI key it is incomplete,
+  // rather than silently treated as an unused setting.
+  if (imageCapability.status === "absent" && isSet(env, AURA_PORTRAIT_MODEL_ENV)) {
+    return {
+      service: "auraPortrait",
+      status: "incomplete",
+      missing: ["OPENAI_API_KEY"],
+    };
+  }
+
+  return imageCapability;
+}
+
 /** Classify every service's credentials, in a stable reporting order. */
 export function classifyServices(env: EnvRecord): ServiceConfig[] {
   return SERVICE_IDS.map((service) =>
-    service === "ai" ? classifyAi(env) : classifyCredentials(service, env),
+    service === "ai"
+      ? classifyAi(env)
+      : service === "auraPortrait"
+        ? classifyAuraPortrait(env)
+        : classifyCredentials(service, env),
   );
 }

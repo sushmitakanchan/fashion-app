@@ -28,6 +28,7 @@ function spyProbes(
     database: make("database"),
     cloudinary: make("cloudinary"),
     ai: make("ai"),
+    auraPortrait: make("auraPortrait"),
   };
 
   return { probes, probed };
@@ -57,7 +58,13 @@ describe("runHealthcheck", () => {
     const outcomes = await runHealthcheck(configured, probes);
 
     expect(outcomes.every((outcome) => outcome.status === "ok")).toBe(true);
-    expect(probed.sort()).toEqual(["ai", "clerk", "cloudinary", "database"]);
+    expect(probed.sort()).toEqual([
+      "ai",
+      "auraPortrait",
+      "clerk",
+      "cloudinary",
+      "database",
+    ]);
     expect(exitCodeFor(outcomes)).toBe(0);
   });
 
@@ -126,9 +133,15 @@ describe("runHealthcheck", () => {
     const outcomes = await runHealthcheck(configured, probes);
 
     // A single broken integration should not hide the state of the rest.
-    expect(probed.sort()).toEqual(["ai", "clerk", "cloudinary", "database"]);
+    expect(probed.sort()).toEqual([
+      "ai",
+      "auraPortrait",
+      "clerk",
+      "cloudinary",
+      "database",
+    ]);
     expect(outcomes.filter((outcome) => outcome.status === "ok")).toHaveLength(
-      3,
+      4,
     );
   });
 
@@ -138,5 +151,48 @@ describe("runHealthcheck", () => {
     const outcomes = await runHealthcheck(configured, probes);
 
     expect(outcomeFor(outcomes, "ai").message).toContain("openai reachable");
+  });
+
+  it("reports a failed portrait-image capability probe", async () => {
+    const { probes } = spyProbes({
+      auraPortrait: async () => {
+        throw new Error("OpenAI organization verification is required for gpt-image-2");
+      },
+    });
+
+    const outcomes = await runHealthcheck(configured, probes);
+
+    const portrait = outcomeFor(outcomes, "auraPortrait");
+    expect(portrait.status).toBe("failed");
+    expect(portrait.message).toContain("organization verification");
+  });
+
+  it("fails incomplete portrait-image configuration without probing it", async () => {
+    const { probes, probed } = spyProbes();
+    const outcomes = await runHealthcheck(
+      { ...configured, OPENAI_API_KEY: undefined, AURA_PORTRAIT_MODEL: "gpt-image-2" },
+      probes,
+    );
+
+    const portrait = outcomeFor(outcomes, "auraPortrait");
+    expect(portrait.status).toBe("failed");
+    expect(portrait.message).toContain("OPENAI_API_KEY");
+    expect(probed).not.toContain("auraPortrait");
+  });
+
+  it("summarizes when live AURA is unavailable", async () => {
+    const { probes } = spyProbes();
+    const outcomes = await runHealthcheck(
+      { ...configured, DATABASE_URL: undefined, OPENAI_API_KEY: undefined },
+      probes,
+    );
+
+    const { formatReport } = await import("./run");
+
+    expect(formatReport(outcomes).join("\n")).toContain(
+      "AURA live readiness: unavailable",
+    );
+    expect(formatReport(outcomes).join("\n")).toContain("persistence");
+    expect(formatReport(outcomes).join("\n")).toContain("portrait generation");
   });
 });

@@ -28,6 +28,7 @@ const envSchema = z.object({
   // OpenAI
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().optional(),
+  AURA_PORTRAIT_MODEL: z.string().optional(),
 
   // Anthropic (optional)
   ANTHROPIC_API_KEY: z.string().optional(),

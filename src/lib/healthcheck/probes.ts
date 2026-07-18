@@ -1,4 +1,5 @@
 import { PROVIDER_API_KEY_ENV, type AiProvider } from "@/lib/ai/provider";
+import { resolveAuraPortraitModel } from "@/lib/aura-portrait-config";
 
 import { selectAiProvider, type EnvRecord } from "./config";
 import type { Probes } from "./run";
@@ -101,11 +102,82 @@ async function probeAi(env: EnvRecord): Promise<string> {
   return `${provider} reachable`;
 }
 
+function errorDetail(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null || !("error" in body)) {
+    return undefined;
+  }
+
+  const { error } = body as { error: unknown };
+  if (typeof error !== "object" || error === null || !("message" in error)) {
+    return undefined;
+  }
+
+  const { message } = error as { message: unknown };
+  return typeof message === "string" && message.trim() ? message : undefined;
+}
+
+function listsModel(body: unknown, model: string): boolean {
+  if (typeof body !== "object" || body === null || !("data" in body)) {
+    return false;
+  }
+
+  const { data } = body as { data: unknown };
+  return (
+    Array.isArray(data) &&
+    data.some(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "id" in item &&
+        (item as { id: unknown }).id === model,
+    )
+  );
+}
+
+/**
+ * Retrieves metadata for the exact model used by AURA portraits. This is a
+ * read-only capability check: unlike generating an image, it creates no asset
+ * and spends no image-generation credits.
+ */
+async function probeAuraPortrait(env: EnvRecord): Promise<string> {
+  const model = resolveAuraPortraitModel(env);
+  const response = await fetch("https://api.openai.com/v1/models", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+  });
+  const body = await response.json().catch(() => undefined);
+  const detail = errorDetail(body);
+  if (response.status === 401) {
+    throw new Error(
+      `OpenAI image API authorization failed (401) — check OPENAI_API_KEY${detail ? `: ${detail}` : ""}`,
+    );
+  }
+
+  if (/organization.*verif|verif.*organization/i.test(detail ?? "")) {
+    throw new Error(
+      `OpenAI organization verification is required to use ${model}.`,
+    );
+  }
+
+  if (response.ok && listsModel(body, model)) {
+    return `${model} is available to this API key`;
+  }
+
+  if (response.ok) {
+    throw new Error(`OpenAI does not list ${model} as available to this API key.`);
+  }
+
+  throw new Error(
+    `OpenAI image capability check failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`,
+  );
+}
+
 export function createProbes(env: EnvRecord): Probes {
   return {
     clerk: () => probeClerk(env),
     database: () => probeDatabase(),
     cloudinary: () => probeCloudinary(),
     ai: () => probeAi(env),
+    auraPortrait: () => probeAuraPortrait(env),
   };
 }

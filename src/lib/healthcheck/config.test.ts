@@ -71,6 +71,40 @@ describe("classifyServices", () => {
     );
   });
 
+  it("classifies portrait image capability independently from text-provider selection", () => {
+    const imageCapability = statusOf(
+      {
+        AI_PROVIDER: "anthropic",
+        ANTHROPIC_API_KEY: "sk-ant",
+        OPENAI_API_KEY: "sk-openai",
+      },
+      "auraPortrait",
+    );
+
+    expect(imageCapability.status).toBe("configured");
+  });
+
+  it("reports absent portrait image capability when no OpenAI key is present", () => {
+    const imageCapability = statusOf(
+      { AI_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "sk-ant" },
+      "auraPortrait",
+    );
+
+    expect(imageCapability.status).toBe("absent");
+  });
+
+  it("flags an image-model override without an OpenAI key as incomplete", () => {
+    const imageCapability = statusOf(
+      { AURA_PORTRAIT_MODEL: "gpt-image-2" },
+      "auraPortrait",
+    );
+
+    expect(imageCapability.status).toBe("incomplete");
+    expect(imageCapability.status === "incomplete" && imageCapability.missing).toEqual([
+      "OPENAI_API_KEY",
+    ]);
+  });
+
   it("rejects an AI selection whose key is missing rather than falling back", () => {
     // Anthropic holds the only key, but OpenAI is the default selection.
     const ai = statusOf({ ANTHROPIC_API_KEY: "sk-ant" }, "ai");

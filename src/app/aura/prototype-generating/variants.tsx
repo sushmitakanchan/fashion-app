@@ -240,60 +240,78 @@ export function VariantB({ regenerating }: VariantProps) {
 VariantB.displayName = "Studio call sheet";
 
 /* ------------------------------------------------------------------ */
-/* C — Portrait signal: type-led, quiet, with a head-only scan         */
+/* C — Soft-focus portrait: type-led, detailed face, restrained bloom */
 /* ------------------------------------------------------------------ */
+
+function FaceStudy() {
+  return (
+    <svg
+      viewBox="0 0 180 180"
+      aria-hidden="true"
+      className="text-foreground/80 relative size-40"
+    >
+      <defs>
+        <clipPath id="proto-face-study">
+          <path d="M90 22c-28 0-45 20-45 48 0 19 8 35 19 44l2 23h48l2-23c11-9 19-25 19-44 0-28-17-48-45-48Z" />
+        </clipPath>
+        <linearGradient id="proto-face-wash" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#f1a89a" stopOpacity="0" />
+          <stop offset="48%" stopColor="#eab3cf" stopOpacity="0.36" />
+          <stop offset="100%" stopColor="#a8b9e9" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      <circle cx="90" cy="90" r="62" fill="none" className="stroke-current opacity-[0.13]" />
+      <path
+        d="M90 22c-28 0-45 20-45 48 0 19 8 35 19 44l2 23h48l2-23c11-9 19-25 19-44 0-28-17-48-45-48Z"
+        className="fill-current opacity-[0.06]"
+      />
+
+      <g clipPath="url(#proto-face-study)" className="stroke-current">
+        <path d="M42 58h96M39 73h102M40 88h100M45 103h90M54 118h72" opacity="0.18" />
+        <path d="M60 25v112M75 20v121M90 18v124M105 20v121M120 25v112" opacity="0.07" />
+        <rect
+          x="36"
+          y="-20"
+          width="108"
+          height="28"
+          fill="url(#proto-face-wash)"
+          className="proto-face-scan stroke-none motion-reduce:hidden"
+        />
+        <path
+          d="M36 0h108"
+          className="proto-face-line fill-none stroke-current motion-reduce:hidden"
+          strokeWidth="1.1"
+        />
+      </g>
+
+      <g fill="none" className="stroke-current" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M90 22c-28 0-45 20-45 48 0 19 8 35 19 44l2 23h48l2-23c11-9 19-25 19-44 0-28-17-48-45-48Z" strokeWidth="1.2" opacity="0.7" />
+        <path d="M69 73c5-4 12-4 17 0M94 73c5-4 12-4 17 0" strokeWidth="1.25" opacity="0.72" />
+        <path d="M70 79c4 3 11 3 15 0M95 79c4 3 11 3 15 0" strokeWidth="0.9" opacity="0.48" />
+        <path d="M90 76v16l-5 5 6 2" strokeWidth="1" opacity="0.58" />
+        <path d="M79 108c7 4 15 4 22 0M83 114c5 2 10 2 15 0" strokeWidth="1" opacity="0.62" />
+        <path d="M59 84c-5 0-8 5-6 11 1 4 4 6 7 6M121 84c5 0 8 5 6 11-1 4-4 6-7 6" strokeWidth="0.9" opacity="0.42" />
+        <path d="M68 49c8-5 17-6 25-3M112 49c-8-5-17-6-25-3" strokeWidth="0.8" opacity="0.35" />
+      </g>
+      <circle cx="76" cy="78" r="1.35" className="proto-face-detail fill-current motion-reduce:animate-none" />
+      <circle cx="104" cy="78" r="1.35" className="proto-face-detail fill-current motion-reduce:animate-none" style={{ animationDelay: "1.4s" }} />
+    </svg>
+  );
+}
 
 export function VariantC({ regenerating }: VariantProps) {
   return (
     <Shell regenerating={regenerating}>
-      <div className="grid w-full justify-items-center gap-7 py-8 text-center">
-        {/* A small, abstract head study borrows the reference's single moving
-            scan without turning the whole result screen into a sci-fi scene. */}
-        <div className="bg-muted/40 border-border/70 relative grid size-36 place-items-center overflow-hidden rounded-full border shadow-inner">
-          <div className="proto-grain pointer-events-none absolute inset-0 opacity-35 motion-reduce:animate-none" />
-          <svg
-            viewBox="0 0 160 160"
-            aria-hidden="true"
-            className="text-foreground/75 relative size-[7.75rem]"
-          >
-            <defs>
-              <clipPath id="proto-head-study">
-                <path d="M80 25C57 25 44 42 44 64c0 17 7 28 17 35v17h38V99c10-7 17-18 17-35 0-22-13-39-36-39Z" />
-              </clipPath>
-            </defs>
-            <circle
-              cx="80"
-              cy="80"
-              r="55"
-              fill="none"
-              className="stroke-current opacity-15"
-            />
-            <path
-              d="M80 25C57 25 44 42 44 64c0 17 7 28 17 35v17h38V99c10-7 17-18 17-35 0-22-13-39-36-39Z"
-              className="fill-current opacity-[0.07]"
-            />
-            <g clipPath="url(#proto-head-study)" className="stroke-current">
-              <path d="M37 53h86M35 65h90M37 77h86M42 89h76M49 101h62" opacity="0.28" />
-              <path d="M59 29v88M70 25v93M80 24v94M90 25v93M101 29v88" opacity="0.12" />
-              <rect
-                x="36"
-                y="-18"
-                width="88"
-                height="24"
-                className="proto-head-scan fill-current stroke-none motion-reduce:hidden"
-                opacity="0.12"
-              />
-              <path
-                d="M42 0h76"
-                className="proto-head-line fill-none stroke-current motion-reduce:hidden"
-                strokeWidth="1.25"
-              />
-            </g>
-            <circle cx="61" cy="68" r="1.5" className="proto-head-pulse fill-current motion-reduce:animate-none" />
-            <circle cx="99" cy="68" r="1.5" className="proto-head-pulse fill-current motion-reduce:animate-none" style={{ animationDelay: "1.2s" }} />
-          </svg>
+      <div className="relative grid w-full justify-items-center gap-7 overflow-hidden rounded-xl py-9 text-center">
+        {/* The gradient is deliberately atmospheric: it reads as colour in a
+            portrait studio, not an effect applied to a digital interface. */}
+        <div className="proto-portrait-bloom pointer-events-none absolute inset-0 motion-reduce:animate-none" />
+        <div className="bg-background/35 border-border/60 relative grid size-44 place-items-center overflow-hidden rounded-full border shadow-[inset_0_1px_18px_rgb(0_0_0_/_0.04)] backdrop-blur-[1px]">
+          <div className="proto-grain pointer-events-none absolute inset-0 opacity-25 motion-reduce:animate-none" />
+          <FaceStudy />
         </div>
-        <div className="grid gap-4 px-6">
+        <div className="relative grid gap-4 px-6">
           <p className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
             {HEADLINE}
           </p>

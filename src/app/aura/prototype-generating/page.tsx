@@ -155,28 +155,47 @@ const PROTOTYPE_KEYFRAMES = `
   100% { transform: translateX(320%); }
 }
 
-/* --- selected C: restrained head-study scan --- */
+/* --- selected C: a soft, photographic face-study scan --- */
 
-.proto-head-scan { animation: proto-head-scan 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
-@keyframes proto-head-scan {
-  0%, 12%   { transform: translateY(0); opacity: 0; }
-  20%       { opacity: 0.16; }
-  74%       { opacity: 0.16; }
-  86%, 100% { transform: translateY(154px); opacity: 0; }
+.proto-portrait-bloom {
+  background:
+    radial-gradient(52% 68% at 27% 28%, rgb(247 181 169 / 0.52), transparent 70%),
+    radial-gradient(58% 70% at 74% 64%, rgb(184 194 244 / 0.48), transparent 72%),
+    radial-gradient(44% 52% at 53% 92%, rgb(229 182 214 / 0.38), transparent 74%);
+  animation: proto-portrait-bloom 15s ease-in-out infinite alternate;
+}
+.dark .proto-portrait-bloom {
+  background:
+    radial-gradient(52% 68% at 27% 28%, rgb(147 76 87 / 0.34), transparent 70%),
+    radial-gradient(58% 70% at 74% 64%, rgb(86 96 157 / 0.32), transparent 72%),
+    radial-gradient(44% 52% at 53% 92%, rgb(121 76 112 / 0.26), transparent 74%);
+}
+@keyframes proto-portrait-bloom {
+  0%   { transform: translate3d(-2%, 1%, 0) scale(1.03); }
+  50%  { transform: translate3d(2%, -2%, 0) scale(1.1); }
+  100% { transform: translate3d(-1%, 2%, 0) scale(1.06); }
 }
 
-.proto-head-line { animation: proto-head-line 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
-@keyframes proto-head-line {
+.proto-face-scan { animation: proto-face-scan 5.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@keyframes proto-face-scan {
   0%, 12%   { transform: translateY(0); opacity: 0; }
-  20%       { opacity: 0.6; }
-  74%       { opacity: 0.6; }
-  86%, 100% { transform: translateY(154px); opacity: 0; }
+  20%       { opacity: 1; }
+  74%       { opacity: 1; }
+  86%, 100% { transform: translateY(178px); opacity: 0; }
 }
 
-.proto-head-pulse { animation: proto-head-pulse 3.5s ease-in-out infinite; }
-@keyframes proto-head-pulse {
-  0%, 100% { opacity: 0.18; }
-  50%      { opacity: 0.75; }
+.proto-face-line { animation: proto-face-line 5.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@keyframes proto-face-line {
+  0%, 12%   { transform: translateY(0); opacity: 0; }
+  20%       { opacity: 0.52; }
+  74%       { opacity: 0.52; }
+  86%, 100% { transform: translateY(178px); opacity: 0; }
+}
+
+.proto-face-detail { animation: proto-face-detail 3.8s ease-in-out infinite; }
+@keyframes proto-face-detail {
+  0%, 100% { opacity: 0.2; }
+  50%      { opacity: 0.72; }
 }
 
 .proto-focus-mark { animation: proto-focus-mark 3.5s ease-in-out infinite; }
@@ -314,7 +333,8 @@ const PROTOTYPE_KEYFRAMES = `
 @media (prefers-reduced-motion: reduce) {
   .proto-grain, .proto-develop, .proto-sweep, .proto-breathe,
   .proto-key, .proto-fill, .proto-aurora, .proto-shimmer,
-  .proto-head-scan, .proto-head-line, .proto-head-pulse, .proto-focus-mark,
+  .proto-portrait-bloom, .proto-face-scan, .proto-face-line,
+  .proto-face-detail, .proto-focus-mark,
   .proto-bloom, .proto-figure, .proto-scan, .proto-floor,
   .proto-band, .proto-outline, .proto-twinkle, .proto-ringpulse,
   .proto-ringticks, .proto-orbit-a, .proto-orbit-b, .proto-mesh,

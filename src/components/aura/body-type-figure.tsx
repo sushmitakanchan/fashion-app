@@ -1,4 +1,3 @@
-import { BODY_SHAPE_RATIOS } from "@/lib/aura";
 import { cn } from "@/lib/utils";
 import type { BodyType } from "@/lib/validations";
 
@@ -11,8 +10,7 @@ import type { BodyType } from "@/lib/validations";
  * (rather than shipped as assets) so the picker works offline and inherits the
  * current text colour in both themes.
  *
- * The widths come from the same `BODY_SHAPE_RATIOS` the 3D twin is built from,
- * so the silhouette someone picks matches the body they get.
+ * The widths make the selected body type easy to compare at small sizes.
  */
 
 type Proportions = {
@@ -25,8 +23,19 @@ type Proportions = {
 /** Ratios are normalised around 1; this is the half-width that maps to 1. */
 const BASE_HALF_WIDTH = 15;
 
+const BODY_TYPE_RATIOS: Record<
+  BodyType,
+  { shoulder: number; waist: number; hip: number }
+> = {
+  RECTANGLE: { shoulder: 1, waist: 0.867, hip: 1 },
+  TRIANGLE: { shoulder: 0.867, waist: 0.867, hip: 1.333 },
+  INVERTED_TRIANGLE: { shoulder: 1.333, waist: 0.867, hip: 0.867 },
+  HOURGLASS: { shoulder: 1.2, waist: 0.633, hip: 1.2 },
+  OVAL: { shoulder: 1, waist: 1.267, hip: 1 },
+};
+
 function proportionsFor(bodyType: BodyType): Proportions {
-  const ratio = BODY_SHAPE_RATIOS[bodyType];
+  const ratio = BODY_TYPE_RATIOS[bodyType];
   return {
     shoulder: ratio.shoulder * BASE_HALF_WIDTH,
     waist: ratio.waist * BASE_HALF_WIDTH,

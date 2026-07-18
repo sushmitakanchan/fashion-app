@@ -176,26 +176,29 @@ const PROTOTYPE_KEYFRAMES = `
   100% { transform: translate3d(-1%, 2%, 0) scale(1.06); }
 }
 
-.proto-face-scan { animation: proto-face-scan 5.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
-@keyframes proto-face-scan {
+.proto-character-scan {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgb(255 255 255 / 0.14),
+    rgb(255 255 255 / 0.46),
+    transparent
+  );
+  animation: proto-character-scan 5.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes proto-character-scan {
   0%, 12%   { transform: translateY(0); opacity: 0; }
   20%       { opacity: 1; }
   74%       { opacity: 1; }
   86%, 100% { transform: translateY(178px); opacity: 0; }
 }
 
-.proto-face-line { animation: proto-face-line 5.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
-@keyframes proto-face-line {
+.proto-character-line { animation: proto-character-line 5.8s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@keyframes proto-character-line {
   0%, 12%   { transform: translateY(0); opacity: 0; }
   20%       { opacity: 0.52; }
   74%       { opacity: 0.52; }
   86%, 100% { transform: translateY(178px); opacity: 0; }
-}
-
-.proto-face-detail { animation: proto-face-detail 3.8s ease-in-out infinite; }
-@keyframes proto-face-detail {
-  0%, 100% { opacity: 0.2; }
-  50%      { opacity: 0.72; }
 }
 
 .proto-focus-mark { animation: proto-focus-mark 3.5s ease-in-out infinite; }
@@ -333,8 +336,8 @@ const PROTOTYPE_KEYFRAMES = `
 @media (prefers-reduced-motion: reduce) {
   .proto-grain, .proto-develop, .proto-sweep, .proto-breathe,
   .proto-key, .proto-fill, .proto-aurora, .proto-shimmer,
-  .proto-portrait-bloom, .proto-face-scan, .proto-face-line,
-  .proto-face-detail, .proto-focus-mark,
+  .proto-portrait-bloom, .proto-character-scan, .proto-character-line,
+  .proto-focus-mark,
   .proto-bloom, .proto-figure, .proto-scan, .proto-floor,
   .proto-band, .proto-outline, .proto-twinkle, .proto-ringpulse,
   .proto-ringticks, .proto-orbit-a, .proto-orbit-b, .proto-mesh,

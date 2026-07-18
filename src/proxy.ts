@@ -7,7 +7,7 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 // works in Server Components, Route Handlers, and Server Actions. Following
 // Clerk's current guidance we do NOT gate routes here (the `createRouteMatcher`
 // approach is deprecated); instead each resource protects itself where it's
-// accessed, e.g. `await auth.protect()` in src/app/dashboard/page.tsx.
+// accessed, e.g. `auth()` + `redirect()` in src/app/aura/page.tsx.
 export default clerkMiddleware();
 
 export const config = {

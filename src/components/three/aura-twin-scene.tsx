@@ -9,7 +9,7 @@ import { AuraBody } from "./aura-body";
 
 /**
  * The AURA twin's WebGL scene. Lighting is explicit (no CDN HDR fetch) so it
- * renders fully offline, matching `product-scene.tsx`.
+ * renders fully offline.
  */
 export default function AuraTwinScene({
   measurements,

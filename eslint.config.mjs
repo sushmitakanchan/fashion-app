@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent worktrees are full checkouts (including their own build output);
+    // they lint themselves, and linting them from here is never what we want.
+    ".claude/worktrees/**",
   ]),
 ]);
 

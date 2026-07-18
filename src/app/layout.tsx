@@ -21,8 +21,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Fashion App",
-  description: "A modern fashion commerce app built with Next.js 16",
+  title: "AURA",
+  description: "Build the digital twin behind your personalised fit.",
 };
 
 export default function RootLayout({

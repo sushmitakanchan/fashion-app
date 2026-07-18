@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { aiProviderSchema } from "@/lib/ai/provider";
+
 /**
  * Centralized, type-safe environment access.
  *
@@ -19,6 +21,9 @@ const envSchema = z.object({
   // Clerk
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().optional(),
   CLERK_SECRET_KEY: z.string().optional(),
+
+  // Which provider serves AI text generation. Omit for OpenAI.
+  AI_PROVIDER: aiProviderSchema.optional(),
 
   // OpenAI
   OPENAI_API_KEY: z.string().optional(),

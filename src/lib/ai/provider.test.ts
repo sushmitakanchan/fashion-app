@@ -10,7 +10,7 @@ const both = { openai: true, anthropic: true };
 const neither = { openai: false, anthropic: false };
 
 describe("resolveProvider", () => {
-  it("defaults to OpenAI when no provider is selected", () => {
+  it("defaults to OpenAI when AI_PROVIDER is unset", () => {
     expect(resolveProvider(undefined, both)).toBe("openai");
   });
 

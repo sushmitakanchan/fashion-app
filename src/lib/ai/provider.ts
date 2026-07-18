@@ -1,17 +1,17 @@
 import { z } from "zod";
 
 /**
- * Text-generation providers the app can talk to. Kept free of SDK imports so
- * this module stays a pure, testable core — the adapters live in `./index.ts`.
+ * Providers that can serve text generation. Kept free of SDK and env imports so
+ * this module stays a pure, testable core — `./index.ts` wires it to the world.
  */
 export const AI_PROVIDERS = ["openai", "anthropic"] as const;
 
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
-/** Selection is optional everywhere; omitting it means OpenAI. */
+/** AI provider selection is optional in every environment; omitted means this. */
 export const DEFAULT_AI_PROVIDER: AiProvider = "openai";
 
-/** For validating a provider that arrives over the wire. */
+/** Validates the `AI_PROVIDER` env var. */
 export const aiProviderSchema = z.enum(AI_PROVIDERS);
 
 /** The env var each provider's credentials come from, for error messages. */
@@ -24,9 +24,9 @@ export const PROVIDER_API_KEY_ENV: Record<AiProvider, string> = {
 export type ProviderCredentials = Record<AiProvider, boolean>;
 
 /**
- * Thrown when the *selected* provider has no credentials. Distinct from an
- * upstream API failure so callers can tell "you misconfigured this" apart from
- * "the model call failed".
+ * Thrown when the selected provider has no credentials. Distinct from an
+ * upstream API failure so callers can tell "this deployment is misconfigured"
+ * apart from "the provider rejected our request".
  */
 export class AiProviderConfigError extends Error {
   readonly provider: AiProvider;
@@ -42,16 +42,19 @@ export class AiProviderConfigError extends Error {
 }
 
 /**
- * Resolve which provider serves a request. Deliberately has no fallback path:
- * an unconfigured selection is an error, never a quiet switch to whichever
- * provider happens to have a key — that would send prompts somewhere the caller
- * did not choose.
+ * Resolve which provider serves a request, given the configured selection
+ * (`AI_PROVIDER`, possibly unset) and which providers hold credentials.
+ *
+ * Deliberately has no fallback path: an unconfigured selection is an error,
+ * never a quiet switch to whichever provider happens to have a key. Each
+ * provider is a separate credential and billing relationship, so falling back
+ * would spend money at a vendor the operator did not choose.
  */
 export function resolveProvider(
-  requested: AiProvider | undefined,
+  configured: AiProvider | undefined,
   credentials: ProviderCredentials,
 ): AiProvider {
-  const provider = requested ?? DEFAULT_AI_PROVIDER;
+  const provider = configured ?? DEFAULT_AI_PROVIDER;
   if (!credentials[provider]) {
     throw new AiProviderConfigError(provider);
   }

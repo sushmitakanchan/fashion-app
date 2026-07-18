@@ -1,14 +1,14 @@
 import "server-only";
 
-import { ANTHROPIC_MODEL, getAnthropic } from "@/lib/anthropic";
-import { env } from "@/lib/env";
-import { getOpenAI, OPENAI_MODEL } from "@/lib/openai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
+import { generateText as aiGenerateText, type LanguageModel } from "ai";
 
-import {
-  resolveProvider,
-  type AiProvider,
-  type ProviderCredentials,
-} from "./provider";
+import { ANTHROPIC_MODEL } from "@/lib/anthropic";
+import { env } from "@/lib/env";
+import { OPENAI_MODEL } from "@/lib/openai";
+
+import { resolveProvider, type AiProvider } from "./provider";
 
 export {
   AI_PROVIDERS,
@@ -19,80 +19,51 @@ export {
   type AiProvider,
 } from "./provider";
 
-/** Anthropic requires an explicit output cap; OpenAI treats it as optional. */
-const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+/**
+ * Each provider's model, resolved lazily. The AI SDK provider instances read
+ * their own API key at request time, so referencing them can't throw on import.
+ */
+const MODELS: Record<AiProvider, () => LanguageModel> = {
+  openai: () => openai(OPENAI_MODEL),
+  anthropic: () => anthropic(ANTHROPIC_MODEL),
+};
 
 export type GenerateTextOptions = {
+  /** Frames the request — the "system prompt". */
+  instructions: string;
   prompt: string;
-  /** Instructions that frame the request — the "system prompt". */
-  system?: string;
-  /** Omit to use {@link DEFAULT_AI_PROVIDER}. */
-  provider?: AiProvider;
-  /** Overrides the provider's configured default model. */
-  model?: string;
-  maxOutputTokens?: number;
 };
 
 export type GeneratedText = {
   text: string;
   provider: AiProvider;
-  model: string;
 };
 
-function credentials(): ProviderCredentials {
-  return {
-    openai: Boolean(env.OPENAI_API_KEY),
-    anthropic: Boolean(env.ANTHROPIC_API_KEY),
-  };
-}
-
 /**
- * The app's single text-generation boundary. Application code asks for text and
- * names a provider (or doesn't) — it never touches an SDK directly, so swapping
- * or adding a provider is a change here rather than at every call site.
+ * The app's single text-generation boundary: instructions plus a prompt in,
+ * reply text out. Feature code goes through here rather than touching a vendor
+ * SDK, so which provider serves a request stays a deployment concern.
  *
- * Non-streaming by design: every consumer so far returns a whole reply in one
- * JSON response, and a streaming interface would leak transport concerns into
- * all of them. Add a sibling `streamText` if a caller ever needs it.
+ * Non-streaming by design, and deliberately narrow — streaming, tool calls,
+ * images, and provider-specific request options are not part of this capability
+ * (see CONTEXT.md, "Text generation"). Widen it when a caller actually needs to.
  */
 export async function generateText({
+  instructions,
   prompt,
-  system,
-  provider: requested,
-  model,
-  maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
 }: GenerateTextOptions): Promise<GeneratedText> {
-  // Throws AiProviderConfigError when the selected provider has no key — never
-  // silently reroutes the prompt to whichever provider happens to be set up.
-  const provider = resolveProvider(requested, credentials());
-
-  if (provider === "anthropic") {
-    const resolvedModel = model ?? ANTHROPIC_MODEL;
-    const message = await getAnthropic().messages.create({
-      model: resolvedModel,
-      max_tokens: maxOutputTokens,
-      ...(system ? { system } : {}),
-      messages: [{ role: "user", content: prompt }],
-    });
-    // `content` is a union of block types; only text blocks carry a reply.
-    const text = message.content
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .join("");
-    return { text, provider, model: resolvedModel };
-  }
-
-  const resolvedModel = model ?? OPENAI_MODEL;
-  const completion = await getOpenAI().chat.completions.create({
-    model: resolvedModel,
-    max_tokens: maxOutputTokens,
-    messages: [
-      ...(system ? [{ role: "system" as const, content: system }] : []),
-      { role: "user" as const, content: prompt },
-    ],
+  // Throws AiProviderConfigError when the selected provider has no key — it
+  // never silently reroutes the prompt to whichever provider is set up.
+  const provider = resolveProvider(env.AI_PROVIDER, {
+    openai: Boolean(env.OPENAI_API_KEY),
+    anthropic: Boolean(env.ANTHROPIC_API_KEY),
   });
-  return {
-    text: completion.choices[0]?.message?.content ?? "",
-    provider,
-    model: resolvedModel,
-  };
+
+  const { text } = await aiGenerateText({
+    model: MODELS[provider](),
+    instructions,
+    prompt,
+  });
+
+  return { text, provider };
 }

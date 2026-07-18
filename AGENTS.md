@@ -41,11 +41,16 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Env:** a single `.env` file is read by both Next.js and the Prisma CLI. Access via
   the typed `src/lib/env.ts`.
 - **Zod 4:** prefer top-level string formats (`z.email()`, `z.url()`).
-- **AI clients** are lazy getters (`getOpenAI()`, `getAnthropic()`) so imports never
-  throw when keys are absent. Don't call them from feature code — go through
-  `generateText()` in `@/lib/ai`, the provider-neutral (non-streaming) boundary.
-  Omitting `provider` means OpenAI; a selected provider with no key throws
-  `AiProviderConfigError` rather than falling back to the other one.
+- **AI text generation** goes through `generateText()` in `@/lib/ai` — the single
+  provider-neutral, non-streaming boundary (Vercel AI SDK + the direct
+  `@ai-sdk/openai` / `@ai-sdk/anthropic` packages, no AI Gateway). The provider is
+  a deployment concern: `AI_PROVIDER` env var, blank means OpenAI. A selected
+  provider with no key throws `AiProviderConfigError` — it never falls back to the
+  other one, since each has its own credentials and billing. Keep the interface
+  narrow (see `CONTEXT.md` → *Text generation*).
+- **Raw AI clients** are lazy getters (`getOpenAI()`, `getAnthropic()`) so imports
+  never throw when keys are absent. They're an escape hatch for anything the
+  boundary doesn't cover yet — not the default path for feature code.
 
 Before committing non-trivial changes: `bun run typecheck && bun run lint`.
 

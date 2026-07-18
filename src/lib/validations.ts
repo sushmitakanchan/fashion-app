@@ -39,7 +39,7 @@ export const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 
 // Photos are downscaled to this long edge before upload. Phone cameras produce
 // 4000px+ images; four of those base64-encoded would blow past the request body
-// limit, and the extra detail is useless for fitting a twin.
+// limit, and the extra detail is unnecessary for profile and portrait generation.
 export const PHOTO_MAX_EDGE = 1600;
 
 // Height and weight are stored in metric no matter which units were typed, so

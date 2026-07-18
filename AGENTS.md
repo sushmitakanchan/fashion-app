@@ -65,14 +65,14 @@ Before committing non-trivial changes: `bun run typecheck && bun run lint`.
 
 # Project map & app conventions
 
-This is an **AURA-first** app: the product is a user's digital twin, not commerce.
+This is an **AURA-first** app: the product is a portrait-based digital profile, not commerce.
 The AURA landing page (`src/app/page.tsx`), the protected profile-creation page
-(`/aura`), its submission route, and the 3D twin are built. There is no catalog,
+(`/aura`), its submission route, and portrait generation are built. There is no catalog,
 cart, checkout, dashboard, or showcase — those were removed deliberately, so
 don't reintroduce them.
 
 - `src/app/` — routes. `aura/page.tsx` = Clerk-protected profile creation (`auth()` + `redirect()`); `api/aura/route.ts` = live submission (Cloudinary upload + Prisma upsert).
-- `src/components/` — `aura/` twin + form pieces; `ui/` shadcn (Base UI) primitives; `forms/` (`aura-form.tsx`); `three/`; `providers/` (Query + Theme); `mode-toggle.tsx`.
+- `src/components/` — `aura/` portrait-result, body-type, and form pieces; `ui/` shadcn (Base UI) primitives; `forms/` (`aura-form.tsx`); `providers/` (Query + Theme); `mode-toggle.tsx`.
 - `src/lib/` — `prisma`, `env`, `aura-config`, `aura`, `ai` (text-generation boundary), `openai`, `anthropic`, `cloudinary`, `validations`, `healthcheck` (see below), `utils` (`cn`).
 - `scripts/` — standalone Bun entry points, not part of the Next.js build.
 - `prisma/schema.prisma` — the data model: `User`, one `AuraProfile` per user, and the `Gender` / `BodyType` enums.
@@ -83,7 +83,7 @@ Conventions the gotchas above don't already cover:
 - **Client data:** TanStack Query via `QueryProvider` (staleTime 60s, no refetch-on-focus). Server data: fetch directly in Server Components / route handlers.
 - **Styling:** Tailwind v4 + `cn()` + `class-variance-authority`; dark mode via `next-themes` (`ThemeProvider` in the layout, `ModeToggle` to switch); `toast` from `sonner` (`<Toaster/>` already mounted).
 - **Images:** `next/image` (remote hosts allowlisted in `next.config.ts`). Client display/upload via `next-cloudinary` (`<CldImage/>`); server-side ops via `@/lib/cloudinary`.
-- **3D (React Three Fiber):** scenes live in `src/components/three/`. Canvases are client-only — load them via `dynamic(() => import(...), { ssr: false })` (see `src/components/aura/aura-twin.tsx`), keep them offline-safe (explicit lights, no CDN HDR), and load any GLTF with drei's `useGLTF` under `<Suspense>`. The twin renders on `/aura`.
+- **Portrait result:** v1 renders a static AURA portrait, not a rotatable 3D twin. The optional avatar-reference inputs express future intent only; do not add a 3D canvas or scene to `/aura`.
 
 ## Before writing Next.js code
 

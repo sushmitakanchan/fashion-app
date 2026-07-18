@@ -92,7 +92,8 @@ export async function POST() {
       if (error.kind === "refused") {
         return failure(422, {
           code: "portrait-refused",
-          error: "We couldn't create a portrait from these references.",
+          error:
+            "OpenAI couldn't create an AURA portrait from these reference photos. Use different photos and try again.",
           retryable: false,
         });
       }

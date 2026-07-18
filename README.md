@@ -9,7 +9,7 @@ development**.
 | Area        | Tools                                                                 |
 | ----------- | --------------------------------------------------------------------- |
 | Framework   | Next.js 16 (App Router, Turbopack), React 19, TypeScript              |
-| UI          | Tailwind CSS v4, shadcn/ui (Base UI · base-nova), Lucide, React Three Fiber |
+| UI          | Tailwind CSS v4, shadcn/ui (Base UI · base-nova), Lucide                   |
 | Forms       | React Hook Form, Zod                                                   |
 | State       | TanStack Query                                                         |
 | Database    | PostgreSQL (Neon), Prisma 7 (driver adapter)                          |
@@ -93,10 +93,9 @@ src/
 │   ├── layout.tsx            # Clerk + Theme + TanStack Query providers
 │   └── page.tsx              # AURA landing page
 ├── components/
-│   ├── aura/                 # twin, progress, photo upload
+│   ├── aura/                 # portrait result, body type, photo upload
 │   ├── forms/                # React Hook Form + Zod (aura-form)
 │   ├── providers/            # Query + Theme providers
-│   ├── three/                # React Three Fiber scenes (client-only)
 │   └── ui/                   # shadcn/ui (Base UI · base-nova) primitives
 ├── generated/prisma/         # generated Prisma client (gitignored)
 ├── lib/                      # prisma, aura, openai, anthropic, cloudinary, env, utils

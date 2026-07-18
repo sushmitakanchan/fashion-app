@@ -27,6 +27,7 @@ import {
   lbToKg,
   type AuraMode,
 } from "@/lib/aura";
+import type { PortraitRequest } from "@/lib/aura-portrait-state";
 import { cn } from "@/lib/utils";
 import {
   BODY_TYPE_LABELS,
@@ -59,7 +60,12 @@ type UnitSystem = "metric" | "imperial";
 
 /** Imperial inputs are display-only; `heightCm`/`weightKg` stay canonical. */
 type ImperialDraft = { feet: string; inches: string; pounds: string };
-type PortraitResponse = { portraitUrl?: string; error?: string };
+type PortraitResponse = {
+  portraitUrl?: string;
+  code?: string;
+  error?: string;
+  retryable?: boolean;
+};
 
 const EMPTY_IMPERIAL: ImperialDraft = { feet: "", inches: "", pounds: "" };
 
@@ -99,8 +105,8 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
   const [imperial, setImperial] = React.useState<ImperialDraft>(EMPTY_IMPERIAL);
   const [result, setResult] = React.useState<"preview" | "saved" | null>(null);
   const [portraitUrl, setPortraitUrl] = React.useState<string>();
-  const [portraitError, setPortraitError] = React.useState<string>();
-  const [isGeneratingPortrait, setIsGeneratingPortrait] = React.useState(false);
+  const [portraitRequest, setPortraitRequest] =
+    React.useState<PortraitRequest>("idle");
 
   const {
     register,
@@ -174,27 +180,31 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
   }
 
   async function requestPortrait() {
-    setPortraitError(undefined);
-    setIsGeneratingPortrait(true);
+    setPortraitRequest("generating");
 
     try {
       const response = await fetch("/api/aura/portrait", { method: "POST" });
       const body = (await response.json().catch(() => null)) as PortraitResponse | null;
       if (!response.ok || !body?.portraitUrl) {
         const error = body?.error ?? "We couldn't create your portrait. Please try again.";
-        setPortraitError(error);
-        toast.error("Couldn't create your AURA portrait", { description: error });
+        setPortraitRequest(
+          body?.code === "portrait-refused"
+            ? "refused"
+            : body?.retryable === false
+              ? "unavailable"
+              : "retryable-failure",
+        );
+        toast.error("AURA portrait generation failed", { description: error });
         return;
       }
 
       setPortraitUrl(body.portraitUrl);
+      setPortraitRequest("idle");
       toast.success("Your AURA portrait is ready");
     } catch {
       const error = "Check your connection and try again.";
-      setPortraitError(error);
+      setPortraitRequest("retryable-failure");
       toast.error("Couldn't reach the server", { description: error });
-    } finally {
-      setIsGeneratingPortrait(false);
     }
   }
 
@@ -265,13 +275,12 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
       <AuraProfileResult
         mode={mode}
         portraitUrl={portraitUrl}
-        portraitError={portraitError}
-        isGenerating={isGeneratingPortrait}
+        request={portraitRequest}
         onGenerate={preview ? undefined : requestPortrait}
         onEdit={() => {
           setResult(null);
           setPortraitUrl(undefined);
-          setPortraitError(undefined);
+          setPortraitRequest("idle");
         }}
       />
     );
@@ -587,8 +596,8 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
             htmlFor="consent"
             className="text-sm leading-snug font-normal text-pretty"
           >
-            I agree to the use of my photos by a third-party AI provider to
-            generate my AURA portrait.
+            I agree to OpenAI, our third-party AI provider, processing my
+            photos to generate my AURA portrait.
           </Label>
         </div>
         <FieldError message={errors.consent?.message} />

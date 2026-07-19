@@ -9,12 +9,21 @@
  * sending five of those base64-encoded would exceed the request body limit long
  * before it bought any useful detail. Re-encoding to JPEG also normalises PNG
  * and WebP input to a single format for the upload.
+ *
+ * Accepts a `File`/`Blob` (an uploaded garment) or a data-URI `string` (a link
+ * garment's already-scraped image). The string path lets both save arms —
+ * upload and link — re-encode to the same edge with one helper, so a full-res
+ * scraped image never ships in a save payload.
  */
 export async function downscalePhoto(
-  file: File,
+  source: File | Blob | string,
   maxEdge: number,
 ): Promise<string> {
-  const bitmap = await createImageBitmap(file);
+  const blob =
+    typeof source === "string"
+      ? await fetch(source).then((response) => response.blob())
+      : source;
+  const bitmap = await createImageBitmap(blob);
 
   try {
     const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));

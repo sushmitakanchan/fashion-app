@@ -54,6 +54,16 @@ export type SaveSource =
   | { image: string; name: string; url: string; site: GarmentSite };
 
 /**
+ * The garment's raw, un-encoded image bytes — the single source of truth each
+ * projection re-encodes from. An upload carries a `File`; a link carries its
+ * scraped data URI. Both are shapes {@link import("./aura").downscalePhoto}
+ * accepts, so a caller can downscale either arm without knowing the `kind`.
+ */
+export function rawImageOf(source: Attachment): File | string {
+  return source.kind === "link" ? source.scrapedImage : source.file;
+}
+
+/**
  * Project a garment down to the try-on request shape. `image` is the already
  * downscaled data URI; both arms collapse to `{ image, name }`, so no provenance
  * reaches the try-on route.

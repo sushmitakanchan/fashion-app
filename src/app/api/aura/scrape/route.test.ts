@@ -343,6 +343,81 @@ describe("POST /api/aura/scrape", () => {
     });
   });
 
+  // Defense-in-depth for the second (image) fetch hop. The image URL is
+  // page-controlled markup, so beyond https-only it must resolve to the matched
+  // source's known CDN host. A crafted `og:image`/JSON-LD value aimed at a
+  // private, loopback, link-local, or otherwise non-CDN target — the residual
+  // SSRF vector after https-only — is refused before any network call. Only the
+  // page route is registered in each case: if the guard failed to fire, the
+  // unrouted image fetch would surface as `fetch-failed` (502), not the
+  // `no-image-found` (422) these assert, and `fetchCalls` would be 2, not 1.
+  describe("SSRF hardening (image hop)", () => {
+    const blockedPinterestImages: Record<string, string> = {
+      "a link-local metadata address": "https://169.254.169.254/latest/meta-data/",
+      "a loopback address": "https://127.0.0.1/garment.jpg",
+      "an IPv6 loopback address": "https://[::1]/garment.jpg",
+      "a private 192.168 address": "https://192.168.1.10/garment.jpg",
+      "a private 10.x address": "https://10.0.0.5/garment.jpg",
+      "a public but non-CDN host": "https://evil.example.com/garment.jpg",
+      "a CDN-lookalike host": "https://i.pinimg.com.evil.example.com/garment.jpg",
+      "userinfo masking an internal IP": "https://i.pinimg.com@169.254.169.254/garment.jpg",
+      "the other source's CDN": MYNTRA_IMAGE,
+    };
+
+    for (const [label, image] of Object.entries(blockedPinterestImages)) {
+      it(`refuses ${label} without fetching it`, async () => {
+        route(hostContains("pinterest.com"), () => html(pinterestPage({ image })));
+
+        const response = await post({ url: PIN_URL });
+
+        expect(response.status).toBe(422);
+        await expect(response.json()).resolves.toEqual(
+          expect.objectContaining({ code: "no-image-found", retryable: false }),
+        );
+        expect(fetchCalls).toHaveLength(1);
+      });
+    }
+
+    it("refuses a Myntra image on a non-CDN host without fetching it", async () => {
+      route(hostContains("myntra.com"), () =>
+        html(myntraPage({ image: "https://169.254.169.254/garment.jpg" })),
+      );
+
+      const response = await post({ url: MYNTRA_URL });
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual(
+        expect.objectContaining({ code: "no-image-found", retryable: false }),
+      );
+      expect(fetchCalls).toHaveLength(1);
+    });
+
+    it("refuses a Myntra page that points at Pinterest's CDN", async () => {
+      route(hostContains("myntra.com"), () =>
+        html(myntraPage({ image: PIN_IMAGE })),
+      );
+
+      const response = await post({ url: MYNTRA_URL });
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual(
+        expect.objectContaining({ code: "no-image-found", retryable: false }),
+      );
+      expect(fetchCalls).toHaveLength(1);
+    });
+
+    it("still fetches an image on the source's own allowlisted CDN host", async () => {
+      route(hostContains("pinterest.com"), () => html(pinterestPage()));
+      route(hostContains("pinimg.com"), () => imageBytes(GARMENT));
+
+      const response = await post({ url: PIN_URL });
+
+      expect(response.status).toBe(200);
+      expect(fetchCalls).toHaveLength(2);
+      expect(fetchCalls[1].url).toBe(PIN_IMAGE);
+    });
+  });
+
   describe("image validation", () => {
     it("rejects a non-accepted image MIME as wrong-type", async () => {
       route(hostContains("pinterest.com"), () => html(pinterestPage()));

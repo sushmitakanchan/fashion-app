@@ -30,6 +30,11 @@ type SourceRule = {
   source: Source;
   host: RegExp;
   path: RegExp;
+  // The CDN host(s) an image reference from this source's page is allowed to
+  // resolve to. The image URL comes from page-controlled markup (og:image /
+  // JSON-LD), so pinning it to the source's known CDN is the SSRF backstop for
+  // the second fetch hop — see the image-resolution guard in `POST`.
+  imageHosts: readonly string[];
   extract: (html: string) => Extraction;
 };
 
@@ -44,6 +49,8 @@ const SOURCE_RULES: SourceRule[] = [
     host: /^(?:[a-z0-9-]+\.)*pinterest\.com$/i,
     // `/pin/(?:<slug>--)?<id>/` — a numeric pin id with an optional slug prefix.
     path: /^\/pin\/(?:[^/]+--)?\d+\/?$/,
+    // Pinterest serves pin images (og:image) from i.pinimg.com.
+    imageHosts: ["i.pinimg.com"],
     extract: (html) => ({
       image: readMeta(html, "og:image"),
       name: readMeta(html, "og:title"),
@@ -55,6 +62,8 @@ const SOURCE_RULES: SourceRule[] = [
     host: /^(?:www\.)?myntra\.com$/i,
     // `.../<styleId>/buy` — a numeric style id followed by the `buy` segment.
     path: /^\/(?:[^/]+\/)*\d+\/buy\/?$/,
+    // Myntra serves full-resolution product images from assets.myntassets.com.
+    imageHosts: ["assets.myntassets.com"],
     extract: (html) => {
       const product = readJsonLdProduct(html);
       // Myntra's og:image is only a 200×200 thumbnail, so the full-resolution
@@ -154,11 +163,29 @@ export async function POST(req: Request) {
       // Resolve against the page URL so protocol-relative (`//host/...`) and
       // relative image references become absolute.
       const resolved = new URL(extracted.image, target);
-      // Hold the image hop to the same https-only rule as the page URL. The
-      // image reference comes from page-controlled markup, so this keeps a
-      // crafted `og:image`/JSON-LD value from steering the server fetch at a
-      // non-https target (file://, http:// metadata endpoints, and the like).
-      if (resolved.protocol === "https:") imageHref = resolved.href;
+      // The image reference is page-controlled markup (og:image / JSON-LD), so a
+      // crafted value could otherwise steer this second fetch at an arbitrary
+      // target. Two guards keep it on rails before any network call:
+      //   1. https-only — rejects file://, http:// metadata endpoints, gopher://
+      //      and every other non-https scheme outright.
+      //   2. a per-source CDN host allowlist — the image must live on the known
+      //      CDN for the matched source. This is the SSRF backstop: an https ref
+      //      aimed at a private, loopback, or link-local address
+      //      (https://169.254.169.254/, https://127.0.0.1, https://[::1], an
+      //      internal hostname, …) is never one of those public CDN hosts, so it
+      //      is refused here rather than fetched. Because the allowlisted hosts
+      //      sit on domains an attacker doesn't control, their DNS can't be
+      //      repointed at an internal IP — the check is DNS-rebinding-proof
+      //      without our resolving or pinning an address ourselves.
+      // `URL.hostname` strips any userinfo and port, so a masking trick like
+      // `https://i.pinimg.com@169.254.169.254/` resolves to the 169.254 host and
+      // is correctly rejected.
+      if (
+        resolved.protocol === "https:" &&
+        rule.imageHosts.includes(resolved.hostname)
+      ) {
+        imageHref = resolved.href;
+      }
     } catch {
       imageHref = null;
     }

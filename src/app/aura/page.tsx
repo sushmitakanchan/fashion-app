@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AuraForm } from "@/components/forms/aura-form";
+import { TryOnSurfacePrototype } from "@/components/aura/try-on-surface-prototype";
 
 export const metadata: Metadata = {
   title: "Create your AURA profile",
@@ -25,7 +26,18 @@ export const metadata: Metadata = {
 // matching: the AURA profile is tied to a Clerk user, so there's nothing to
 // show — or save — when signed out. `auth()` + `redirect()` (rather than
 // `auth.protect()`) degrades to a redirect instead of erroring.
-export default async function AuraPage() {
+export default async function AuraPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ prototype?: string; variant?: string }>;
+}) {
+  const { prototype, variant } = await searchParams;
+  // The Wayfinder UI prototype must be inspectable without a local Clerk
+  // session. It has no data or mutations, and does not exist in production.
+  if (process.env.NODE_ENV !== "production" && prototype === "try-on") {
+    return <TryOnSurfacePrototype variant={variant} />;
+  }
+
   const { userId } = await auth();
   if (!userId) {
     redirect("/");
@@ -55,6 +67,7 @@ export default async function AuraPage() {
     persistedName,
     googleName: admission?.ok ? admission.googleName : null,
   });
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-16">
       <Card>

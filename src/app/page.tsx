@@ -1,10 +1,5 @@
 import Link from "next/link";
-import {
-  Show,
-  SignInButton,
-  SignUpButton,
-  UserButton,
-} from "@clerk/nextjs";
+import { Show, UserButton } from "@clerk/nextjs";
 import { CameraIcon, RulerIcon, SparklesIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ModeToggle } from "@/components/mode-toggle";
+import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 
 const steps = [
   {
@@ -50,14 +46,7 @@ export default function Home() {
           <nav className="flex items-center gap-2">
             <ModeToggle />
             <Show when="signed-out">
-              <SignInButton mode="modal">
-                <Button variant="ghost" size="sm">
-                  Sign in
-                </Button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <Button size="sm">Sign up</Button>
-              </SignUpButton>
+              <GoogleAuthButton size="sm" />
             </Show>
             <Show when="signed-in">
               <UserButton />
@@ -92,19 +81,13 @@ export default function Home() {
               </Button>
             </Show>
             <Show when="signed-out">
-              {/* Sign up, then land straight on the protected AURA page rather
-                  than back here — the CTA leads into profile creation. */}
-              <SignUpButton mode="modal" forceRedirectUrl="/aura">
-                <Button size="lg">
-                  <SparklesIcon />
-                  Sign up to create your AURA portrait
-                </Button>
-              </SignUpButton>
+              {/* OAuth account discovery handles sign-in and first-time sign-up
+                  through this single Google-only entry point. */}
+              <GoogleAuthButton size="lg" />
             </Show>
           </div>
           <p className="text-muted-foreground mt-4 text-sm">
-            Your AURA profile is tied to your account, so you&apos;ll sign in
-            first.
+            Your AURA profile is tied to your verified Google account.
           </p>
         </section>
 

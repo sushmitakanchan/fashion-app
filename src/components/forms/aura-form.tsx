@@ -73,7 +73,11 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-destructive text-sm">{message}</p>;
 }
 
-export function AuraForm() {
+export function AuraForm({
+  initialName = "",
+}: {
+  initialName?: string;
+}) {
   const [unitSystem, setUnitSystem] = React.useState<UnitSystem>("metric");
   const [imperial, setImperial] = React.useState<ImperialDraft>(EMPTY_IMPERIAL);
   const [isProfileSaved, setIsProfileSaved] = React.useState(false);
@@ -90,7 +94,7 @@ export function AuraForm() {
     formState: { errors, isSubmitting, isSubmitted },
   } = useForm<AuraFormInput>({
     resolver: zodResolver(auraFormSchema),
-    defaultValues: { name: "", consent: false },
+    defaultValues: { name: initialName, consent: false },
   });
 
   // `useWatch` rather than `watch()`: it scopes the re-render to this one field

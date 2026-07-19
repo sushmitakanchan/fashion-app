@@ -5,6 +5,7 @@ import {
   AURA_CONFIGURATION_UNAVAILABLE_MESSAGE,
   isAuraLiveConfigured,
 } from "@/lib/aura-config";
+import { admitGoogleAuraIdentity } from "@/lib/aura-identity";
 import { cloudinary } from "@/lib/cloudinary";
 import { getPrisma } from "@/lib/prisma";
 import {
@@ -23,6 +24,27 @@ const SAVE_FAILED =
   "We couldn't save your AURA. Your photos are safe — please try again.";
 
 export async function POST(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // AURA's identity boundary is stricter than a valid Clerk session: the pilot
+  // accepts only a linked, verified Google account. Keep this ahead of request
+  // validation, user mirroring, uploads, and profile persistence so an
+  // unsupported identity cannot leave partial AURA data behind.
+  const clerkUser = await currentUser();
+  if (!clerkUser) {
+    return NextResponse.json(
+      { error: "We couldn't verify your Google identity." },
+      { status: 403 },
+    );
+  }
+  const admission = admitGoogleAuraIdentity(clerkUser);
+  if (!admission.ok) {
+    return NextResponse.json({ error: admission.error }, { status: 403 });
+  }
+
   // Saving an AURA profile requires its live integrations. Refuse before any
   // side effects so the client cannot mistake an unavailable deployment for a
   // saved profile.
@@ -33,11 +55,6 @@ export async function POST(req: Request) {
       },
       { status: 503 },
     );
-  }
-
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const parsed = auraSubmissionSchema.safeParse(
@@ -53,16 +70,7 @@ export async function POST(req: Request) {
   const { photos } = parsed.data;
 
   // `AuraProfile` hangs off the internal `User` row, and nothing else in the app
-  // creates one yet — so mirror the Clerk user across on the way through.
-  const clerkUser = await currentUser();
-  const email = clerkUser?.emailAddresses[0]?.emailAddress;
-  if (!clerkUser || !email) {
-    return NextResponse.json(
-      { error: "Your account is missing an email address." },
-      { status: 422 },
-    );
-  }
-
+  // creates one yet — so mirror the admitted Clerk user across on the way through.
   let prisma: ReturnType<typeof getPrisma>;
   let user: { id: string };
   try {
@@ -71,13 +79,13 @@ export async function POST(req: Request) {
       where: { clerkId: userId },
       create: {
         clerkId: userId,
-        email,
-        name: [clerkUser.firstName, clerkUser.lastName]
-          .filter(Boolean)
-          .join(" "),
+        email: admission.email,
+        name: admission.googleName || null,
         imageUrl: clerkUser.imageUrl,
       },
-      update: { email, imageUrl: clerkUser.imageUrl },
+      // AURA display-name edits live on AuraProfile. Never write any display
+      // name back into Clerk's mirrored account data on a later AURA save.
+      update: { email: admission.email, imageUrl: clerkUser.imageUrl },
     });
   } catch (error) {
     // Before any upload, so there's nothing to unwind — but the caller still

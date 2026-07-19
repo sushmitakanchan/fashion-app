@@ -13,6 +13,23 @@ export type SavedLookSource = {
   site?: SavedLookSourceSite;
 };
 
+/** A link Source: it kept both its original `url` and `site`. */
+export type LinkSource = SavedLookSource & {
+  url: string;
+  site: SavedLookSourceSite;
+};
+
+/**
+ * Infer whether a stored Source is a link — the single source of truth for the
+ * "url + site present ⇒ link, absent ⇒ upload" rule the write boundary encodes
+ * (see the `saveSourceInput` refine in `@/lib/validations`). Read sites narrow
+ * through this rather than re-deriving the rule, so provenance is decided in one
+ * place.
+ */
+export function isLinkSource(source: SavedLookSource): source is LinkSource {
+  return Boolean(source.url && source.site);
+}
+
 /** Upper bound on a derived caption; longer captions are truncated with an ellipsis. */
 export const MAX_CAPTION_LENGTH = 80;
 

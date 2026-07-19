@@ -53,6 +53,8 @@ let userUpsert: ReturnType<typeof mock<UpsertStub>>;
 let auraUpsert: ReturnType<typeof mock<UpsertStub>>;
 
 mock.module("@/lib/aura-config", () => ({
+  AURA_CONFIGURATION_UNAVAILABLE_MESSAGE:
+    "AURA isn't configured to save profiles or generate portraits. Please try again later.",
   isAuraLiveConfigured: () => live,
 }));
 
@@ -141,13 +143,16 @@ beforeEach(() => {
 /* -------------------------------------------------------------------------- */
 
 describe("POST /api/aura — refused submissions", () => {
-  it("refuses when live integrations are not configured, without persisting", async () => {
+  it("refuses unavailable configuration without persisting or describing a local result", async () => {
     live = false;
 
     const response = await post(validBody());
 
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toHaveProperty("error");
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "AURA isn't configured to save profiles or generate portraits. Please try again later.",
+    });
     expect(upload).not.toHaveBeenCalled();
     expect(auraUpsert).not.toHaveBeenCalled();
   });

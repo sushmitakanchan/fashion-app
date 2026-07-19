@@ -41,6 +41,8 @@ let generate: ReturnType<typeof mock<GenerateStub>>;
 let upload: ReturnType<typeof mock<UploadStub>>;
 
 mock.module("@/lib/aura-config", () => ({
+  AURA_CONFIGURATION_UNAVAILABLE_MESSAGE:
+    "AURA isn't configured to save profiles or generate portraits. Please try again later.",
   isAuraLiveConfigured: () => live,
 }));
 
@@ -117,15 +119,18 @@ describe("POST /api/aura/portrait", () => {
     });
   });
 
-  it("distinguishes an unavailable live configuration", async () => {
+  it("refuses unavailable configuration without generating a local-looking portrait", async () => {
     live = false;
 
     const response = await post();
 
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "configuration-unavailable", retryable: false }),
-    );
+    await expect(response.json()).resolves.toEqual({
+      code: "configuration-unavailable",
+      error:
+        "AURA isn't configured to save profiles or generate portraits. Please try again later.",
+      retryable: false,
+    });
     expect(generate).not.toHaveBeenCalled();
   });
 

@@ -1,7 +1,9 @@
 import "server-only";
 
-import type { AuraMode } from "@/lib/aura";
 import { env } from "@/lib/env";
+
+export const AURA_CONFIGURATION_UNAVAILABLE_MESSAGE =
+  "AURA isn't configured to save profiles or generate portraits. Please try again later.";
 
 export function isCloudinaryConfigured(): boolean {
   return Boolean(
@@ -21,9 +23,8 @@ export function isOpenAIImageConfigured(): boolean {
 }
 
 /**
- * A live AURA journey saves reference photos, persists a profile, and can then
- * generate an OpenAI portrait. All three capabilities must be configured;
- * otherwise this deployment presents an explicitly local preview.
+ * Saving an AURA profile and generating its portrait require all three live
+ * capabilities. Route handlers refuse requests when one is unavailable.
  */
 export function isAuraLiveConfigured(): boolean {
   return (
@@ -31,8 +32,4 @@ export function isAuraLiveConfigured(): boolean {
     isDatabaseConfigured() &&
     isOpenAIImageConfigured()
   );
-}
-
-export function auraMode(): AuraMode {
-  return isAuraLiveConfigured() ? "live" : "preview";
 }

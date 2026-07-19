@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 
-import { isAuraLiveConfigured } from "@/lib/aura-config";
+import {
+  AURA_CONFIGURATION_UNAVAILABLE_MESSAGE,
+  isAuraLiveConfigured,
+} from "@/lib/aura-config";
 import { cloudinary } from "@/lib/cloudinary";
 import { getPrisma } from "@/lib/prisma";
 import {
@@ -20,16 +23,13 @@ const SAVE_FAILED =
   "We couldn't save your AURA. Your photos are safe — please try again.";
 
 export async function POST(req: Request) {
-  // Live submission uploads photos and persists a profile; without Cloudinary
-  // and the database configured this environment can only run the local
-  // preview, so refuse rather than fail deep inside an upload the client
-  // believes succeeded. The UI never posts here in preview mode — this is the
-  // server-side backstop.
+  // Saving an AURA profile requires its live integrations. Refuse before any
+  // side effects so the client cannot mistake an unavailable deployment for a
+  // saved profile.
   if (!isAuraLiveConfigured()) {
     return NextResponse.json(
       {
-        error:
-          "Live AURA submission isn't configured here. This environment runs in local-preview mode only.",
+        error: AURA_CONFIGURATION_UNAVAILABLE_MESSAGE,
       },
       { status: 503 },
     );

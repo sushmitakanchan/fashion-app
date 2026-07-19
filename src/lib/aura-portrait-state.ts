@@ -1,5 +1,3 @@
-import type { AuraMode } from "@/lib/aura";
-
 export type PortraitRequest =
   | "idle"
   | "generating"
@@ -8,7 +6,7 @@ export type PortraitRequest =
   | "unavailable";
 
 export type PortraitPresentation = {
-  image: "placeholder" | "portrait";
+  image: "empty" | "portrait";
   pending: boolean;
   primaryAction?: "generate" | "retry" | "edit-references";
   title: string;
@@ -21,28 +19,16 @@ export type PortraitPresentation = {
  * inventing completion percentages for an external image-generation service.
  */
 export function portraitPresentation({
-  mode,
   portraitUrl,
   request,
 }: {
-  mode: AuraMode;
   portraitUrl?: string;
   request: PortraitRequest;
 }): PortraitPresentation {
-  if (mode === "preview") {
-    return {
-      image: "placeholder",
-      pending: false,
-      title: "AURA portrait preview",
-      description:
-        "This is a local placeholder, not an AI-generated AURA portrait. Your photos and form data stayed in this browser.",
-    };
-  }
-
   if (request === "generating") {
     const regenerating = Boolean(portraitUrl);
     return {
-      image: regenerating ? "portrait" : "placeholder",
+      image: regenerating ? "portrait" : "empty",
       pending: true,
       primaryAction: undefined,
       title: regenerating
@@ -56,7 +42,7 @@ export function portraitPresentation({
 
   if (request === "refused") {
     return {
-      image: portraitUrl ? "portrait" : "placeholder",
+      image: portraitUrl ? "portrait" : "empty",
       pending: false,
       primaryAction: "edit-references",
       title: "Use different AURA reference photos",
@@ -67,7 +53,7 @@ export function portraitPresentation({
 
   if (request === "retryable-failure") {
     return {
-      image: portraitUrl ? "portrait" : "placeholder",
+      image: portraitUrl ? "portrait" : "empty",
       pending: false,
       primaryAction: "retry",
       title: "We couldn't create your AURA portrait",
@@ -79,7 +65,7 @@ export function portraitPresentation({
 
   if (request === "unavailable") {
     return {
-      image: portraitUrl ? "portrait" : "placeholder",
+      image: portraitUrl ? "portrait" : "empty",
       pending: false,
       primaryAction: undefined,
       title: "AURA portrait generation is unavailable",
@@ -100,7 +86,7 @@ export function portraitPresentation({
   }
 
   return {
-    image: "placeholder",
+    image: "empty",
     pending: false,
     primaryAction: "generate",
     title: "Your AURA profile is saved",

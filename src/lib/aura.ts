@@ -5,21 +5,6 @@
  * these conversions exist purely to let the form accept imperial input.
  */
 
-/**
- * Which mode the AURA journey runs in.
- *
- * - `"live"` — Cloudinary, the database, and OpenAI image access are
- *   configured, so a submission can save (or replace) the profile.
- * - `"preview"` — one or both are absent, so the journey is a local preview:
- *   the form validates and displays a placeholder, but nothing is uploaded,
- *   persisted, or sent to any AI provider.
- *
- * Resolved server-side by `isAuraLiveConfigured()` (see `@/lib/aura-config`);
- * this type lives here so client components can accept it without importing the
- * server-only config module.
- */
-export type AuraMode = "live" | "preview";
-
 const CM_PER_INCH = 2.54;
 const LB_PER_KG = 2.2046226218;
 

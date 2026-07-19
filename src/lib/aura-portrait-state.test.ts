@@ -5,9 +5,9 @@ import { portraitPresentation } from "./aura-portrait-state";
 describe("portraitPresentation", () => {
   it("keeps the portrait state indeterminate while an initial generation runs", () => {
     expect(
-      portraitPresentation({ mode: "live", portraitUrl: undefined, request: "generating" }),
+      portraitPresentation({ portraitUrl: undefined, request: "generating" }),
     ).toMatchObject({
-      image: "placeholder",
+      image: "empty",
       pending: true,
       primaryAction: undefined,
       title: "Creating your AURA portrait",
@@ -17,7 +17,6 @@ describe("portraitPresentation", () => {
   it("dims the current portrait while a regeneration is pending", () => {
     expect(
       portraitPresentation({
-        mode: "live",
         portraitUrl: "https://res.cloudinary.com/aura/portrait.jpg",
         request: "generating",
       }),
@@ -31,7 +30,6 @@ describe("portraitPresentation", () => {
   it("offers a retry after a retryable failure without discarding the portrait", () => {
     expect(
       portraitPresentation({
-        mode: "live",
         portraitUrl: "https://res.cloudinary.com/aura/portrait.jpg",
         request: "retryable-failure",
       }),
@@ -45,9 +43,9 @@ describe("portraitPresentation", () => {
 
   it("guides a provider refusal to different reference photos", () => {
     expect(
-      portraitPresentation({ mode: "live", portraitUrl: undefined, request: "refused" }),
+      portraitPresentation({ portraitUrl: undefined, request: "refused" }),
     ).toMatchObject({
-      image: "placeholder",
+      image: "empty",
       primaryAction: "edit-references",
       title: "Use different AURA reference photos",
     });
@@ -55,22 +53,22 @@ describe("portraitPresentation", () => {
 
   it("does not offer a retry for another non-retryable failure", () => {
     expect(
-      portraitPresentation({ mode: "live", portraitUrl: undefined, request: "unavailable" }),
+      portraitPresentation({ portraitUrl: undefined, request: "unavailable" }),
     ).toMatchObject({
-      image: "placeholder",
+      image: "empty",
       pending: false,
       primaryAction: undefined,
       title: "AURA portrait generation is unavailable",
     });
   });
 
-  it("labels local preview as a placeholder rather than a generated portrait", () => {
+  it("starts generation only from a saved profile", () => {
     expect(
-      portraitPresentation({ mode: "preview", portraitUrl: undefined, request: "idle" }),
+      portraitPresentation({ portraitUrl: undefined, request: "idle" }),
     ).toMatchObject({
-      image: "placeholder",
+      image: "empty",
       pending: false,
-      title: "AURA portrait preview",
+      title: "Your AURA profile is saved",
     });
   });
 });

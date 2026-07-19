@@ -33,7 +33,11 @@ export type StyleBookLook = {
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+  // Pin the locale so server and client format identically. `undefined` uses the
+  // runtime default — Node (en-US) on the server, the visitor's locale in the
+  // browser — which produced a hydration mismatch ("Jul 20, 2026" vs "20 Jul
+  // 2026") on this exact node.
+  return new Date(iso).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",

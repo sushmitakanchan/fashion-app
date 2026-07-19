@@ -213,24 +213,7 @@ describe("POST /api/aura — refused submissions", () => {
     expect(auraUpsert).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-Google identity before external operations", async () => {
-    clerkUser = {
-      ...clerkUser!,
-      externalAccounts: [{ ...clerkUser!.externalAccounts[0], provider: "github" }],
-    };
-
-    const response = await post(validBody());
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
-      error: "Your AURA profile requires a linked Google account.",
-    });
-    expect(userUpsert).not.toHaveBeenCalled();
-    expect(upload).not.toHaveBeenCalled();
-    expect(auraUpsert).not.toHaveBeenCalled();
-  });
-
-  it("rejects an unverified Google email before external operations", async () => {
+  it("rejects an unverified email before external operations", async () => {
     clerkUser = {
       ...clerkUser!,
       emailAddresses: [
@@ -242,7 +225,7 @@ describe("POST /api/aura — refused submissions", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
-      error: "Verify your Google email before saving an AURA profile.",
+      error: "Verify your email before saving an AURA profile.",
     });
     expect(userUpsert).not.toHaveBeenCalled();
     expect(upload).not.toHaveBeenCalled();

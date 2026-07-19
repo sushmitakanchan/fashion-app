@@ -226,24 +226,6 @@ describe("POST /api/aura/style-book — the gate ladder", () => {
     expect(savedLookCreate).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-Google identity before touching the database", async () => {
-    clerkUser = {
-      ...clerkUser!,
-      externalAccounts: [
-        { ...clerkUser!.externalAccounts[0], provider: "github" },
-      ],
-    };
-
-    const response = await post(validBody());
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "identity-refused",
-    });
-    expect(userFindUnique).not.toHaveBeenCalled();
-    expect(uploadImage).not.toHaveBeenCalled();
-  });
-
   it("refuses a participant without a consented AURA profile", async () => {
     profileRow = null;
 

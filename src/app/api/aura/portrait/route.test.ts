@@ -180,24 +180,6 @@ describe("POST /api/aura/portrait", () => {
     );
   });
 
-  it("refuses a non-Google identity before any portrait operation", async () => {
-    clerkUser = {
-      ...clerkUser!,
-      externalAccounts: [{ ...clerkUser!.externalAccounts[0], provider: "github" }],
-    };
-
-    const response = await post();
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "identity-refused", retryable: false }),
-    );
-    expect(findUser).not.toHaveBeenCalled();
-    expect(generate).not.toHaveBeenCalled();
-    expect(upload).not.toHaveBeenCalled();
-    expect(update).not.toHaveBeenCalled();
-  });
-
   it("refuses an unverified Google email before any portrait operation", async () => {
     clerkUser = {
       ...clerkUser!,

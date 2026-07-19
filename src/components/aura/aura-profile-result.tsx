@@ -1,7 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { LoaderCircleIcon, PencilIcon, SparklesIcon } from "lucide-react";
+import Link from "next/link";
+import {
+  LoaderCircleIcon,
+  PaletteIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  ShirtIcon,
+  SparklesIcon,
+} from "lucide-react";
 
 import {
   portraitPresentation,
@@ -31,9 +39,34 @@ export function AuraProfileResult({
       ? "Try again"
       : presentation.primaryAction === "edit-references"
         ? "Use different photos"
-        : portraitUrl
-          ? "Create a new AURA portrait"
-          : "Create my AURA portrait";
+        : "Create my AURA portrait";
+
+  // A finished portrait is on screen and not mid-regeneration.
+  const portraitReady =
+    presentation.image === "portrait" &&
+    !presentation.pending &&
+    Boolean(portraitUrl);
+
+  // The happy path: a portrait is ready and the natural next action is to wear
+  // it, not to remake it. Regeneration moves to a discreet corner control so it
+  // stops competing with the forward step. `generate` on a portrait only ever
+  // means "you already have one, make another" — the first-time create lives in
+  // the empty state below.
+  const portraitComplete =
+    portraitReady && presentation.primaryAction === "generate";
+
+  // Show the corner regenerate control whenever remaking is the right verb —
+  // the finished portrait, or a retryable failure that left the old one intact.
+  // Not for `edit-references`/`unavailable`, where regenerating is the wrong move.
+  const showRegenerate =
+    portraitReady &&
+    Boolean(onGenerate) &&
+    (presentation.primaryAction === "generate" ||
+      presentation.primaryAction === "retry");
+  const regenerateLabel =
+    presentation.primaryAction === "retry"
+      ? "Try generating again"
+      : "Regenerate portrait";
 
   function handlePrimaryAction() {
     if (presentation.primaryAction === "edit-references") {
@@ -59,11 +92,24 @@ export function AuraProfileResult({
               sizes="(max-width: 768px) 100vw, 640px"
               className={`h-auto w-full object-cover ${presentation.pending ? "grayscale opacity-50" : ""}`}
             />
+            {showRegenerate && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={onGenerate}
+                aria-label={regenerateLabel}
+                title={regenerateLabel}
+                className="bg-background/80 hover:bg-background absolute top-3 right-3 rounded-full shadow-sm backdrop-blur-sm"
+              >
+                <RefreshCwIcon />
+              </Button>
+            )}
             {presentation.pending && (
               <div
                 role="status"
                 aria-live="polite"
-                className="bg-background/80 absolute inset-0 grid place-items-center p-6 text-center backdrop-blur-sm"
+                className="bg-background/80 absolute inset-0 grid place-items-center rounded-xl p-6 text-center backdrop-blur-sm"
               >
                 <div className="grid justify-items-center gap-3">
                   <LoaderCircleIcon className="text-primary size-10 animate-spin motion-reduce:animate-none" />
@@ -104,11 +150,28 @@ export function AuraProfileResult({
         </p>
       )}
 
-      {presentation.image === "portrait" && presentation.primaryAction && (
-        <Button onClick={handlePrimaryAction} className="sm:justify-self-start">
-          <SparklesIcon />
-          {primaryActionLabel}
+      {/* Ready portrait → move forward into try-on. Any other portrait state
+          keeps its own recovery action (retry / use different photos). */}
+      {portraitComplete ? (
+        <Button
+          nativeButton={false}
+          render={<Link href="/aura/try-on" />}
+          className="sm:justify-self-start"
+        >
+          <ShirtIcon />
+          Try on clothes
         </Button>
+      ) : (
+        presentation.image === "portrait" &&
+        presentation.primaryAction && (
+          <Button
+            onClick={handlePrimaryAction}
+            className="sm:justify-self-start"
+          >
+            <SparklesIcon />
+            {primaryActionLabel}
+          </Button>
+        )
       )}
 
       <Button
@@ -118,6 +181,18 @@ export function AuraProfileResult({
       >
         <PencilIcon />
         Edit profile
+      </Button>
+
+      {/* Tertiary, always available on a saved profile: the public colour
+          analysis complements the portrait ("which garment colours suit you"). */}
+      <Button
+        variant="link"
+        nativeButton={false}
+        render={<Link href="/colors" />}
+        className="text-muted-foreground h-auto justify-self-start p-0"
+      >
+        <PaletteIcon />
+        Find your colours
       </Button>
     </div>
   );

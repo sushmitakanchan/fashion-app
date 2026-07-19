@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
+import NextLink from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertCircleIcon,
   Link2Icon,
   Loader2Icon,
+  PaletteIcon,
   PlusIcon,
   RotateCcwIcon,
   SparklesIcon,
@@ -49,7 +51,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The ephemeral AURA try-on surface: attach a garment image (or several worn
- * together) — from your device or a pasted Pinterest/Myntra link — generate it
+ * together) — from your device or a pasted Pinterest link — generate it
  * onto the fixed AURA portrait, and view the result. Everything is in-memory and
  * cleared on reload — nothing is uploaded to storage or written to the database
  * (the route returns the look inline as a data URL). The presentation for the
@@ -158,6 +160,10 @@ export function TryOnSurface() {
   // Monotonic counter for the "host + running index" name fallback, so repeat
   // links from the same titleless host stay distinguishable.
   const linkCountRef = React.useRef(0);
+  // In-flight scrape aborters, keyed by ghost slot id, so a ghost's own cancel
+  // control can abort its fetch and free the slot immediately instead of the
+  // user being stuck watching a scrape that may never resolve.
+  const scrapeControllers = React.useRef(new Map<string, AbortController>());
   // The last set of attachments a generation was attempted with, so a retry can
   // re-run the same look even after the composer has been edited.
   const lastAttempt = React.useRef<Attachment[]>([]);
@@ -201,6 +207,10 @@ export function TryOnSurface() {
     () => () => {
       for (const item of slotsRef.current) releasePreview(item);
       for (const item of resultRef.current?.sources ?? []) releasePreview(item);
+      // Abort any scrape still in flight so it can't call setState after unmount.
+      for (const controller of scrapeControllers.current.values()) {
+        controller.abort();
+      }
     },
     [],
   );
@@ -264,20 +274,30 @@ export function TryOnSurface() {
     const dropGhost = () =>
       setSlots((prev) => prev.filter((slot) => slot.id !== id));
 
+    const controller = new AbortController();
+    scrapeControllers.current.set(id, controller);
+
     let response: Response;
     try {
       response = await fetch("/api/aura/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
+        signal: controller.signal,
       });
     } catch {
+      scrapeControllers.current.delete(id);
+      // A user-initiated cancel (or unmount) already dropped the ghost — the
+      // abort surfaces here as a rejection, so stay silent rather than blaming
+      // the network for something the user asked for.
+      if (controller.signal.aborted) return;
       dropGhost();
       toast.error("Couldn't reach the server", {
         description: "Check your connection and try again.",
       });
       return;
     }
+    scrapeControllers.current.delete(id);
 
     const body = (await response.json().catch(() => null)) as
       | (ScrapeResponse & ScrapeFailure)
@@ -313,6 +333,15 @@ export function TryOnSurface() {
       if (target) releasePreview(target);
       return prev.filter((item) => item.id !== id);
     });
+  }
+
+  // Cancel an in-flight scrape from its ghost tile: abort the fetch (so a
+  // stalled hop stops immediately) and drop the reserved slot. The aborted
+  // fetch resolves silently in `addLink`'s catch.
+  function cancelScrape(id: string) {
+    scrapeControllers.current.get(id)?.abort();
+    scrapeControllers.current.delete(id);
+    setSlots((prev) => prev.filter((slot) => slot.id !== id));
   }
 
   async function generate(from: Attachment[]) {
@@ -486,6 +515,15 @@ export function TryOnSurface() {
           Attach a garment image and see it worn on your AURA portrait. Nothing
           is uploaded or saved — your try-ons stay in this session.
         </p>
+        <Button
+          variant="link"
+          nativeButton={false}
+          render={<NextLink href="/colors" />}
+          className="text-muted-foreground h-auto justify-self-start p-0"
+        >
+          <PaletteIcon />
+          Not sure what suits you? Find your colours
+        </Button>
       </header>
 
       {/* ---- Stage: exactly one of empty / generating / failed / result ---- */}
@@ -552,7 +590,10 @@ export function TryOnSurface() {
           <div className="flex flex-wrap gap-2">
             {slots.map((slot) =>
               slot.kind === "ghost" ? (
-                <GhostTile key={slot.id} />
+                <GhostTile
+                  key={slot.id}
+                  onCancel={() => cancelScrape(slot.id)}
+                />
               ) : (
                 <GarmentTile
                   key={slot.id}
@@ -576,9 +617,9 @@ export function TryOnSurface() {
           </div>
         )}
 
-        {/* Always-visible link row: paste a Pinterest/Myntra link to scrape a
-            garment. Visible whether or not garments are attached — only the
-            empty-state drop-zone above collapses into the grid. */}
+        {/* Always-visible link row: paste a Pinterest link to scrape a garment.
+            Visible whether or not garments are attached — only the empty-state
+            drop-zone above collapses into the grid. */}
         <div className="flex items-center gap-3" aria-hidden>
           <span className="bg-border h-px flex-1" />
           <span className="text-muted-foreground text-xs">or paste a link</span>
@@ -598,8 +639,8 @@ export function TryOnSurface() {
               inputMode="url"
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="Pinterest or Myntra link"
-              aria-label="Pinterest or Myntra link"
+              placeholder="Pinterest link"
+              aria-label="Pinterest link"
               disabled={isGenerating}
               className="pl-8"
             />
@@ -613,6 +654,9 @@ export function TryOnSurface() {
             Add link
           </Button>
         </form>
+        <p className="text-muted-foreground text-xs">
+          Myntra, Ajio, Nykaa Fashion, Flipkart, Zara &amp; more — coming soon.
+        </p>
 
         {attachments.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -684,8 +728,9 @@ function GarmentTile({
 }
 
 /** The shimmering placeholder that reserves a link garment's slot while its
- * two-hop scrape is in flight. */
-function GhostTile() {
+ * two-hop scrape is in flight. Carries its own cancel control so a scrape that
+ * stalls (or is simply unwanted) can be abandoned without leaving the surface. */
+function GhostTile({ onCancel }: { onCancel: () => void }) {
   return (
     <div
       role="status"
@@ -697,6 +742,15 @@ function GhostTile() {
         <Loader2Icon className="text-muted-foreground size-4 animate-spin motion-reduce:animate-none" />
         <span className="text-muted-foreground text-[10px]">scraping…</span>
       </div>
+      <button
+        type="button"
+        onClick={onCancel}
+        aria-label="Cancel scraping this link"
+        title="Cancel"
+        className="bg-background absolute -top-2 -right-2 z-10 grid size-5 place-items-center rounded-full border"
+      >
+        <XIcon className="size-3" />
+      </button>
     </div>
   );
 }

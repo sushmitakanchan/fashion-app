@@ -29,13 +29,13 @@ export const metadata: Metadata = {
 export default async function AuraPage({
   searchParams,
 }: {
-  searchParams: Promise<{ prototype?: string; variant?: string }>;
+  searchParams: Promise<{ prototype?: string }>;
 }) {
-  const { prototype, variant } = await searchParams;
+  const { prototype } = await searchParams;
   // The Wayfinder UI prototype must be inspectable without a local Clerk
   // session. It has no data or mutations, and does not exist in production.
   if (process.env.NODE_ENV !== "production" && prototype === "try-on") {
-    return <TryOnSurfacePrototype variant={variant} />;
+    return <TryOnSurfacePrototype />;
   }
 
   const { userId } = await auth();

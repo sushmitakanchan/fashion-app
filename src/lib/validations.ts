@@ -36,7 +36,7 @@ export const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 // limit, and the extra detail is unnecessary for portrait generation.
 export const PHOTO_MAX_EDGE = 1600;
 
-const PHOTO_TOO_LARGE = "Photo must be under 15 MB";
+const PHOTO_TOO_LARGE = "Photo must be under 15 MiB";
 const PHOTO_WRONG_TYPE = "Use a JPEG, PNG, or WebP image";
 
 const auraFields = {

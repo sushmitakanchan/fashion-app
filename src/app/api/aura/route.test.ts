@@ -98,6 +98,15 @@ const { POST } = await import("./route");
 const photo = (angle: PhotoAngle) =>
   `data:image/jpeg;base64,${Buffer.from(angle).toString("base64")}`;
 
+/** The demographic/body-profile fields this contract no longer accepts. */
+const RETIRED_PROFILE_FIELDS = [
+  "age",
+  "gender",
+  "heightCm",
+  "weightKg",
+  "bodyType",
+];
+
 const validBody = () => ({
   name: "Ada Lovelace",
   consent: true,
@@ -246,7 +255,7 @@ describe("POST /api/aura — refused submissions", () => {
     expect(auraUpsert).not.toHaveBeenCalled();
   });
 
-  it.each(["age", "gender", "heightCm", "weightKg", "bodyType"])(
+  it.each(RETIRED_PROFILE_FIELDS)(
     "refuses a submission carrying the retired %s field, without persisting",
     async (field) => {
       const response = await post({ ...validBody(), [field]: 42 });
@@ -369,11 +378,11 @@ describe("POST /api/aura — a valid live submission", () => {
     expect(profile?.consentedAt).toBeInstanceOf(Date);
     // The retired columns are gone from the model, so the route must not be
     // writing them under any name.
-    expect(Object.keys(profile!)).not.toContain("age");
-    expect(Object.keys(profile!)).not.toContain("gender");
-    expect(Object.keys(profile!)).not.toContain("heightCm");
-    expect(Object.keys(profile!)).not.toContain("weightKg");
-    expect(Object.keys(profile!)).not.toContain("bodyType");
+    expect(
+      Object.keys(profile!).filter((key) =>
+        RETIRED_PROFILE_FIELDS.includes(key),
+      ),
+    ).toEqual([]);
   });
 
   it("refreshes the consent timestamp on every successful save", async () => {

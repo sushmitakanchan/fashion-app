@@ -127,3 +127,29 @@ export const auraSubmissionSchema = z.strictObject({
 });
 
 export type AuraSubmissionInput = z.infer<typeof auraSubmissionSchema>;
+
+/** Upper bound on garments composited into a single ephemeral try-on look. */
+export const MAX_TRY_ON_GARMENTS = 6;
+
+const tryOnGarment = z.object({
+  // The untrusted upload crosses the wire exactly like a profile photo. The
+  // regex enforces MIME + base64 shape here; the generator re-validates decoded
+  // size/decodability at its boundary (`invalid-garment`).
+  image: photoDataUri,
+  name: z
+    .string({ error: "Name the garment" })
+    .trim()
+    .min(1, "Name the garment")
+    .max(80, "That name is a little too long"),
+});
+
+/** What crosses the wire to `POST /api/aura/try-on`: one-or-more garments. */
+export const auraTryOnSchema = z.object({
+  garments: z
+    .array(tryOnGarment)
+    .min(1, "Attach at least one garment")
+    .max(MAX_TRY_ON_GARMENTS, `Attach up to ${MAX_TRY_ON_GARMENTS} garments`),
+});
+
+export type AuraTryOnInput = z.infer<typeof auraTryOnSchema>;
+export type AuraTryOnGarment = z.infer<typeof tryOnGarment>;

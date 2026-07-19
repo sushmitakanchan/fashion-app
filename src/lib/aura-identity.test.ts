@@ -32,29 +32,34 @@ describe("Google AURA identity boundary", () => {
     });
   });
 
-  it("refuses a user without a linked Google OAuth account", () => {
+  // DEMO RELAXATION: with no Google account but a verified email, the keyless
+  // fallback admits the user (no Google name). Restore the strict refusal once
+  // Clerk has real keys + Google enabled.
+  it("admits a verified email even without a linked Google account", () => {
     expect(
       admitGoogleAuraIdentity({
         ...googleIdentity,
         externalAccounts: [{ ...googleIdentity.externalAccounts[0], provider: "github" }],
       }),
     ).toEqual({
-      ok: false,
-      error: "Your AURA profile requires a linked Google account.",
+      ok: true,
+      email: "ada@example.com",
+      googleName: "",
     });
   });
 
-  it("refuses a linked Google account whose email has not been verified", () => {
+  it("refuses a user with no verified email at all", () => {
     expect(
       admitGoogleAuraIdentity({
         ...googleIdentity,
+        externalAccounts: [{ ...googleIdentity.externalAccounts[0], provider: "github" }],
         emailAddresses: [
           { ...googleIdentity.emailAddresses[0], verification: { status: "unverified" } },
         ],
       }),
     ).toEqual({
       ok: false,
-      error: "Verify your Google email before saving an AURA profile.",
+      error: "Verify your email before saving an AURA profile.",
     });
   });
 

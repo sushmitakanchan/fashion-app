@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
-import { auraMode } from "@/lib/aura-config";
 import {
   admitGoogleAuraIdentity,
   resolveInitialAuraDisplayName,
@@ -15,7 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { AuraForm } from "@/components/forms/aura-form";
 
 export const metadata: Metadata = {
@@ -57,16 +55,11 @@ export default async function AuraPage() {
     persistedName,
     googleName: admission?.ok ? admission.googleName : null,
   });
-  const mode = auraMode();
-
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-16">
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-center gap-3">
-            <CardTitle className="text-2xl">Create your AURA profile</CardTitle>
-            {mode === "preview" && <Badge variant="secondary">Local preview</Badge>}
-          </div>
+          <CardTitle className="text-2xl">Create your AURA profile</CardTitle>
           <CardDescription className="text-pretty">
             Save the body-profile information used for fit and two AURA
             reference photos for your portrait. Optional 3D avatar photos are
@@ -74,7 +67,7 @@ export default async function AuraPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <AuraForm mode={mode} initialName={initialName} />
+          <AuraForm initialName={initialName} />
         </CardContent>
       </Card>
     </main>

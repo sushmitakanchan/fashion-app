@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { LoaderCircleIcon, PencilIcon, SparklesIcon } from "lucide-react";
 
-import type { AuraMode } from "@/lib/aura";
 import {
   portraitPresentation,
   type PortraitRequest,
@@ -12,23 +11,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 /**
- * The completion state after a local preview or durable profile save. Live
- * portrait generation starts only after the save has completed.
+ * The completion state after a durable profile save. Portrait generation starts
+ * only after the save has completed.
  */
 export function AuraProfileResult({
-  mode,
   portraitUrl,
   request,
   onGenerate,
   onEdit,
 }: {
-  mode: AuraMode;
   portraitUrl?: string;
   request: PortraitRequest;
   onGenerate?: () => void;
   onEdit: () => void;
 }) {
-  const presentation = portraitPresentation({ mode, portraitUrl, request });
+  const presentation = portraitPresentation({ portraitUrl, request });
   const primaryActionLabel =
     presentation.primaryAction === "retry"
       ? "Try again"
@@ -78,7 +75,7 @@ export function AuraProfileResult({
         ) : (
           <div className="grid min-h-80 place-items-center p-6 text-center">
             <div className="grid max-w-sm justify-items-center gap-3">
-              <Badge variant="secondary">{mode === "preview" ? "Local preview" : "Profile saved"}</Badge>
+              <Badge variant="secondary">Profile saved</Badge>
               {presentation.pending ? (
                 <LoaderCircleIcon className="text-primary size-10 animate-spin motion-reduce:animate-none" />
               ) : (

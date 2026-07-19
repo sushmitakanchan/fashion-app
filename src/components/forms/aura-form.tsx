@@ -4,7 +4,7 @@ import * as React from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
-import { FlaskConicalIcon, SparklesIcon } from "lucide-react";
+import { SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -25,7 +25,6 @@ import {
   ftInToCm,
   kgToLb,
   lbToKg,
-  type AuraMode,
 } from "@/lib/aura";
 import type { PortraitRequest } from "@/lib/aura-portrait-state";
 import { cn } from "@/lib/utils";
@@ -74,42 +73,14 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-destructive text-sm">{message}</p>;
 }
 
-/**
- * Marks the form as a local preview so it can never be mistaken for a live
- * submission. Shown only when the environment lacks the Cloudinary, database,
- * or OpenAI image configuration a real AURA journey needs.
- */
-function PreviewNotice() {
-  return (
-    <div
-      role="note"
-      className="border-primary/30 bg-primary/5 flex items-start gap-3 rounded-lg border px-4 py-3"
-    >
-      <FlaskConicalIcon className="text-primary mt-0.5 size-5 shrink-0" />
-      <div className="grid gap-1">
-        <p className="text-sm font-medium">Local preview</p>
-        <p className="text-muted-foreground text-sm text-pretty">
-          Your photos stay in this browser. Nothing is uploaded, saved to a
-          profile, or sent to AI. This preview shows a placeholder, not a
-          generated portrait. Configure Cloudinary, the database, and OpenAI
-          image access to enable live AURA.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export function AuraForm({
-  mode = "live",
   initialName = "",
 }: {
-  mode?: AuraMode;
   initialName?: string;
 }) {
-  const preview = mode === "preview";
   const [unitSystem, setUnitSystem] = React.useState<UnitSystem>("metric");
   const [imperial, setImperial] = React.useState<ImperialDraft>(EMPTY_IMPERIAL);
-  const [result, setResult] = React.useState<"preview" | "saved" | null>(null);
+  const [isProfileSaved, setIsProfileSaved] = React.useState(false);
   const [portraitUrl, setPortraitUrl] = React.useState<string>();
   const [portraitRequest, setPortraitRequest] =
     React.useState<PortraitRequest>("idle");
@@ -175,16 +146,6 @@ export function AuraForm({
     setValue("weightKg", valid ? lbToKg(lb) : NaN, revalidate);
   }
 
-  // Local preview validates the two required portrait references but performs
-  // no upload, persistence, or generation. Its result is intentionally a
-  // placeholder rather than a fabricated portrait.
-  function onPreview() {
-    setResult("preview");
-    toast.success("Local preview ready", {
-      description: "Nothing was uploaded, saved, or sent to AI.",
-    });
-  }
-
   async function requestPortrait() {
     setPortraitRequest("generating");
 
@@ -215,11 +176,6 @@ export function AuraForm({
   }
 
   async function onSubmit(values: AuraFormInput) {
-    if (preview) {
-      onPreview();
-      return;
-    }
-
     let photos: Partial<Record<PhotoAngle, string>>;
     try {
       const photoFiles = PHOTO_ANGLES.flatMap((angle) => {
@@ -269,22 +225,21 @@ export function AuraForm({
       return;
     }
 
-    setResult("saved");
+    setIsProfileSaved(true);
 
     toast.success("Your AURA profile is saved", {
       description: "You can now create your studio-style portrait.",
     });
   }
 
-  if (result) {
+  if (isProfileSaved) {
     return (
       <AuraProfileResult
-        mode={mode}
         portraitUrl={portraitUrl}
         request={portraitRequest}
-        onGenerate={preview ? undefined : requestPortrait}
+        onGenerate={requestPortrait}
         onEdit={() => {
-          setResult(null);
+          setIsProfileSaved(false);
           setPortraitUrl(undefined);
           setPortraitRequest("idle");
         }}
@@ -294,7 +249,6 @@ export function AuraForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="grid gap-8" noValidate>
-      {preview && <PreviewNotice />}
       <section className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label htmlFor="name">Name</Label>
@@ -615,13 +569,7 @@ export function AuraForm({
           className="w-full sm:w-auto sm:justify-self-start"
         >
           <SparklesIcon />
-          {preview
-            ? isSubmitting
-              ? "Previewing…"
-              : "Preview portrait placeholder"
-            : isSubmitting
-              ? "Saving…"
-              : "Save AURA profile"}
+          {isSubmitting ? "Saving…" : "Save AURA profile"}
         </Button>
       </section>
     </form>

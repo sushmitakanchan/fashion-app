@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 
-import { isAuraLiveConfigured } from "@/lib/aura-config";
+import {
+  AURA_CONFIGURATION_UNAVAILABLE_MESSAGE,
+  isAuraLiveConfigured,
+} from "@/lib/aura-config";
 import { admitGoogleAuraIdentity } from "@/lib/aura-identity";
 import {
   AuraPortraitError,
@@ -43,7 +46,7 @@ export async function POST() {
   if (!isAuraLiveConfigured()) {
     return failure(503, {
       code: "configuration-unavailable",
-      error: "AURA portrait generation is unavailable in this environment.",
+      error: AURA_CONFIGURATION_UNAVAILABLE_MESSAGE,
       retryable: false,
     });
   }

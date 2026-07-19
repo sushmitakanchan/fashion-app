@@ -14,6 +14,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **Package manager: Bun.** Use `bun install`, `bun add`, `bunx`, `bun run <script>`.
 
+**Work in a worktree, not the primary checkout.** Any task that edits files gets a
+fresh `git worktree` branched from `origin/main` — not just `/implement`, not just
+issues. The primary checkout stays clean and usable for the human. This is what makes
+concurrent agents safe: without it, two agents share one working tree and index, so
+one reads the other's half-finished edits as if they were the committed baseline.
+Setup, caveats, and cleanup: `docs/agents/implementation-workflow.md`.
+
 ## Stack-specific gotchas (verified against installed versions)
 
 - **Next.js 16 — middleware is `proxy.ts`.** Middleware was renamed to Proxy

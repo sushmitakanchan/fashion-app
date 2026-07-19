@@ -16,6 +16,11 @@ import { toast } from "sonner";
 
 import { downscalePhoto } from "@/lib/aura";
 import {
+  toTryOnGarment,
+  type Attachment,
+  type Upload,
+} from "@/lib/aura-provenance";
+import {
   tryOnPresentation,
   type TryOnPresentation,
   type TryOnRequest,
@@ -40,13 +45,16 @@ import { cn } from "@/lib/utils";
  * network call, and the one-active-generation guard.
  */
 
-/** A garment the user attached: the real `File` (encoded at generate time) and
- * an object URL used only for its thumbnail. */
-type Attachment = { id: string; name: string; file: File; url: string };
+/** The generated look, held as an inline data URL, that **owns the sources that
+ * produced it** — the same {@link Attachment} objects that were composed. The
+ * bundle is replaced whole by the next successful generation (its uploads'
+ * object URLs revoked then) and released on unmount; displayed garment names are
+ * derived from `sources`. */
+type Result = { image: string; sources: Attachment[] };
 
-/** The generated look, held as an inline data URL with the garment names that
- * produced it — replaced whole by the next successful generation. */
-type Result = { image: string; garments: string[] };
+/** The try-on route's success body. Only the look image is read now — displayed
+ * garment names come from the retained `sources`, not the route's echo. */
+type TryOnResponse = { image?: string };
 
 type TryOnFailure = {
   code?: string;
@@ -54,9 +62,25 @@ type TryOnFailure = {
   retryable?: boolean;
 };
 
+/** Release an upload's thumbnail object URL. Links carry a data-URI `previewUrl`
+ * (nothing to revoke), so revocation is scoped to the upload arm. */
+function releasePreview(source: Attachment) {
+  if (source.kind === "upload") URL.revokeObjectURL(source.previewUrl);
+}
+
 function garmentName(file: File): string {
   const withoutExtension = file.name.replace(/\.[^.]+$/, "").trim();
   return withoutExtension.slice(0, 80) || "Garment";
+}
+
+/** Resolve a garment to the downscaled data URI the try-on request carries. The
+ * composer builds only uploads today; the link arm (downscaling the scraped
+ * data URI to the same edge) lands with the link UI in #4. */
+function garmentImage(source: Attachment): Promise<string> {
+  if (source.kind === "link") {
+    throw new Error("Link garments are not wired into the composer yet");
+  }
+  return downscalePhoto(source.file, PHOTO_MAX_EDGE);
 }
 
 export function TryOnSurface() {
@@ -73,16 +97,22 @@ export function TryOnSurface() {
     "idle" | "generating" | "retryable-failure" | "refused"
   >("idle");
 
-  // Revoke any live object URLs when the surface unmounts (navigation away).
-  // The ref is synced in an effect (never during render) so the unmount cleanup
-  // sees the latest attachments without re-subscribing on every change.
+  // Revoke every live upload object URL when the surface unmounts (navigation
+  // away) — both the staging composer and the retained result bundle. The refs
+  // are synced in an effect (never during render) so the unmount cleanup sees
+  // the latest values without re-subscribing on every change.
   const attachedRef = React.useRef(attached);
+  const resultRef = React.useRef(result);
   React.useEffect(() => {
     attachedRef.current = attached;
   }, [attached]);
+  React.useEffect(() => {
+    resultRef.current = result;
+  }, [result]);
   React.useEffect(
     () => () => {
-      for (const item of attachedRef.current) URL.revokeObjectURL(item.url);
+      for (const item of attachedRef.current) releasePreview(item);
+      for (const item of resultRef.current?.sources ?? []) releasePreview(item);
     },
     [],
   );
@@ -114,11 +144,12 @@ export function TryOnSurface() {
         description: "Remove a piece before adding more.",
       });
     }
-    const added = files.slice(0, Math.max(room, 0)).map((file) => ({
+    const added: Upload[] = files.slice(0, Math.max(room, 0)).map((file) => ({
+      kind: "upload",
       id: String(++idRef.current),
       name: garmentName(file),
       file,
-      url: URL.createObjectURL(file),
+      previewUrl: URL.createObjectURL(file),
     }));
     if (added.length) setAttached((prev) => [...prev, ...added]);
   }
@@ -126,7 +157,7 @@ export function TryOnSurface() {
   function removeAttachment(id: string) {
     setAttached((prev) => {
       const target = prev.find((item) => item.id === id);
-      if (target) URL.revokeObjectURL(target.url);
+      if (target) releasePreview(target);
       return prev.filter((item) => item.id !== id);
     });
   }
@@ -141,10 +172,8 @@ export function TryOnSurface() {
 
     let garments: AuraTryOnInput["garments"];
     try {
-      const images = await Promise.all(
-        from.map((item) => downscalePhoto(item.file, PHOTO_MAX_EDGE)),
-      );
-      garments = from.map((item, i) => ({ image: images[i], name: item.name }));
+      const images = await Promise.all(from.map(garmentImage));
+      garments = from.map((item, i) => toTryOnGarment(item, images[i]));
     } catch {
       setPhase("retryable-failure");
       toast.error("We couldn't read one of those garment images", {
@@ -169,7 +198,7 @@ export function TryOnSurface() {
     }
 
     const body = (await response.json().catch(() => null)) as
-      | (Result & TryOnFailure)
+      | (TryOnResponse & TryOnFailure)
       | null;
 
     if (!response.ok || !body?.image) {
@@ -200,16 +229,20 @@ export function TryOnSurface() {
       return;
     }
 
-    setResult({
-      image: body.image,
-      garments: body.garments?.length
-        ? body.garments
-        : from.map((item) => item.name),
+    // The generated look owns the sources that produced it. The previous
+    // bundle is replaced whole — its uploads' object URLs are revoked *now*,
+    // since nothing references them anymore.
+    const image = body.image;
+    setResult((prev) => {
+      if (prev) for (const item of prev.sources) releasePreview(item);
+      return { image, sources: from };
     });
-    // A fresh look replaces the previous one; the attached pieces have done
-    // their job, so clear them (and their object URLs).
+    // The staging composer resets for the next look, but the pieces it held did
+    // *not* have their bytes discarded — they live on in the result's sources,
+    // so only staging items that never made it into the look are released.
+    const retained = new Set(from.map((item) => item.id));
     setAttached((prev) => {
-      for (const item of prev) URL.revokeObjectURL(item.url);
+      for (const item of prev) if (!retained.has(item.id)) releasePreview(item);
       return [];
     });
     setPhase("idle");
@@ -283,7 +316,7 @@ export function TryOnSurface() {
                 <div key={garment.id} className="relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={garment.url}
+                    src={garment.previewUrl}
                     alt={garment.name}
                     className="border-border size-20 rounded-lg border object-cover"
                   />
@@ -468,7 +501,7 @@ function ResultStage({
   presentation: TryOnPresentation;
   pending?: boolean;
 }) {
-  const caption = result.garments.join(" + ");
+  const caption = result.sources.map((source) => source.name).join(" + ");
   return (
     <figure className="grid gap-2" aria-busy={pending || undefined}>
       <div className="bg-muted/30 relative grid place-items-center overflow-hidden rounded-xl border p-2">

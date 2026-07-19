@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { auraMode } from "@/lib/aura-config";
+import {
+  admitGoogleAuraIdentity,
+  resolveInitialAuraDisplayName,
+} from "@/lib/aura-identity";
+import { getPrisma } from "@/lib/prisma";
 import {
   Card,
   CardContent,
@@ -28,6 +33,30 @@ export default async function AuraPage() {
     redirect("/");
   }
 
+  const clerkUser = await currentUser();
+  const admission = clerkUser ? admitGoogleAuraIdentity(clerkUser) : null;
+  let persistedName: string | null = null;
+
+  // Refused identities do not need profile data and must not reach the database.
+  // The route handler returns the clear 403 when they attempt to save.
+  if (admission?.ok) {
+    try {
+      const user = await getPrisma().user.findUnique({
+        where: { clerkId: userId },
+        select: { auraProfile: { select: { name: true } } },
+      });
+      persistedName = user?.auraProfile?.name ?? null;
+    } catch {
+      // The save endpoint remains the authoritative live-config failure boundary.
+      // Falling back here lets a first-time form still show its empty placeholder.
+      persistedName = null;
+    }
+  }
+
+  const initialName = resolveInitialAuraDisplayName({
+    persistedName,
+    googleName: admission?.ok ? admission.googleName : null,
+  });
   const mode = auraMode();
 
   return (
@@ -45,7 +74,7 @@ export default async function AuraPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <AuraForm mode={mode} />
+          <AuraForm mode={mode} initialName={initialName} />
         </CardContent>
       </Card>
     </main>

@@ -40,7 +40,17 @@ type UpsertStub = (args: UpsertArgs) => Promise<{ id: string }>;
 let live = true;
 let userId: string | null = "clerk_user_1";
 let clerkUser: {
-  emailAddresses: { emailAddress: string }[];
+  emailAddresses: {
+    emailAddress: string;
+    verification: { status: "verified" | "unverified" };
+  }[];
+  externalAccounts: {
+    provider: "google" | "github";
+    emailAddress: string;
+    firstName: string;
+    lastName: string;
+    verification: { status: "verified" | "unverified" };
+  }[];
   firstName: string | null;
   lastName: string | null;
   imageUrl: string;
@@ -111,7 +121,18 @@ beforeEach(() => {
   live = true;
   userId = "clerk_user_1";
   clerkUser = {
-    emailAddresses: [{ emailAddress: "ada@example.com" }],
+    emailAddresses: [
+      { emailAddress: "ada@example.com", verification: { status: "verified" } },
+    ],
+    externalAccounts: [
+      {
+        provider: "google",
+        emailAddress: "ada@example.com",
+        firstName: "Ada",
+        lastName: "Lovelace",
+        verification: { status: "verified" },
+      },
+    ],
     firstName: "Ada",
     lastName: "Lovelace",
     imageUrl: "https://img.clerk.test/ada.png",
@@ -163,6 +184,54 @@ describe("POST /api/aura — refused submissions", () => {
     expect(auraUpsert).not.toHaveBeenCalled();
   });
 
+  it("returns unauthorized before reporting unavailable live services", async () => {
+    live = false;
+    userId = null;
+
+    const response = await post(validBody());
+
+    expect(response.status).toBe(401);
+    expect(userUpsert).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+    expect(auraUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-Google identity before external operations", async () => {
+    clerkUser = {
+      ...clerkUser!,
+      externalAccounts: [{ ...clerkUser!.externalAccounts[0], provider: "github" }],
+    };
+
+    const response = await post(validBody());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Your AURA profile requires a linked Google account.",
+    });
+    expect(userUpsert).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+    expect(auraUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unverified Google email before external operations", async () => {
+    clerkUser = {
+      ...clerkUser!,
+      emailAddresses: [
+        { ...clerkUser!.emailAddresses[0], verification: { status: "unverified" } },
+      ],
+    };
+
+    const response = await post(validBody());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Verify your Google email before saving an AURA profile.",
+    });
+    expect(userUpsert).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+    expect(auraUpsert).not.toHaveBeenCalled();
+  });
+
   it("returns the validation issues for an invalid payload, without persisting", async () => {
     const response = await post({ ...validBody(), age: 9, consent: false });
 
@@ -205,12 +274,12 @@ describe("POST /api/aura — refused submissions", () => {
     expect(auraUpsert).not.toHaveBeenCalled();
   });
 
-  it("explains an account with no email address, without persisting", async () => {
+  it("refuses an account with no verified Google email, without persisting", async () => {
     clerkUser = { ...clerkUser!, emailAddresses: [] };
 
     const response = await post(validBody());
 
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(403);
     expect(upload).not.toHaveBeenCalled();
     expect(auraUpsert).not.toHaveBeenCalled();
   });

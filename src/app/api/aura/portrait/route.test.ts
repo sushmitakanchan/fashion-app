@@ -34,6 +34,19 @@ type UploadStub = (
 
 let live = true;
 let userId: string | null = "clerk_user_1";
+let clerkUser: {
+  emailAddresses: {
+    emailAddress: string;
+    verification: { status: "verified" | "unverified" };
+  }[];
+  externalAccounts: {
+    provider: "google" | "github";
+    emailAddress: string;
+    firstName: string;
+    lastName: string;
+    verification: { status: "verified" | "unverified" };
+  }[];
+} | null;
 let profile: Profile | null;
 let findUser: ReturnType<typeof mock<FindUserStub>>;
 let update: ReturnType<typeof mock<UpdateStub>>;
@@ -46,6 +59,7 @@ mock.module("@/lib/aura-config", () => ({
 
 mock.module("@clerk/nextjs/server", () => ({
   auth: async () => ({ userId }),
+  currentUser: async () => clerkUser,
 }));
 
 mock.module("@/lib/aura-portrait", () => ({
@@ -77,6 +91,20 @@ const post = () => POST();
 beforeEach(() => {
   live = true;
   userId = "clerk_user_1";
+  clerkUser = {
+    emailAddresses: [
+      { emailAddress: "ada@example.com", verification: { status: "verified" } },
+    ],
+    externalAccounts: [
+      {
+        provider: "google",
+        emailAddress: "ada@example.com",
+        firstName: "Ada",
+        lastName: "Lovelace",
+        verification: { status: "verified" },
+      },
+    ],
+  };
   profile = {
     id: "aura_1",
     photoFrontUrl: "https://res.cloudinary.test/aura/front.jpg",
@@ -138,6 +166,44 @@ describe("POST /api/aura/portrait", () => {
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({ code: "unauthorized", retryable: false }),
     );
+  });
+
+  it("refuses a non-Google identity before any portrait operation", async () => {
+    clerkUser = {
+      ...clerkUser!,
+      externalAccounts: [{ ...clerkUser!.externalAccounts[0], provider: "github" }],
+    };
+
+    const response = await post();
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: "identity-refused", retryable: false }),
+    );
+    expect(findUser).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unverified Google email before any portrait operation", async () => {
+    clerkUser = {
+      ...clerkUser!,
+      emailAddresses: [
+        { ...clerkUser!.emailAddresses[0], verification: { status: "unverified" } },
+      ],
+    };
+
+    const response = await post();
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: "identity-refused", retryable: false }),
+    );
+    expect(findUser).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("reports a missing saved profile", async () => {

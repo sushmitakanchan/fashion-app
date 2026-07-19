@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 
 import { isAuraLiveConfigured } from "@/lib/aura-config";
+import { admitGoogleAuraIdentity } from "@/lib/aura-identity";
 import {
   AuraPortraitError,
   generateAuraPortrait,
@@ -20,19 +21,29 @@ function failure(status: number, body: Failure) {
 }
 
 export async function POST() {
-  if (!isAuraLiveConfigured()) {
-    return failure(503, {
-      code: "configuration-unavailable",
-      error: "AURA portrait generation is unavailable in this environment.",
-      retryable: false,
-    });
-  }
-
   const { userId } = await auth();
   if (!userId) {
     return failure(401, {
       code: "unauthorized",
       error: "Unauthorized",
+      retryable: false,
+    });
+  }
+
+  const clerkUser = await currentUser();
+  const admission = clerkUser && admitGoogleAuraIdentity(clerkUser);
+  if (!admission?.ok) {
+    return failure(403, {
+      code: "identity-refused",
+      error: admission?.error ?? "We couldn't verify your Google identity.",
+      retryable: false,
+    });
+  }
+
+  if (!isAuraLiveConfigured()) {
+    return failure(503, {
+      code: "configuration-unavailable",
+      error: "AURA portrait generation is unavailable in this environment.",
       retryable: false,
     });
   }

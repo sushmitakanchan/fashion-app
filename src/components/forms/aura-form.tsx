@@ -99,7 +99,13 @@ function PreviewNotice() {
   );
 }
 
-export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
+export function AuraForm({
+  mode = "live",
+  initialName = "",
+}: {
+  mode?: AuraMode;
+  initialName?: string;
+}) {
   const preview = mode === "preview";
   const [unitSystem, setUnitSystem] = React.useState<UnitSystem>("metric");
   const [imperial, setImperial] = React.useState<ImperialDraft>(EMPTY_IMPERIAL);
@@ -117,7 +123,7 @@ export function AuraForm({ mode = "live" }: { mode?: AuraMode }) {
     formState: { errors, isSubmitting, isSubmitted },
   } = useForm<AuraFormInput>({
     resolver: zodResolver(auraFormSchema),
-    defaultValues: { name: "", consent: false },
+    defaultValues: { name: initialName, consent: false },
   });
 
   // `useWatch` rather than `watch()`: it scopes the re-render to this one field

@@ -41,9 +41,9 @@ bun run dev
 Open [http://localhost:3000](http://localhost:3000).
 
 **You can run the app with zero configuration.** Clerk starts in *keyless mode*
-(it provisions a temporary dev instance on first load), and `/aura` falls back to
-a clearly labelled **local preview** that skips uploads and persistence. Add
-credentials to enable live submission.
+(it provisions a temporary dev instance on first load). AURA always attempts
+the live save and portrait journey; without its database, Cloudinary, and OpenAI
+credentials, it clearly reports that the service is unavailable.
 
 ## Environment variables
 

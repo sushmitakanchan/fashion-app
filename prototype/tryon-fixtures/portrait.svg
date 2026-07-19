@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="768" viewBox="0 0 512 768">
+  <rect width="512" height="768" fill="#e8e2d9"/>
+  <rect x="8" y="8" width="496" height="752" fill="none" stroke="#0003" stroke-width="2" stroke-dasharray="10 8"/>
+  <text x="50%" y="47%" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="26" font-weight="600" fill="#0009">AURA portrait</text>
+  <text x="50%" y="47%" dy="30" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#0007">the try-on subject</text>
+  <text x="50%" y="47%" dy="58" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" fill="#0006">PLACEHOLDER — replace with a real image</text>
+</svg>

@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "bun test",
     "healthcheck": "bun run scripts/healthcheck.ts",
+    "prototype:tryon": "bun run scripts/prototype-tryon.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",

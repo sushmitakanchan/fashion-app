@@ -86,3 +86,32 @@ export function toSaveSource(source: Attachment, image: string): SaveSource {
 export function inferKind(source: SaveSource): "upload" | "link" {
   return "url" in source ? "link" : "upload";
 }
+
+/** The host of a pasted link, or the raw string if it doesn't parse as a URL. */
+function linkHost(sourceUrl: string): string {
+  try {
+    return new URL(sourceUrl).host;
+  } catch {
+    return sourceUrl;
+  }
+}
+
+/**
+ * The name a scraped link garment carries: the scraped product title when the
+ * page yielded one, otherwise the source host plus a running index so several
+ * title-less garments from the same site stay distinguishable in a mixed look.
+ *
+ * The scrape route already collapses a missing title to the URL host, so a
+ * returned name equal to the host means "no title" — that's the case the index
+ * disambiguates. `index` is a monotonic per-link ordinal supplied by the caller.
+ */
+export function linkGarmentName(
+  scrapedName: string | null | undefined,
+  sourceUrl: string,
+  index: number,
+): string {
+  const host = linkHost(sourceUrl);
+  const title = scrapedName?.trim();
+  if (title && title !== host) return title;
+  return `${host} ${index}`;
+}

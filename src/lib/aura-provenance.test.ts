@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   inferKind,
+  linkGarmentName,
   toSaveSource,
   toTryOnGarment,
   type Link,
@@ -79,5 +80,50 @@ describe("inferKind", () => {
 
   it("infers an upload from a save source without url/site", () => {
     expect(inferKind({ image: IMAGE, name: "Linen shirt" })).toBe("upload");
+  });
+});
+
+describe("linkGarmentName", () => {
+  it("uses the scraped title when the page yielded one", () => {
+    expect(
+      linkGarmentName(
+        "Ribbed cotton tank",
+        "https://www.pinterest.com/pin/123/",
+        1,
+      ),
+    ).toBe("Ribbed cotton tank");
+  });
+
+  it("trims the scraped title", () => {
+    expect(
+      linkGarmentName("  Linen shirt  ", "https://www.myntra.com/x/999/buy", 2),
+    ).toBe("Linen shirt");
+  });
+
+  it("falls back to host + index when the route returned the bare host", () => {
+    // The scrape route collapses a missing title to the URL host, so a name
+    // equal to the host is the "no title" case the index disambiguates.
+    expect(
+      linkGarmentName(
+        "www.myntra.com",
+        "https://www.myntra.com/x/999/buy",
+        3,
+      ),
+    ).toBe("www.myntra.com 3");
+  });
+
+  it("falls back to host + index when no name was returned", () => {
+    expect(
+      linkGarmentName(null, "https://www.pinterest.com/pin/7/", 4),
+    ).toBe("www.pinterest.com 4");
+    expect(
+      linkGarmentName(undefined, "https://www.pinterest.com/pin/7/", 5),
+    ).toBe("www.pinterest.com 5");
+  });
+
+  it("keeps two title-less garments from the same host distinguishable", () => {
+    const url = "https://www.myntra.com/x/1/buy";
+    expect(linkGarmentName("", url, 1)).toBe("www.myntra.com 1");
+    expect(linkGarmentName("", url, 2)).toBe("www.myntra.com 2");
   });
 });

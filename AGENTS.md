@@ -82,7 +82,7 @@ don't reintroduce them.
 - `src/components/` — `aura/` portrait-result, body-type, and form pieces; `ui/` shadcn (Base UI) primitives; `forms/` (`aura-form.tsx`); `providers/` (Query + Theme); `mode-toggle.tsx`.
 - `src/lib/` — `prisma`, `env`, `aura-config`, `aura`, `ai` (text-generation boundary), `openai`, `anthropic`, `cloudinary`, `validations`, `healthcheck` (see below), `utils` (`cn`).
 - `scripts/` — standalone Bun entry points, not part of the Next.js build.
-- `prisma/schema.prisma` — the data model: `User`, one `AuraProfile` per user, and the `Gender` / `BodyType` enums.
+- `prisma/schema.prisma` — the data model: `User` and one `AuraProfile` per user (display name, reference photo URLs, consent, generated portrait).
 
 Conventions the gotchas above don't already cover:
 

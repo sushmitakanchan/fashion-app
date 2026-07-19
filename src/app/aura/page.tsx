@@ -61,9 +61,9 @@ export default async function AuraPage() {
         <CardHeader>
           <CardTitle className="text-2xl">Create your AURA profile</CardTitle>
           <CardDescription className="text-pretty">
-            Save the body-profile information used for fit and two AURA
-            reference photos for your portrait. Optional 3D avatar photos are
-            clearly marked in the form and can be updated later.
+            Save your AURA display name and the two AURA reference photos used
+            to create your portrait. Optional 3D avatar photos are clearly
+            marked in the form and can be updated later.
           </CardDescription>
         </CardHeader>
         <CardContent>

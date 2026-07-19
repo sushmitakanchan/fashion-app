@@ -128,11 +128,6 @@ export async function POST(req: Request) {
 
   const profile = {
     name: parsed.data.name,
-    age: parsed.data.age,
-    gender: parsed.data.gender,
-    heightCm: parsed.data.heightCm,
-    weightKg: parsed.data.weightKg,
-    bodyType: parsed.data.bodyType,
     photoFrontUrl: urls.front!,
     photoCloseupUrl: urls.closeup!,
     // The schema already refused anything but `true`; record when they agreed.

@@ -21,9 +21,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AURA | Personalized fit and studio-style portraits",
+  title: "AURA | Studio-style portraits from two photos",
   description:
-    "Personalize your fit with your body profile and create an AURA portrait from a full-body, front-facing photo and a face close-up.",
+    "Create an AURA portrait from a full-body, front-facing photo and a face close-up.",
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Show, UserButton } from "@clerk/nextjs";
-import { CameraIcon, RulerIcon, SparklesIcon } from "lucide-react";
+import { BoxIcon, CameraIcon, SparklesIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,16 +15,16 @@ import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 
 const steps = [
   {
-    icon: RulerIcon,
-    title: "Your body profile",
-    description:
-      "Share your height, weight, age, and body type to personalize your fit.",
-  },
-  {
     icon: CameraIcon,
     title: "Two AURA reference photos",
     description:
       "A full-body, front-facing photo and a face close-up create your AURA portrait.",
+  },
+  {
+    icon: BoxIcon,
+    title: "Optional 3D avatar photos",
+    description:
+      "Left, right, and back photos are kept for a future 3D avatar. Coming soon.",
   },
   {
     icon: SparklesIcon,
@@ -58,15 +58,15 @@ export default function Home() {
       <main className="flex-1">
         <section className="mx-auto flex w-full max-w-6xl flex-col items-center px-6 py-24 text-center">
           <Badge variant="secondary" className="mb-6">
-            <SparklesIcon /> Personalized fit, your AURA portrait
+            <SparklesIcon /> Two photos, your AURA portrait
           </Badge>
           <h1 className="max-w-3xl text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
-            Your personalized fit starts with AURA
+            Your studio-style portrait starts with AURA
           </h1>
           <p className="text-muted-foreground mt-6 max-w-xl text-lg leading-relaxed text-pretty italic">
-            Share your body profile to personalize your fit, plus a full-body,
-            front-facing photo and a face close-up to create a polished,
-            studio-style AURA portrait.
+            Add a full-body, front-facing photo and a face close-up to create a
+            polished, studio-style AURA portrait. Optional left, right, and back
+            photos are kept for a future 3D avatar.
           </p>
           <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row">
             {/* /aura is protected, so signed-out visitors get the sign-up modal
@@ -107,7 +107,7 @@ export default function Home() {
       <footer className="border-t py-10">
         <div className="mx-auto w-full max-w-6xl px-6 text-center">
           <p className="text-muted-foreground text-sm">
-            AURA — one profile per account. Update your body profile and two
+            AURA — one profile per account. Update your display name and two
             AURA reference photos to regenerate your studio-style portrait
             anytime.
           </p>

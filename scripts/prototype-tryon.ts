@@ -201,7 +201,22 @@ async function generate(
   return { b64, ms };
 }
 
-function contactSheet(runs: Run[], live: boolean) {
+function contactSheet(
+  runs: Run[],
+  live: boolean,
+  why: string,
+  portrait: string,
+  garments: Map<string, string>,
+) {
+  const rel = (p: string) => `../${basename(FIXTURES)}/${basename(p)}`;
+  const inputs = `<section><h3>Inputs</h3><div class="row">
+    <figure><img src="${rel(portrait)}" alt="subject"><figcaption>Try-on subject — the AURA portrait</figcaption></figure>
+    ${GARMENT_CASES.map(
+      (g) =>
+        `<figure><img src="${rel(garments.get(g.slug)!)}" alt="${g.slug}"><figcaption>${g.label}</figcaption></figure>`,
+    ).join("")}
+  </div></section>`;
+
   const cell = (r: Run) => {
     const body = r.file
       ? `<img src="${basename(r.file)}" alt="${r.garment} / ${r.variant}">`
@@ -241,8 +256,10 @@ function contactSheet(runs: Run[], live: boolean) {
 ${
   live
     ? `<p class="banner live"><strong>Live run.</strong> These are real model outputs. Judge them.</p>`
-    : `<p class="banner placeholder"><strong>Placeholder run — nothing was generated.</strong> No <code>OPENAI_API_KEY</code>, or the fixtures are still SVG stand-ins. The pipeline below is wired and ran end to end; only the model call was skipped. To produce real output: set <code>OPENAI_API_KEY</code> in <code>.env</code>, replace the files in <code>${FIXTURES}/</code> with real JPG/PNG images of the same stem, and re-run <code>bun run prototype:tryon</code>.</p>`
+    : `<p class="banner placeholder"><strong>Placeholder run — nothing was generated:</strong> ${why}. The pipeline below is wired and ran end to end; only the model call was skipped. The inputs above are the real fixtures it will use. To produce output, set <code>OPENAI_API_KEY</code> in <code>.env</code> and re-run <code>bun run prototype:tryon</code>.</p>`
 }
+${inputs}
+<h2>Results</h2>
 ${rows}
 <h3>Judge each cell against these — they are the ticket's criteria</h3>
 <ol>
@@ -264,11 +281,13 @@ const fixturesAreReal =
   RASTER.has(extname(portrait)) &&
   [...garments.values()].every((g) => RASTER.has(extname(g)));
 const live = Boolean(process.env.OPENAI_API_KEY) && fixturesAreReal;
+const why = !process.env.OPENAI_API_KEY
+  ? "OPENAI_API_KEY is not set"
+  : !fixturesAreReal
+    ? "fixtures are not raster images images.edit can accept"
+    : "";
 
 if (!live) {
-  const why = !process.env.OPENAI_API_KEY
-    ? "OPENAI_API_KEY is not set"
-    : "fixtures are still SVG placeholders";
   console.log(`PLACEHOLDER MODE — ${why}. Wiring runs; the model call is skipped.\n`);
 }
 
@@ -296,7 +315,7 @@ for (const g of GARMENT_CASES) {
 }
 
 const sheet = join(OUT, "index.html");
-await writeFile(sheet, contactSheet(runs, live));
+await writeFile(sheet, contactSheet(runs, live, why, portrait, garments));
 
 const times = runs.filter((r) => r.ms > 0).map((r) => r.ms);
 console.log(`\nContact sheet: ${sheet}`);

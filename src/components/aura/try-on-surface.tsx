@@ -15,9 +15,13 @@ import {
 import { toast } from "sonner";
 
 import { downscalePhoto } from "@/lib/aura";
+import { STYLE_BOOK_HREF, type SaveState } from "@/lib/aura-save-state";
 import {
+  rawImageOf,
+  toSaveSource,
   toTryOnGarment,
   type Attachment,
+  type SaveSource,
   type Upload,
 } from "@/lib/aura-provenance";
 import {
@@ -32,6 +36,7 @@ import {
 } from "@/lib/validations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SaveBar } from "@/components/aura/save-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -83,6 +88,19 @@ function garmentImage(source: Attachment): Promise<string> {
   return downscalePhoto(source.file, PHOTO_MAX_EDGE);
 }
 
+/** Re-encode/downscale a source's image to the same edge at save time — both
+ * arms — so the `Attachment` (the `File` / scraped data URI) stays the single
+ * source of truth and a full-res scraped image never ships in the payload. */
+function saveSourceImage(source: Attachment): Promise<string> {
+  return downscalePhoto(rawImageOf(source), PHOTO_MAX_EDGE);
+}
+
+/** The style-book route's `201` body (the fields the toast reads). */
+type StyleBookSaveResponse = { caption?: string };
+
+/** A route failure envelope, mirroring the try-on route's shape. */
+type StyleBookFailure = { error?: string };
+
 export function TryOnSurface() {
   const router = useRouter();
   const idRef = React.useRef(0);
@@ -96,6 +114,13 @@ export function TryOnSurface() {
   const [phase, setPhase] = React.useState<
     "idle" | "generating" | "retryable-failure" | "refused"
   >("idle");
+  // The save bar's lifecycle for the *current* result. Reset to idle whenever a
+  // new look is generated (the effect below keyed on `result`), so a fresh look
+  // is always saveable — even after the previous one reached terminal "Saved".
+  const [saveState, setSaveState] = React.useState<SaveState>("idle");
+  // Client-only in-flight guard: dedupes a double-click before React has
+  // re-rendered the disabled button. No server-side dedup in v1.
+  const savingRef = React.useRef(false);
 
   // Revoke every live upload object URL when the surface unmounts (navigation
   // away) — both the staging composer and the retained result bundle. The refs
@@ -237,6 +262,10 @@ export function TryOnSurface() {
       if (prev) for (const item of prev.sources) releasePreview(item);
       return { image, sources: from };
     });
+    // A fresh look is saveable from scratch: "Generate again" resets the save
+    // bar to idle, dropping any terminal "Saved" from the look it replaced.
+    savingRef.current = false;
+    setSaveState("idle");
     // The staging composer resets for the next look, but the pieces it held did
     // *not* have their bytes discarded — they live on in the result's sources,
     // so only staging items that never made it into the look are released.
@@ -246,6 +275,76 @@ export function TryOnSurface() {
       return [];
     });
     setPhase("idle");
+  }
+
+  async function saveLook(look: Result) {
+    // Only a settled, idle result is saveable, and only one save runs at a time.
+    // The ref closes the double-click window the `saving` state alone can't
+    // (both clicks fire before the disabled re-render lands).
+    if (savingRef.current || saveState !== "idle") return;
+    savingRef.current = true;
+    setSaveState("saving");
+
+    // Every failure returns the bar to idle/retryable with an error toast — only
+    // a confirmed 2xx below reaches terminal "Saved".
+    const failSave = (title: string, description: string) => {
+      savingRef.current = false;
+      setSaveState("idle");
+      toast.error(title, { description });
+    };
+
+    // Project the retained sources to the per-source save shape, re-encoding
+    // every image to `PHOTO_MAX_EDGE` on both arms first (a one-time browser
+    // cost shadowed by the Cloudinary uploads this same save triggers).
+    let sources: SaveSource[];
+    try {
+      const images = await Promise.all(look.sources.map(saveSourceImage));
+      sources = look.sources.map((source, i) => toSaveSource(source, images[i]));
+    } catch {
+      failSave("We couldn't prepare your look to save", "Please try again.");
+      return;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch("/api/aura/style-book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ look: look.image, sources }),
+      });
+    } catch {
+      failSave(
+        "Couldn't reach the server",
+        "Check your connection and try again.",
+      );
+      return;
+    }
+
+    // Only a confirmed 2xx reaches the terminal "Saved" state; every other
+    // outcome returns the bar to idle/retryable with an error toast.
+    if (!response.ok) {
+      const failure = (await response.json().catch(() => null)) as
+        | StyleBookFailure
+        | null;
+      failSave(
+        "We couldn't save your look",
+        failure?.error ?? "Nothing was saved. Please try again.",
+      );
+      return;
+    }
+
+    const saved = (await response.json().catch(() => null)) as
+      | StyleBookSaveResponse
+      | null;
+    savingRef.current = false;
+    setSaveState("saved");
+    toast.success("Saved to your Style Book", {
+      description: saved?.caption,
+      action: {
+        label: "View",
+        onClick: () => router.push(STYLE_BOOK_HREF),
+      },
+    });
   }
 
   return (
@@ -273,7 +372,18 @@ export function TryOnSurface() {
             onAttachDifferent={openPicker}
           />
         ) : result ? (
-          <ResultStage result={result} presentation={presentation} />
+          <>
+            <ResultStage result={result} presentation={presentation} />
+            {/* Wide save bar directly under the result image. `busy` folds in
+                any composer work-in-progress — an in-flight generation today,
+                and the in-flight scrape once the link input lands. */}
+            <SaveBar
+              state={saveState}
+              busy={isGenerating}
+              onSave={() => saveLook(result)}
+              onRegenerate={() => generate(result.sources)}
+            />
+          </>
         ) : (
           <EmptyStage presentation={presentation} onAttach={openPicker} />
         )}

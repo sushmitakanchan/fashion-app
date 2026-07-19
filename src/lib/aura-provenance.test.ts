@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   inferKind,
+  rawImageOf,
   toSaveSource,
   toTryOnGarment,
   type Link,
@@ -62,6 +63,16 @@ describe("toSaveSource", () => {
       site: "pinterest",
     });
     expect(inferKind(source)).toBe("link");
+  });
+});
+
+describe("rawImageOf", () => {
+  it("returns the File for an upload", () => {
+    expect(rawImageOf(upload)).toBe(upload.file);
+  });
+
+  it("returns the scraped data URI for a link", () => {
+    expect(rawImageOf(link)).toBe(link.scrapedImage);
   });
 });
 

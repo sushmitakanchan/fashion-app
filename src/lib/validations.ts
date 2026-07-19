@@ -131,16 +131,20 @@ export type AuraSubmissionInput = z.infer<typeof auraSubmissionSchema>;
 /** Upper bound on garments composited into a single ephemeral try-on look. */
 export const MAX_TRY_ON_GARMENTS = 6;
 
+// A garment/source name — one policy shared by the try-on garment and the
+// Style Book save source, so the 80-char cap can never drift between the two.
+const garmentName = z
+  .string({ error: "Name the garment" })
+  .trim()
+  .min(1, "Name the garment")
+  .max(80, "That name is a little too long");
+
 const tryOnGarment = z.object({
   // The untrusted upload crosses the wire exactly like a profile photo. The
   // regex enforces MIME + base64 shape here; the generator re-validates decoded
   // size/decodability at its boundary (`invalid-garment`).
   image: photoDataUri,
-  name: z
-    .string({ error: "Name the garment" })
-    .trim()
-    .min(1, "Name the garment")
-    .max(80, "That name is a little too long"),
+  name: garmentName,
 });
 
 /** What crosses the wire to `POST /api/aura/try-on`: one-or-more garments. */
@@ -153,3 +157,53 @@ export const auraTryOnSchema = z.object({
 
 export type AuraTryOnInput = z.infer<typeof auraTryOnSchema>;
 export type AuraTryOnGarment = z.infer<typeof tryOnGarment>;
+
+/* -------------------------------------------------------------------------- */
+/*                         Style Book — saving a look                         */
+/* -------------------------------------------------------------------------- */
+
+/** The sites a link Source can originate from. */
+export const SAVED_LOOK_SOURCE_SITES = ["pinterest", "myntra"] as const;
+
+export type SavedLookSourceSite = (typeof SAVED_LOOK_SOURCE_SITES)[number];
+
+// A source is either an upload or a link, and provenance is *inferred* — no
+// `kind` discriminator crosses the wire. `url`/`site` are optional and only
+// meaningful together: both present ⇒ link (kept as retained future intent for
+// a later "purchase this garment" affordance), both absent ⇒ upload. Anything
+// in between is a malformed source rather than a silently-coerced one. The
+// image reuses `photoDataUri` exactly like an upload/try-on garment, so one
+// size/type policy governs every image AURA stores.
+const saveSourceInput = z
+  .object({
+    image: photoDataUri,
+    name: garmentName,
+    url: z.url().optional(),
+    site: z.enum(SAVED_LOOK_SOURCE_SITES).optional(),
+  })
+  .refine((source) => (source.url === undefined) === (source.site === undefined), {
+    error: "A link source needs both a url and a site",
+    path: ["url"],
+  });
+
+/**
+ * What crosses the wire to `POST /api/aura/style-book`: the generated look and
+ * the one-or-more sources that produced it, all as raw bytes. The look reuses
+ * the same `photoDataUri` validator as every source image — one validator, no
+ * separate or looser limit for the look. A completed try-on always carries at
+ * least one garment, so `min(1)` is the shape of that existing guarantee, not a
+ * new rule.
+ */
+export const styleBookSaveSchema = z.object({
+  look: photoDataUri,
+  // Bounded by the same shared garment cap as try-on: a saved look can only
+  // ever hold the sources a completed try-on produced, and each source is one
+  // Cloudinary upload, so the cap doubles as an upload ceiling on this write.
+  sources: z
+    .array(saveSourceInput)
+    .min(1, "Save a look with at least one source")
+    .max(MAX_TRY_ON_GARMENTS, `Save up to ${MAX_TRY_ON_GARMENTS} sources`),
+});
+
+export type StyleBookSaveInput = z.infer<typeof styleBookSaveSchema>;
+export type SaveSourceInput = z.infer<typeof saveSourceInput>;

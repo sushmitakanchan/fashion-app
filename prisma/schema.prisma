@@ -23,6 +23,7 @@ model User {
   name        String?
   imageUrl    String?
   auraProfile AuraProfile?
+  savedLooks  SavedLook[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -51,4 +52,27 @@ model AuraProfile {
   consentedAt DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+/// One durably saved try-on: the generated look, the Source(s) it was built
+/// from, an auto-derived caption, and a snapshot of the AURA portrait it was
+/// generated against. Belongs to one user; a user has many. Insert-only and
+/// immutable once saved — the absence of an `updatedAt` column encodes that.
+model SavedLook {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  /// Cloudinary secure URL of the generated look.
+  lookImageUrl String
+  /// Auto-derived from source/garment names; no manual rename in v1.
+  caption      String
+  /// Snapshot of `AuraProfile.portraitUrl` at save time, so the record stays
+  /// faithful even after the participant later regenerates their portrait.
+  portraitUrl  String
+  /// Array of SavedLookSource (see `@/lib/validations`). The database does NOT
+  /// validate this JSON — it MUST be Zod-guarded at write time.
+  sources      Json
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt]) // newest-first per-owner grid
 }

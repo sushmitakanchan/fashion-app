@@ -4,6 +4,8 @@ import {
   auraFormSchema,
   auraSubmissionSchema,
   MAX_PHOTO_BYTES,
+  MAX_TRY_ON_GARMENTS,
+  styleBookSaveSchema,
 } from "@/lib/validations";
 
 /**
@@ -253,5 +255,109 @@ describe("the AURA wire submission contract", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/*                    Style Book save — the write-time guard                  */
+/* -------------------------------------------------------------------------- */
+
+describe("the Style Book save contract", () => {
+  const uploadSource = () => ({ image: dataUri(), name: "Linen shirt" });
+  const linkSource = () => ({
+    image: dataUri(),
+    name: "Wide-leg trousers",
+    url: "https://www.myntra.com/trousers/brand/12345/buy",
+    site: "myntra" as const,
+  });
+  const validSave = () => ({ look: dataUri(), sources: [uploadSource()] });
+
+  it("accepts a look built from a single upload source", () => {
+    expect(styleBookSaveSchema.safeParse(validSave()).success).toBe(true);
+  });
+
+  it("accepts a look mixing upload and link sources", () => {
+    const result = styleBookSaveSchema.safeParse({
+      look: dataUri(),
+      sources: [uploadSource(), linkSource()],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("requires at least one source", () => {
+    const result = styleBookSaveSchema.safeParse({ look: dataUri(), sources: [] });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("sources");
+  });
+
+  it("caps the sources at the shared garment limit", () => {
+    const result = styleBookSaveSchema.safeParse({
+      look: dataUri(),
+      sources: Array.from({ length: MAX_TRY_ON_GARMENTS + 1 }, () => uploadSource()),
+    });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("sources");
+  });
+
+  it("holds the look image to the shared photo policy", () => {
+    const result = styleBookSaveSchema.safeParse({
+      ...validSave(),
+      look: "data:image/gif;base64,AAAA",
+    });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("look");
+  });
+
+  it("rejects a look image over the decoded size limit", () => {
+    const result = styleBookSaveSchema.safeParse({
+      ...validSave(),
+      look: dataUri({ bytes: MAX_PHOTO_BYTES + 1 }),
+    });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("look");
+  });
+
+  it("holds each source image to the shared photo policy", () => {
+    const result = styleBookSaveSchema.safeParse({
+      look: dataUri(),
+      sources: [{ image: "data:image/gif;base64,AAAA", name: "Cap" }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("sources.0.image");
+  });
+
+  it("rejects a source carrying a url without a site", () => {
+    const result = styleBookSaveSchema.safeParse({
+      look: dataUri(),
+      sources: [{ ...uploadSource(), url: "https://www.myntra.com/x/1/buy" }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("sources.0.url");
+  });
+
+  it("rejects a source carrying a site without a url", () => {
+    const result = styleBookSaveSchema.safeParse({
+      look: dataUri(),
+      sources: [{ ...uploadSource(), site: "pinterest" }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("sources.0.url");
+  });
+
+  it("rejects an unknown source site", () => {
+    const result = styleBookSaveSchema.safeParse({
+      look: dataUri(),
+      sources: [{ ...linkSource(), site: "instagram" }],
+    });
+
+    expect(result.success).toBe(false);
   });
 });

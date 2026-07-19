@@ -67,6 +67,8 @@ mock.module("@/lib/aura-config", () => ({
   AURA_CONFIGURATION_UNAVAILABLE_MESSAGE:
     "AURA isn't configured to save profiles or generate portraits. Please try again later.",
   isAuraLiveConfigured: () => live,
+  isCloudinaryConfigured: () => live,
+  isDatabaseConfigured: () => live,
 }));
 
 mock.module("@clerk/nextjs/server", () => ({
@@ -75,6 +77,11 @@ mock.module("@clerk/nextjs/server", () => ({
 }));
 
 mock.module("@/lib/cloudinary", () => ({
+  // Not used by this route; present only so a sibling route that links it
+  // can resolve against this process-wide mock.
+  uploadImage: async () => {
+    throw new Error("uploadImage is not stubbed for this route test");
+  },
   cloudinary: {
     uploader: {
       upload: (file: string, options: UploadOptions) => upload(file, options),

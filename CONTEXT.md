@@ -1,5 +1,20 @@
 # Ubiquitous language
 
+## AURA profile
+
+The minimal, privacy-conscious record a participant saves before a portrait can
+be generated: an AURA display name, the two required AURA reference photos, any
+supplied 3D avatar reference photos, timestamped consent to third-party AI
+processing, and the generated AURA portrait. There is one per user; re-saving
+replaces it rather than adding another. It holds no demographic or body-profile
+data — no age, gender, height, weight, or body type.
+
+## AURA display name
+
+The name shown on an AURA profile. It is owned by AURA: seeded from the
+participant's Google name on a first save when one is usable, editable
+afterwards, and never written back to the Google or Clerk account it came from.
+
 ## AURA portrait
 
 The static, polished studio-style portrait generated for an AURA profile in v1.

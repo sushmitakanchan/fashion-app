@@ -1,8 +1,8 @@
 # AURA
 
-AURA saves a user's body profile, two required AURA portrait reference photos,
-and optional future 3D-avatar reference photos. Wired for **fully local
-development**.
+AURA saves a user's AURA display name, two required AURA portrait reference
+photos, optional future 3D-avatar reference photos, and their consent to
+third-party AI processing. Wired for **fully local development**.
 
 ## Tech stack
 
@@ -93,7 +93,7 @@ src/
 │   ├── layout.tsx            # Clerk + Theme + TanStack Query providers
 │   └── page.tsx              # AURA landing page
 ├── components/
-│   ├── aura/                 # portrait result, body type, photo upload
+│   ├── aura/                 # portrait result, photo upload
 │   ├── forms/                # React Hook Form + Zod (aura-form)
 │   ├── providers/            # Query + Theme providers
 │   └── ui/                   # shadcn/ui (Base UI · base-nova) primitives

@@ -15,21 +15,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Gender {
-  MALE
-  FEMALE
-  UNDISCLOSED
-}
-
-/// Standard fashion body-shape taxonomy.
-enum BodyType {
-  RECTANGLE
-  TRIANGLE
-  INVERTED_TRIANGLE
-  HOURGLASS
-  OVAL
-}
-
 /// Application user, mirrored from Clerk via `clerkId`.
 model User {
   id          String   @id @default(cuid())
@@ -44,20 +29,15 @@ model User {
   @@index([email])
 }
 
-/// Measurements and reference photos for one user's AURA portrait profile.
+/// Reference photos and consent for one user's AURA portrait profile.
 /// Re-saving replaces profile data and references without clearing a portrait.
 model AuraProfile {
-  id       String @id @default(cuid())
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId   String @unique
-  name     String
-  age      Int
-  gender   Gender
-  // Always metric. The form collects either unit system and converts on submit,
-  // so downstream consumers never have to branch on units.
-  heightCm Float
-  weightKg Float
-  bodyType BodyType
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+  /// The AURA display name. Owned by AURA, seeded from Google on a first save,
+  /// and never written back to the Clerk or Google account it came from.
+  name   String
   // Cloudinary secure URLs for the two portrait references.
   photoFrontUrl   String
   photoCloseupUrl String

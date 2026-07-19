@@ -1,27 +1,6 @@
 /**
- * Helpers for the AURA profile form: unit conversion and photo encoding.
- *
- * Heights and weights are stored in metric everywhere (see `AuraProfile`), so
- * these conversions exist purely to let the form accept imperial input.
+ * Photo encoding for the AURA profile form.
  */
-
-const CM_PER_INCH = 2.54;
-const LB_PER_KG = 2.2046226218;
-
-const round1 = (value: number) => Math.round(value * 10) / 10;
-
-export function cmToFtIn(cm: number): { feet: number; inches: number } {
-  const totalInches = Math.round(cm / CM_PER_INCH);
-  return { feet: Math.floor(totalInches / 12), inches: totalInches % 12 };
-}
-
-export function ftInToCm(feet: number, inches: number): number {
-  return round1((feet * 12 + inches) * CM_PER_INCH);
-}
-
-export const kgToLb = (kg: number) => Math.round(kg * LB_PER_KG);
-
-export const lbToKg = (lb: number) => round1(lb / LB_PER_KG);
 
 /**
  * Downscale an image to `maxEdge` on its long side and return a JPEG data URI.

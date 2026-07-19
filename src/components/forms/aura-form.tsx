@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -11,41 +10,20 @@ import {
   auraFormSchema,
   AURA_REFERENCE_PHOTO_ANGLES,
   AVATAR_PHOTO_ANGLES,
-  BODY_TYPES,
-  GENDERS,
   PHOTO_ANGLES,
   PHOTO_MAX_EDGE,
   type AuraFormInput,
-  type Gender,
   type PhotoAngle,
 } from "@/lib/validations";
-import {
-  cmToFtIn,
-  downscalePhoto,
-  ftInToCm,
-  kgToLb,
-  lbToKg,
-} from "@/lib/aura";
+import { downscalePhoto } from "@/lib/aura";
 import type { PortraitRequest } from "@/lib/aura-portrait-state";
-import { cn } from "@/lib/utils";
-import {
-  BODY_TYPE_LABELS,
-  BodyTypeFigure,
-} from "@/components/aura/body-type-figure";
 import { AuraProfileResult } from "@/components/aura/aura-profile-result";
 import { PhotoUploadField } from "@/components/aura/photo-upload-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
-
-const GENDER_LABELS: Record<Gender, string> = {
-  MALE: "Male",
-  FEMALE: "Female",
-  UNDISCLOSED: "Prefer not to say",
-};
 
 const PHOTO_LABELS: Record<PhotoAngle, { label: string; hint: string }> = {
   front: { label: "Full body", hint: "Facing the camera" },
@@ -55,18 +33,12 @@ const PHOTO_LABELS: Record<PhotoAngle, { label: string; hint: string }> = {
   back: { label: "Back", hint: "Full body, facing away" },
 };
 
-type UnitSystem = "metric" | "imperial";
-
-/** Imperial inputs are display-only; `heightCm`/`weightKg` stay canonical. */
-type ImperialDraft = { feet: string; inches: string; pounds: string };
 type PortraitResponse = {
   portraitUrl?: string;
   code?: string;
   error?: string;
   retryable?: boolean;
 };
-
-const EMPTY_IMPERIAL: ImperialDraft = { feet: "", inches: "", pounds: "" };
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -78,8 +50,6 @@ export function AuraForm({
 }: {
   initialName?: string;
 }) {
-  const [unitSystem, setUnitSystem] = React.useState<UnitSystem>("metric");
-  const [imperial, setImperial] = React.useState<ImperialDraft>(EMPTY_IMPERIAL);
   const [isProfileSaved, setIsProfileSaved] = React.useState(false);
   const [portraitUrl, setPortraitUrl] = React.useState<string>();
   const [portraitRequest, setPortraitRequest] =
@@ -89,9 +59,7 @@ export function AuraForm({
     register,
     control,
     handleSubmit,
-    setValue,
-    getValues,
-    formState: { errors, isSubmitting, isSubmitted },
+    formState: { errors, isSubmitting },
   } = useForm<AuraFormInput>({
     resolver: zodResolver(auraFormSchema),
     defaultValues: { name: initialName, consent: false },
@@ -101,50 +69,6 @@ export function AuraForm({
   // instead of the whole form, and it doesn't opt the component out of React
   // Compiler memoization the way `watch()` does.
   const consent = useWatch({ control, name: "consent" });
-
-  // Mirror React Hook Form's own behaviour: don't surface errors on a field the
-  // user hasn't finished with, but do keep them live once they've submitted.
-  const revalidate = { shouldValidate: isSubmitted };
-
-  function toggleUnits(next: UnitSystem) {
-    if (next === unitSystem) return;
-
-    if (next === "imperial") {
-      // Seed the imperial inputs from whatever metric values exist so switching
-      // back and forth doesn't wipe what the user typed.
-      const cm = getValues("heightCm");
-      const kg = getValues("weightKg");
-      const height = Number.isFinite(cm) ? cmToFtIn(cm) : undefined;
-      setImperial({
-        feet: height ? String(height.feet) : "",
-        inches: height ? String(height.inches) : "",
-        pounds: Number.isFinite(kg) ? String(kgToLb(kg)) : "",
-      });
-    }
-
-    setUnitSystem(next);
-  }
-
-  function updateImperialHeight(next: Pick<ImperialDraft, "feet" | "inches">) {
-    setImperial((draft) => ({ ...draft, ...next }));
-
-    const feet = Number(next.feet);
-    // Inches are optional — 6 ft on its own should be a valid height.
-    const inches = next.inches === "" ? 0 : Number(next.inches);
-    const valid =
-      next.feet !== "" && Number.isFinite(feet) && Number.isFinite(inches);
-
-    setValue("heightCm", valid ? ftInToCm(feet, inches) : NaN, revalidate);
-  }
-
-  function updateImperialWeight(pounds: string) {
-    setImperial((draft) => ({ ...draft, pounds }));
-
-    const lb = Number(pounds);
-    const valid = pounds !== "" && Number.isFinite(lb);
-
-    setValue("weightKg", valid ? lbToKg(lb) : NaN, revalidate);
-  }
 
   async function requestPortrait() {
     setPortraitRequest("generating");
@@ -249,225 +173,20 @@ export function AuraForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="grid gap-8" noValidate>
-      <section className="grid gap-4 sm:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor="name">Name</Label>
-          <Input
-            id="name"
-            placeholder="Ada Lovelace"
-            autoComplete="name"
-            aria-invalid={!!errors.name}
-            {...register("name")}
-          />
-          <FieldError message={errors.name?.message} />
-        </div>
-
-        <div className="grid gap-2">
-          <Label htmlFor="age">Age</Label>
-          <Input
-            id="age"
-            type="number"
-            inputMode="numeric"
-            placeholder="28"
-            aria-invalid={!!errors.age}
-            {...register("age", { valueAsNumber: true })}
-          />
-          <FieldError message={errors.age?.message} />
-        </div>
-      </section>
-
-      <section className="grid gap-3">
-        <Label>Gender</Label>
-        <Controller
-          control={control}
-          name="gender"
-          render={({ field }) => (
-            <RadioGroup
-              value={field.value ?? null}
-              onValueChange={field.onChange}
-              aria-invalid={!!errors.gender}
-              className="grid gap-2 sm:grid-cols-3"
-            >
-              {GENDERS.map((gender) => (
-                <Label
-                  key={gender}
-                  className="hover:bg-accent/50 has-data-checked:border-primary has-data-checked:bg-primary/5 flex cursor-pointer items-center gap-2.5 rounded-lg border p-3 font-normal transition-colors"
-                >
-                  <RadioGroupItem value={gender} />
-                  {GENDER_LABELS[gender]}
-                </Label>
-              ))}
-            </RadioGroup>
-          )}
+      <section className="grid gap-2">
+        <Label htmlFor="name">AURA display name</Label>
+        <Input
+          id="name"
+          placeholder="Ada Lovelace"
+          autoComplete="name"
+          aria-invalid={!!errors.name}
+          {...register("name")}
         />
-        <FieldError message={errors.gender?.message} />
-      </section>
-
-      <section className="grid gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Label>Height &amp; weight</Label>
-          <div
-            role="group"
-            aria-label="Units"
-            className="bg-muted inline-flex rounded-lg p-0.5"
-          >
-            {(["metric", "imperial"] as const).map((system) => (
-              <button
-                key={system}
-                type="button"
-                aria-pressed={unitSystem === system}
-                onClick={() => toggleUnits(system)}
-                className={cn(
-                  "rounded-[6px] px-2.5 py-1 text-xs font-medium transition-colors",
-                  unitSystem === system
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {system === "metric" ? "cm / kg" : "ft / lb"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {unitSystem === "metric" ? (
-          // Keyed so switching units remounts the inputs. Without it React
-          // reconciles the metric and imperial weight fields into one instance
-          // and the DOM node flips from uncontrolled (`register`) to controlled.
-          <div key="metric" className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="heightCm" className="text-muted-foreground text-xs">
-                Height (cm)
-              </Label>
-              <Input
-                id="heightCm"
-                type="number"
-                inputMode="decimal"
-                placeholder="170"
-                aria-invalid={!!errors.heightCm}
-                {...register("heightCm", { valueAsNumber: true })}
-              />
-              <FieldError message={errors.heightCm?.message} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="weightKg" className="text-muted-foreground text-xs">
-                Weight (kg)
-              </Label>
-              <Input
-                id="weightKg"
-                type="number"
-                inputMode="decimal"
-                placeholder="65"
-                aria-invalid={!!errors.weightKg}
-                {...register("weightKg", { valueAsNumber: true })}
-              />
-              <FieldError message={errors.weightKg?.message} />
-            </div>
-          </div>
-        ) : (
-          <div key="imperial" className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="heightFt" className="text-muted-foreground text-xs">
-                Height (ft / in)
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="heightFt"
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="5"
-                  aria-label="Height in feet"
-                  aria-invalid={!!errors.heightCm}
-                  value={imperial.feet}
-                  onChange={(e) =>
-                    updateImperialHeight({
-                      feet: e.target.value,
-                      inches: imperial.inches,
-                    })
-                  }
-                />
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="7"
-                  aria-label="Height in inches"
-                  aria-invalid={!!errors.heightCm}
-                  value={imperial.inches}
-                  onChange={(e) =>
-                    updateImperialHeight({
-                      feet: imperial.feet,
-                      inches: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <FieldError message={errors.heightCm?.message} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="weightLb" className="text-muted-foreground text-xs">
-                Weight (lb)
-              </Label>
-              <Input
-                id="weightLb"
-                type="number"
-                inputMode="decimal"
-                placeholder="145"
-                aria-invalid={!!errors.weightKg}
-                value={imperial.pounds}
-                onChange={(e) => updateImperialWeight(e.target.value)}
-              />
-              <FieldError message={errors.weightKg?.message} />
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="grid gap-3">
-        <div className="grid gap-1">
-          <Label>Body type</Label>
-          <p className="text-muted-foreground text-sm">
-            Pick the silhouette closest to yours — it only needs to be a rough
-            match.
-          </p>
-        </div>
-        <Controller
-          control={control}
-          name="bodyType"
-          render={({ field }) => (
-            <RadioGroup
-              value={field.value ?? null}
-              onValueChange={field.onChange}
-              aria-invalid={!!errors.bodyType}
-              className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-            >
-              {BODY_TYPES.map((bodyType) => (
-                // The card *is* the radio (Base UI's `render` prop), so the whole
-                // tile is the hit target and `data-checked` lands directly on it.
-                <RadioPrimitive.Root
-                  key={bodyType}
-                  value={bodyType}
-                  className={cn(
-                    "group flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 text-center transition-colors outline-none",
-                    "hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-3",
-                    "data-checked:border-primary data-checked:bg-primary/5",
-                  )}
-                >
-                  <BodyTypeFigure
-                    bodyType={bodyType}
-                    className="text-muted-foreground group-data-checked:text-primary transition-colors"
-                  />
-                  <span className="text-sm leading-none font-medium">
-                    {BODY_TYPE_LABELS[bodyType].label}
-                  </span>
-                  <span className="text-muted-foreground text-xs text-pretty">
-                    {BODY_TYPE_LABELS[bodyType].description}
-                  </span>
-                </RadioPrimitive.Root>
-              ))}
-            </RadioGroup>
-          )}
-        />
-        <FieldError message={errors.bodyType?.message} />
+        <p className="text-muted-foreground text-sm">
+          The name shown on your AURA portrait profile. Editing it here does not
+          change your Google account.
+        </p>
+        <FieldError message={errors.name?.message} />
       </section>
 
       <section className="grid gap-3">

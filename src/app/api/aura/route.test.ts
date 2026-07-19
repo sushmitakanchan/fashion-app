@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   AVATAR_PHOTO_ANGLES,
   AURA_REFERENCE_PHOTO_ANGLES,
+  MAX_PHOTO_BYTES,
   type PhotoAngle,
 } from "@/lib/validations";
 
@@ -97,13 +98,17 @@ const { POST } = await import("./route");
 const photo = (angle: PhotoAngle) =>
   `data:image/jpeg;base64,${Buffer.from(angle).toString("base64")}`;
 
+/** The demographic/body-profile fields this contract no longer accepts. */
+const RETIRED_PROFILE_FIELDS = [
+  "age",
+  "gender",
+  "heightCm",
+  "weightKg",
+  "bodyType",
+];
+
 const validBody = () => ({
   name: "Ada Lovelace",
-  age: 36,
-  gender: "FEMALE",
-  heightCm: 168,
-  weightKg: 61,
-  bodyType: "HOURGLASS",
   consent: true,
   photos: Object.fromEntries(
     AURA_REFERENCE_PHOTO_ANGLES.map((angle) => [angle, photo(angle)]),
@@ -238,14 +243,56 @@ describe("POST /api/aura — refused submissions", () => {
   });
 
   it("returns the validation issues for an invalid payload, without persisting", async () => {
-    const response = await post({ ...validBody(), age: 9, consent: false });
+    const response = await post({ ...validBody(), name: " ", consent: false });
 
     expect(response.status).toBe(400);
     const body = (await response.json()) as { issues?: { path: string[] }[] };
     expect(body.issues?.map((issue) => issue.path[0]).sort()).toEqual([
-      "age",
       "consent",
+      "name",
     ]);
+    expect(upload).not.toHaveBeenCalled();
+    expect(auraUpsert).not.toHaveBeenCalled();
+  });
+
+  it.each(RETIRED_PROFILE_FIELDS)(
+    "refuses a submission carrying the retired %s field, without persisting",
+    async (field) => {
+      const response = await post({ ...validBody(), [field]: 42 });
+
+      expect(response.status).toBe(400);
+      expect(upload).not.toHaveBeenCalled();
+      expect(userUpsert).not.toHaveBeenCalled();
+      expect(auraUpsert).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses an unsupported photo type, without persisting", async () => {
+    const body = validBody();
+
+    const response = await post({
+      ...body,
+      photos: { ...body.photos, front: "data:image/gif;base64,AAAA" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(upload).not.toHaveBeenCalled();
+    expect(auraUpsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses a photo whose decoded size exceeds the limit, without persisting", async () => {
+    const body = validBody();
+    // Encoded client-side checks are bypassable; the server measures the photo.
+    const oversized = `data:image/jpeg;base64,${Buffer.from(
+      new Uint8Array(MAX_PHOTO_BYTES + 1),
+    ).toString("base64")}`;
+
+    const response = await post({
+      ...body,
+      photos: { ...body.photos, front: oversized },
+    });
+
+    expect(response.status).toBe(400);
     expect(upload).not.toHaveBeenCalled();
     expect(auraUpsert).not.toHaveBeenCalled();
   });
@@ -320,9 +367,6 @@ describe("POST /api/aura — a valid live submission", () => {
     expect(profile).toMatchObject({
       userId: "db_user_1",
       name: "Ada Lovelace",
-      heightCm: 168,
-      weightKg: 61,
-      bodyType: "HOURGLASS",
       photoFrontUrl:
         "https://res.cloudinary.test/v1/fashion-app/aura/clerk_user_1/front.jpg",
       photoCloseupUrl:
@@ -332,6 +376,26 @@ describe("POST /api/aura — a valid live submission", () => {
       photoBackUrl: null,
     });
     expect(profile?.consentedAt).toBeInstanceOf(Date);
+    // The retired columns are gone from the model, so the route must not be
+    // writing them under any name.
+    expect(
+      Object.keys(profile!).filter((key) =>
+        RETIRED_PROFILE_FIELDS.includes(key),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refreshes the consent timestamp on every successful save", async () => {
+    await post(validBody());
+    const first = profiles.get("db_user_1")!.consentedAt as Date;
+
+    // The stub store records whatever the route wrote; a same-millisecond
+    // re-save would make "refreshed" indistinguishable from "untouched".
+    await Bun.sleep(2);
+    await post(validBody());
+    const second = profiles.get("db_user_1")!.consentedAt as Date;
+
+    expect(second.getTime()).toBeGreaterThan(first.getTime());
   });
 
   it("retains supplied optional 3D avatar references", async () => {
@@ -374,18 +438,15 @@ describe("POST /api/aura — a valid live submission", () => {
 
   it("replaces the profile on regeneration rather than adding a second", async () => {
     const first = await post(validBody());
-    const second = await post({ ...validBody(), weightKg: 64, name: "Ada L." });
+    const second = await post({ ...validBody(), name: "Ada L." });
 
     expect(second.status).toBe(201);
     // One row, still the same one — regeneration must not duplicate.
     expect(profiles.size).toBe(1);
     await expect(second.json()).resolves.toEqual(await first.json());
 
-    expect(profiles.get("db_user_1")).toMatchObject({
-      weightKg: 64,
-      name: "Ada L.",
-    });
-    // Five assets, not ten: the deterministic ids were overwritten in place.
+    expect(profiles.get("db_user_1")).toMatchObject({ name: "Ada L." });
+    // Two assets, not four: the deterministic ids were overwritten in place.
     expect(new Set(upload.mock.calls.map(([, opts]) => opts.public_id)).size).toBe(
       AURA_REFERENCE_PHOTO_ANGLES.length,
     );

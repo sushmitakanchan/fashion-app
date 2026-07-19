@@ -16,6 +16,8 @@
  * request identically, keeping the try-on contract provenance-free.
  */
 
+import { GARMENT_NAME_MAX_LENGTH } from "./validations";
+
 export type GarmentSite = "pinterest" | "myntra";
 
 /** A garment the user attached from their device: the real `File` (encoded at
@@ -61,6 +63,24 @@ export type SaveSource =
  */
 export function rawImageOf(source: Attachment): File | string {
   return source.kind === "link" ? source.scrapedImage : source.file;
+}
+
+/**
+ * Resolve a scraped link garment's display name. The scrape route echoes the
+ * page's title when it has a usable one, else the pasted link's host — so a
+ * `scrapedName` equal to `host` is the route's "no title" fallback signal, and
+ * we disambiguate repeat links from the same host with a running `index`. The
+ * result is capped at {@link GARMENT_NAME_MAX_LENGTH}, the same length the save
+ * schema enforces, so it can never be built longer than that boundary accepts.
+ */
+export function linkGarmentName(
+  scrapedName: string,
+  host: string,
+  index: number,
+): string {
+  const trimmed = scrapedName.trim();
+  const name = trimmed && trimmed !== host ? trimmed : `${host} ${index}`;
+  return name.slice(0, GARMENT_NAME_MAX_LENGTH);
 }
 
 /**

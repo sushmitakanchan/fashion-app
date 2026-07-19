@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   inferKind,
+  linkGarmentName,
   rawImageOf,
   toSaveSource,
   toTryOnGarment,
@@ -73,6 +74,33 @@ describe("rawImageOf", () => {
 
   it("returns the scraped data URI for a link", () => {
     expect(rawImageOf(link)).toBe(link.scrapedImage);
+  });
+});
+
+describe("linkGarmentName", () => {
+  it("uses the scraped title when the route returned one", () => {
+    expect(linkGarmentName("Ribbed knit tank", "www.myntra.com", 1)).toBe(
+      "Ribbed knit tank",
+    );
+  });
+
+  it("falls back to host + running index when the title is just the host", () => {
+    // The scrape route echoes `target.host` as the name when a page carries no
+    // usable title, so a name equal to the host is the fallback signal.
+    expect(linkGarmentName("www.pinterest.com", "www.pinterest.com", 2)).toBe(
+      "www.pinterest.com 2",
+    );
+  });
+
+  it("falls back to host + running index when the title is blank", () => {
+    expect(linkGarmentName("  ", "assets.myntra.com", 3)).toBe(
+      "assets.myntra.com 3",
+    );
+  });
+
+  it("caps an over-long title at the shared 80-char garment-name limit", () => {
+    const long = "A".repeat(120);
+    expect(linkGarmentName(long, "www.pinterest.com", 1)).toBe("A".repeat(80));
   });
 });
 

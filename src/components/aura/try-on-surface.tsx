@@ -4,6 +4,8 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircleIcon,
+  Link2Icon,
+  Loader2Icon,
   PlusIcon,
   RotateCcwIcon,
   SparklesIcon,
@@ -17,10 +19,13 @@ import { toast } from "sonner";
 import { downscalePhoto } from "@/lib/aura";
 import { STYLE_BOOK_HREF, type SaveState } from "@/lib/aura-save-state";
 import {
+  linkGarmentName,
   rawImageOf,
   toSaveSource,
   toTryOnGarment,
   type Attachment,
+  type GarmentSite,
+  type Link,
   type SaveSource,
   type Upload,
 } from "@/lib/aura-provenance";
@@ -30,25 +35,45 @@ import {
   type TryOnRequest,
 } from "@/lib/aura-try-on-state";
 import {
+  GARMENT_NAME_MAX_LENGTH,
   MAX_TRY_ON_GARMENTS,
   PHOTO_MAX_EDGE,
   type AuraTryOnInput,
 } from "@/lib/validations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SaveBar } from "@/components/aura/save-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 /**
  * The ephemeral AURA try-on surface: attach a garment image (or several worn
- * together), generate it onto the fixed AURA portrait, and view the result.
- * Everything is in-memory and cleared on reload — nothing is uploaded to
- * storage or written to the database (the route returns the look inline as a
- * data URL). The presentation for the single visible stage comes from the pure
- * {@link tryOnPresentation}; this component only owns the attachments, the
- * network call, and the one-active-generation guard.
+ * together) — from your device or a pasted Pinterest/Myntra link — generate it
+ * onto the fixed AURA portrait, and view the result. Everything is in-memory and
+ * cleared on reload — nothing is uploaded to storage or written to the database
+ * (the route returns the look inline as a data URL). The presentation for the
+ * single visible stage comes from the pure {@link tryOnPresentation}; this
+ * component only owns the attachments, the network calls (scrape + try-on), and
+ * the one-active-generation guard.
  */
+
+/** A transient placeholder reserving a garment's slot in the grid while its link
+ * is scraped, so a mixed grid never reflows when the settled tile lands. It is
+ * replaced *in place* (by `id`) with the settled {@link Link} on success, or
+ * dropped on error. */
+type Ghost = { kind: "ghost"; id: string };
+
+/** One cell of the composer grid: a settled garment or an in-flight scrape. */
+type Slot = Attachment | Ghost;
+
+/** Per-source presentation for a settled link tile: the brand `hue` (its ring +
+ * corner chip) and the display `label`. Uploads carry neither — their tile is
+ * unringed and chip-less. */
+const SITE_META: Record<GarmentSite, { hue: string; label: string }> = {
+  pinterest: { hue: "#e60023", label: "Pinterest" },
+  myntra: { hue: "#ff3f6c", label: "Myntra" },
+};
 
 /** The generated look, held as an inline data URL, that **owns the sources that
  * produced it** — the same {@link Attachment} objects that were composed. The
@@ -67,25 +92,50 @@ type TryOnFailure = {
   retryable?: boolean;
 };
 
+/** The scrape route's `200` body — a complete garment: the image as a data URI,
+ * the page title (or host fallback), and the matched source. */
+type ScrapeResponse = { image?: string; name?: string; source?: GarmentSite };
+
+/** A scrape failure envelope, carrying the route's own user-facing message. */
+type ScrapeFailure = { error?: string };
+
 /** Release an upload's thumbnail object URL. Links carry a data-URI `previewUrl`
- * (nothing to revoke), so revocation is scoped to the upload arm. */
-function releasePreview(source: Attachment) {
+ * (nothing to revoke) and ghosts carry no image at all, so revocation is scoped
+ * to the upload arm. */
+function releasePreview(source: Slot) {
   if (source.kind === "upload") URL.revokeObjectURL(source.previewUrl);
 }
 
 function garmentName(file: File): string {
   const withoutExtension = file.name.replace(/\.[^.]+$/, "").trim();
-  return withoutExtension.slice(0, 80) || "Garment";
+  return withoutExtension.slice(0, GARMENT_NAME_MAX_LENGTH) || "Garment";
 }
 
-/** Resolve a garment to the downscaled data URI the try-on request carries. The
- * composer builds only uploads today; the link arm (downscaling the scraped
- * data URI to the same edge) lands with the link UI in #4. */
-function garmentImage(source: Attachment): Promise<string> {
-  if (source.kind === "link") {
-    throw new Error("Link garments are not wired into the composer yet");
+/** The shared over-cap notice, emitted from both attach arms (upload + link) so
+ * the copy can never drift between them. */
+function capReachedToast() {
+  toast.error(`You can attach up to ${MAX_TRY_ON_GARMENTS} garments`, {
+    description: "Remove a piece before adding more.",
+  });
+}
+
+/** The pasted link's host, used both to name a titleless garment and as the
+ * route's "no title" fallback signal. The URL already scraped successfully, so
+ * it parses; the catch is defensive only. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
   }
-  return downscalePhoto(source.file, PHOTO_MAX_EDGE);
+}
+
+/** Resolve a garment to the downscaled data URI the try-on request carries.
+ * Both arms re-encode from their raw image — an upload's `File`, a link's
+ * scraped data URI — to the same `PHOTO_MAX_EDGE`, so a full-res scraped image
+ * never ships in the request. */
+function garmentImage(source: Attachment): Promise<string> {
+  return downscalePhoto(rawImageOf(source), PHOTO_MAX_EDGE);
 }
 
 /** Re-encode/downscale a source's image to the same edge at save time — both
@@ -105,11 +155,17 @@ export function TryOnSurface() {
   const router = useRouter();
   const idRef = React.useRef(0);
   const fileRef = React.useRef<HTMLInputElement>(null);
+  // Monotonic counter for the "host + running index" name fallback, so repeat
+  // links from the same titleless host stay distinguishable.
+  const linkCountRef = React.useRef(0);
   // The last set of attachments a generation was attempted with, so a retry can
   // re-run the same look even after the composer has been edited.
   const lastAttempt = React.useRef<Attachment[]>([]);
 
-  const [attached, setAttached] = React.useState<Attachment[]>([]);
+  // The composer grid, in attach order: settled garments interleaved with any
+  // in-flight scrape ghosts. Links and uploads share one kind-agnostic cap.
+  const [slots, setSlots] = React.useState<Slot[]>([]);
+  const [linkUrl, setLinkUrl] = React.useState("");
   const [result, setResult] = React.useState<Result | null>(null);
   const [phase, setPhase] = React.useState<
     "idle" | "generating" | "retryable-failure" | "refused"
@@ -122,21 +178,28 @@ export function TryOnSurface() {
   // re-rendered the disabled button. No server-side dedup in v1.
   const savingRef = React.useRef(false);
 
+  // Only the settled garments enter a generation/save; ghosts are UI-only.
+  const attachments = React.useMemo(
+    () => slots.filter((s): s is Attachment => s.kind !== "ghost"),
+    [slots],
+  );
+  const scraping = slots.some((s) => s.kind === "ghost");
+
   // Revoke every live upload object URL when the surface unmounts (navigation
   // away) — both the staging composer and the retained result bundle. The refs
   // are synced in an effect (never during render) so the unmount cleanup sees
   // the latest values without re-subscribing on every change.
-  const attachedRef = React.useRef(attached);
+  const slotsRef = React.useRef(slots);
   const resultRef = React.useRef(result);
   React.useEffect(() => {
-    attachedRef.current = attached;
-  }, [attached]);
+    slotsRef.current = slots;
+  }, [slots]);
   React.useEffect(() => {
     resultRef.current = result;
   }, [result]);
   React.useEffect(
     () => () => {
-      for (const item of attachedRef.current) releasePreview(item);
+      for (const item of slotsRef.current) releasePreview(item);
       for (const item of resultRef.current?.sources ?? []) releasePreview(item);
     },
     [],
@@ -149,7 +212,7 @@ export function TryOnSurface() {
         ? "retryable-failure"
         : phase === "refused"
           ? "refused"
-          : attached.length > 0
+          : attachments.length > 0
             ? "composing"
             : "idle";
 
@@ -162,12 +225,12 @@ export function TryOnSurface() {
 
   function onFiles(list: FileList | null) {
     if (!list?.length) return;
-    const room = MAX_TRY_ON_GARMENTS - attached.length;
+    // The cap is kind-agnostic: uploads, links, and in-flight ghosts all occupy
+    // slots, so `slots.length` is the shared count.
+    const room = MAX_TRY_ON_GARMENTS - slots.length;
     const files = Array.from(list);
     if (files.length > room) {
-      toast.error(`You can attach up to ${MAX_TRY_ON_GARMENTS} garments`, {
-        description: "Remove a piece before adding more.",
-      });
+      capReachedToast();
     }
     const added: Upload[] = files.slice(0, Math.max(room, 0)).map((file) => ({
       kind: "upload",
@@ -176,11 +239,76 @@ export function TryOnSurface() {
       file,
       previewUrl: URL.createObjectURL(file),
     }));
-    if (added.length) setAttached((prev) => [...prev, ...added]);
+    if (added.length) setSlots((prev) => [...prev, ...added]);
+  }
+
+  /**
+   * Eager-scrape a pasted link into a complete {@link Link} garment. The cap is
+   * checked **before** firing, so an over-cap link never triggers the route's
+   * two-hop fetch. A ghost tile reserves the slot immediately and is replaced
+   * in place on success; every failure drops the ghost, adds nothing, and
+   * surfaces the route's own message as a toast (the field was cleared on fire).
+   */
+  async function addLink() {
+    const url = linkUrl.trim();
+    if (!url || isGenerating) return;
+    if (slots.length >= MAX_TRY_ON_GARMENTS) {
+      capReachedToast();
+      return;
+    }
+
+    const id = String(++idRef.current);
+    setSlots((prev) => [...prev, { kind: "ghost", id }]);
+    setLinkUrl("");
+
+    const dropGhost = () =>
+      setSlots((prev) => prev.filter((slot) => slot.id !== id));
+
+    let response: Response;
+    try {
+      response = await fetch("/api/aura/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+    } catch {
+      dropGhost();
+      toast.error("Couldn't reach the server", {
+        description: "Check your connection and try again.",
+      });
+      return;
+    }
+
+    const body = (await response.json().catch(() => null)) as
+      | (ScrapeResponse & ScrapeFailure)
+      | null;
+
+    if (!response.ok || !body?.image || !body?.source) {
+      dropGhost();
+      // Preserve the scrape route's own copy verbatim (unsupported-domain,
+      // fetch-failed, no-image-found, image-too-large, wrong-type).
+      toast.error("We couldn't use that link", {
+        description: body?.error ?? "Nothing was added. Please try again.",
+      });
+      return;
+    }
+
+    const host = hostOf(url);
+    const link: Link = {
+      kind: "link",
+      id,
+      name: linkGarmentName(body.name ?? "", host, ++linkCountRef.current),
+      scrapedImage: body.image,
+      previewUrl: body.image,
+      sourceUrl: url,
+      site: body.source,
+    };
+    // Replace the ghost *in place* so the settled tile keeps the reserved slot.
+    setSlots((prev) => prev.map((slot) => (slot.id === id ? link : slot)));
   }
 
   function removeAttachment(id: string) {
-    setAttached((prev) => {
+    setSlots((prev) => {
       const target = prev.find((item) => item.id === id);
       if (target) releasePreview(target);
       return prev.filter((item) => item.id !== id);
@@ -188,9 +316,10 @@ export function TryOnSurface() {
   }
 
   async function generate(from: Attachment[]) {
-    // One active generation at a time: the guard is the whole backpressure
-    // story, since nothing about the try-on persists to claim in-flight state.
-    if (from.length === 0 || isGenerating) return;
+    // One active generation at a time, and never mid-scrape: the guard is the
+    // whole backpressure story, since nothing about the try-on persists to
+    // claim in-flight state.
+    if (from.length === 0 || isGenerating || scraping) return;
 
     lastAttempt.current = from;
     setPhase("generating");
@@ -270,7 +399,7 @@ export function TryOnSurface() {
     // *not* have their bytes discarded — they live on in the result's sources,
     // so only staging items that never made it into the look are released.
     const retained = new Set(from.map((item) => item.id));
-    setAttached((prev) => {
+    setSlots((prev) => {
       for (const item of prev) if (!retained.has(item.id)) releasePreview(item);
       return [];
     });
@@ -375,11 +504,11 @@ export function TryOnSurface() {
           <>
             <ResultStage result={result} presentation={presentation} />
             {/* Wide save bar directly under the result image. `busy` folds in
-                any composer work-in-progress — an in-flight generation today,
-                and the in-flight scrape once the link input lands. */}
+                any composer work-in-progress — an in-flight generation or an
+                in-flight scrape. */}
             <SaveBar
               state={saveState}
-              busy={isGenerating}
+              busy={isGenerating || scraping}
               onSave={() => saveLook(result)}
               onRegenerate={() => generate(result.sources)}
             />
@@ -389,7 +518,7 @@ export function TryOnSurface() {
         )}
       </section>
 
-      {/* ---- Composer: attach garment image(s) → generate one look ---- */}
+      {/* ---- Composer: attach garment image(s) or link(s) → generate one look ---- */}
       <section className="mt-8 grid gap-3 rounded-xl border bg-card p-4 shadow-sm">
         <div className="flex items-center gap-2">
           <h2 className="font-medium">Attach a garment</h2>
@@ -407,7 +536,7 @@ export function TryOnSurface() {
           }}
         />
 
-        {attached.length === 0 ? (
+        {slots.length === 0 ? (
           <button
             type="button"
             onClick={openPicker}
@@ -420,53 +549,155 @@ export function TryOnSurface() {
             </span>
           </button>
         ) : (
-          <div className="grid gap-3">
-            <div className="flex flex-wrap gap-2">
-              {attached.map((garment) => (
-                <div key={garment.id} className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={garment.previewUrl}
-                    alt={garment.name}
-                    className="border-border size-20 rounded-lg border object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(garment.id)}
-                    aria-label={`Remove ${garment.name}`}
-                    disabled={isGenerating}
-                    className="bg-background absolute -top-2 -right-2 grid size-5 place-items-center rounded-full border disabled:opacity-50"
-                  >
-                    <XIcon className="size-3" />
-                  </button>
-                </div>
-              ))}
-              {attached.length < MAX_TRY_ON_GARMENTS && (
-                <button
-                  type="button"
-                  onClick={openPicker}
-                  aria-label="Add another garment"
+          <div className="flex flex-wrap gap-2">
+            {slots.map((slot) =>
+              slot.kind === "ghost" ? (
+                <GhostTile key={slot.id} />
+              ) : (
+                <GarmentTile
+                  key={slot.id}
+                  garment={slot}
                   disabled={isGenerating}
-                  className="border-border text-muted-foreground hover:bg-muted grid size-20 place-items-center rounded-lg border border-dashed disabled:opacity-50"
-                >
-                  <PlusIcon className="size-5" />
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-muted-foreground text-xs">
-                {attached.length} piece{attached.length === 1 ? "" : "s"} · worn
-                together in one result
-              </span>
-              <Button onClick={() => generate(attached)} disabled={isGenerating}>
-                <SparklesIcon />
-                {isGenerating ? "Generating…" : "Generate look"}
-              </Button>
-            </div>
+                  onRemove={() => removeAttachment(slot.id)}
+                />
+              ),
+            )}
+            {slots.length < MAX_TRY_ON_GARMENTS && (
+              <button
+                type="button"
+                onClick={openPicker}
+                aria-label="Add another garment"
+                disabled={isGenerating}
+                className="border-border text-muted-foreground hover:bg-muted grid size-20 place-items-center rounded-lg border border-dashed disabled:opacity-50"
+              >
+                <PlusIcon className="size-5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Always-visible link row: paste a Pinterest/Myntra link to scrape a
+            garment. Visible whether or not garments are attached — only the
+            empty-state drop-zone above collapses into the grid. */}
+        <div className="flex items-center gap-3" aria-hidden>
+          <span className="bg-border h-px flex-1" />
+          <span className="text-muted-foreground text-xs">or paste a link</span>
+          <span className="bg-border h-px flex-1" />
+        </div>
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addLink();
+          }}
+        >
+          <div className="relative flex-1">
+            <Link2Icon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+            <Input
+              type="url"
+              inputMode="url"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              placeholder="Pinterest or Myntra link"
+              aria-label="Pinterest or Myntra link"
+              disabled={isGenerating}
+              className="pl-8"
+            />
+          </div>
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={isGenerating || !linkUrl.trim()}
+          >
+            <Link2Icon />
+            Add link
+          </Button>
+        </form>
+
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-muted-foreground text-xs">
+              {attachments.length} piece{attachments.length === 1 ? "" : "s"} ·
+              worn together in one result
+            </span>
+            <Button
+              onClick={() => generate(attachments)}
+              disabled={isGenerating || scraping}
+            >
+              <SparklesIcon />
+              {isGenerating ? "Generating…" : "Generate look"}
+            </Button>
           </div>
         )}
       </section>
     </main>
+  );
+}
+
+/* -------------------------------------------------------------- tiles ----- */
+
+/** A settled garment tile. An upload stays unringed; a link is marked by a 2px
+ * ring in its source's hue plus an icon-only corner chip — same tile size for
+ * both, so a mixed grid stays even. */
+function GarmentTile({
+  garment,
+  disabled,
+  onRemove,
+}: {
+  garment: Attachment;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
+  const meta = garment.kind === "link" ? SITE_META[garment.site] : undefined;
+  return (
+    <div className="relative">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={garment.previewUrl}
+        alt={garment.name}
+        className="border-border size-20 rounded-lg border object-cover"
+        // Inset so the ring never changes the tile's box — link and upload
+        // tiles stay the same size.
+        style={meta ? { boxShadow: `inset 0 0 0 2px ${meta.hue}` } : undefined}
+      />
+      {meta && (
+        <span
+          className="bg-background absolute bottom-1 left-1 grid size-4 place-items-center rounded-full border"
+          style={{ color: meta.hue }}
+          aria-label={`From ${meta.label}`}
+          title={`From ${meta.label}`}
+        >
+          <Link2Icon className="size-2.5" />
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${garment.name}`}
+        disabled={disabled}
+        className="bg-background absolute -top-2 -right-2 grid size-5 place-items-center rounded-full border disabled:opacity-50"
+      >
+        <XIcon className="size-3" />
+      </button>
+    </div>
+  );
+}
+
+/** The shimmering placeholder that reserves a link garment's slot while its
+ * two-hop scrape is in flight. */
+function GhostTile() {
+  return (
+    <div
+      role="status"
+      aria-label="Scraping link"
+      className="border-border relative grid size-20 place-items-center overflow-hidden rounded-lg border"
+    >
+      <Skeleton className="absolute inset-0" />
+      <div className="relative grid justify-items-center gap-1 text-center">
+        <Loader2Icon className="text-muted-foreground size-4 animate-spin motion-reduce:animate-none" />
+        <span className="text-muted-foreground text-[10px]">scraping…</span>
+      </div>
+    </div>
   );
 }
 

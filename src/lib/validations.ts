@@ -131,13 +131,18 @@ export type AuraSubmissionInput = z.infer<typeof auraSubmissionSchema>;
 /** Upper bound on garments composited into a single ephemeral try-on look. */
 export const MAX_TRY_ON_GARMENTS = 6;
 
+/** Upper bound on a garment/source name — one policy shared by the try-on
+ * garment, the Style Book save source, and the in-composer name the client
+ * builds, so the cap can never drift between them. */
+export const GARMENT_NAME_MAX_LENGTH = 80;
+
 // A garment/source name — one policy shared by the try-on garment and the
-// Style Book save source, so the 80-char cap can never drift between the two.
+// Style Book save source, so the cap can never drift between the two.
 const garmentName = z
   .string({ error: "Name the garment" })
   .trim()
   .min(1, "Name the garment")
-  .max(80, "That name is a little too long");
+  .max(GARMENT_NAME_MAX_LENGTH, "That name is a little too long");
 
 const tryOnGarment = z.object({
   // The untrusted upload crosses the wire exactly like a profile photo. The

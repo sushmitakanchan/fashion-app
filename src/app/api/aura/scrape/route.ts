@@ -22,12 +22,26 @@ function failure(status: number, body: Failure) {
 export const SCRAPE_USER_AGENT =
   "AURA-TryOn/1.0 (+https://github.com/sushmitakanchan/fashion-app; link ingestion)";
 
+// A hard per-hop ceiling on every outbound fetch. Without it a host that accepts
+// the connection but never sends a response (some sites stall a non-browser
+// user-agent rather than refusing it) leaves the request hanging on undici's
+// multi-minute default header timeout — surfacing as a scrape that never ends.
+// Fail fast and retryably instead.
+const SCRAPE_TIMEOUT_MS = 12_000;
+
+/** True for the `AbortSignal.timeout` rejection, so its copy can differ. */
+function isTimeout(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "TimeoutError";
+}
+
 type Source = "pinterest" | "myntra";
 
 type Extraction = { image: string | null; name: string | null };
 
 type SourceRule = {
   source: Source;
+  // Human-facing shop name, used in the "coming soon" copy.
+  label: string;
   host: RegExp;
   path: RegExp;
   // The CDN host(s) an image reference from this source's page is allowed to
@@ -36,6 +50,11 @@ type SourceRule = {
   // the second fetch hop — see the image-resolution guard in `POST`.
   imageHosts: readonly string[];
   extract: (html: string) => Extraction;
+  // Recognised but not yet ingested: the route answers "coming soon" instead of
+  // scraping. The rule's extractor is retained for the day it goes live —
+  // Myntra blocks non-browser fetches today, so a plain server-side scrape
+  // can't succeed yet, but the JSON-LD extraction stays wired and ready.
+  comingSoon?: boolean;
 };
 
 // The allowlist is matched on the parsed URL's host + path only; the query
@@ -44,6 +63,7 @@ type SourceRule = {
 const SOURCE_RULES: SourceRule[] = [
   {
     source: "pinterest",
+    label: "Pinterest",
     // `(*.)pinterest.com` — the .com apex or any subdomain, but never a ccTLD
     // such as pinterest.co.uk (deliberately out of scope).
     host: /^(?:[a-z0-9-]+\.)*pinterest\.com$/i,
@@ -58,6 +78,7 @@ const SOURCE_RULES: SourceRule[] = [
   },
   {
     source: "myntra",
+    label: "Myntra",
     // `(www.)myntra.com`.
     host: /^(?:www\.)?myntra\.com$/i,
     // `.../<styleId>/buy` — a numeric style id followed by the `buy` segment.
@@ -74,16 +95,48 @@ const SOURCE_RULES: SourceRule[] = [
         name: product.name ?? readMeta(html, "og:title"),
       };
     },
+    comingSoon: true,
   },
 ];
 
+// Popular fashion shops we recognise by host so a pasted link gets a named
+// "coming soon" reply rather than a flat "unsupported" — the demand signal
+// users are pasting. Host-only (no product-page rule yet); most expose a
+// JSON-LD Product, so `readJsonLdProduct` is the extractor they'll reuse when
+// each graduates to a full SOURCE_RULE.
+const COMING_SOON_SHOPS: { host: RegExp; label: string }[] = [
+  { host: /^(?:www\.)?ajio\.com$/i, label: "Ajio" },
+  { host: /^(?:www\.)?nykaafashion\.com$/i, label: "Nykaa Fashion" },
+  { host: /^(?:www\.)?flipkart\.com$/i, label: "Flipkart" },
+  { host: /^(?:www\.)?tatacliq\.com$/i, label: "Tata CLiQ" },
+  { host: /^(?:www\.)?zara\.com$/i, label: "Zara" },
+  { host: /^(?:www2?\.)?hm\.com$/i, label: "H&M" },
+  { host: /^(?:www\.)?asos\.com$/i, label: "ASOS" },
+];
+
+// Active scraping only — `comingSoon` rules are recognised (below) but never
+// fetched, so they can't reach a network call through this path.
 function matchSource(url: URL): SourceRule | null {
   if (url.protocol !== "https:") return null;
   return (
     SOURCE_RULES.find(
-      (rule) => rule.host.test(url.hostname) && rule.path.test(url.pathname),
+      (rule) =>
+        !rule.comingSoon &&
+        rule.host.test(url.hostname) &&
+        rule.path.test(url.pathname),
     ) ?? null
   );
+}
+
+// The shop name to name in a "coming soon" reply, or null if unrecognised.
+// Matched on host alone so even an off-shape URL on the domain is caught.
+function comingSoonLabel(url: URL): string | null {
+  const gatedRule = SOURCE_RULES.find(
+    (rule) => rule.comingSoon && rule.host.test(url.hostname),
+  );
+  if (gatedRule) return gatedRule.label;
+  return COMING_SOON_SHOPS.find((shop) => shop.host.test(url.hostname))?.label ??
+    null;
 }
 
 const scrapeRequestSchema = z.object({ url: z.string().min(1) });
@@ -117,7 +170,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return failure(400, {
       code: "invalid-request",
-      error: "Provide a Pinterest or Myntra link to scrape.",
+      error: "Provide a Pinterest link to scrape.",
       retryable: false,
     });
   }
@@ -133,11 +186,23 @@ export async function POST(req: Request) {
     });
   }
 
+  // A recognised-but-not-yet-scraped shop gets a named "coming soon" — checked
+  // before `matchSource` so any URL on the domain is answered, not just
+  // well-formed product paths.
+  const soon = comingSoonLabel(target);
+  if (soon) {
+    return failure(422, {
+      code: "coming-soon",
+      error: `${soon} links are coming soon — paste a Pinterest pin for now.`,
+      retryable: false,
+    });
+  }
+
   const rule = matchSource(target);
   if (!rule) {
     return failure(400, {
       code: "unsupported-domain",
-      error: "Only Pinterest pins and Myntra product links are supported.",
+      error: "Only Pinterest pins are supported right now — more shops soon.",
       retryable: false,
     });
   }
@@ -147,13 +212,18 @@ export async function POST(req: Request) {
   try {
     const pageResponse = await fetch(target.href, {
       headers: { "user-agent": SCRAPE_USER_AGENT },
+      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
     });
     if (!pageResponse.ok) {
       return fetchFailed("We couldn't reach that link. Please try again.");
     }
     html = await pageResponse.text();
-  } catch {
-    return fetchFailed("We couldn't reach that link. Please try again.");
+  } catch (error) {
+    return fetchFailed(
+      isTimeout(error)
+        ? "That link took too long to respond. Please try again."
+        : "We couldn't reach that link. Please try again.",
+    );
   }
 
   const extracted = rule.extract(html);
@@ -199,12 +269,17 @@ export async function POST(req: Request) {
   try {
     imageResponse = await fetch(imageHref, {
       headers: { "user-agent": SCRAPE_USER_AGENT },
+      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
     });
     if (!imageResponse.ok) {
       return fetchFailed("We couldn't download that image. Please try again.");
     }
-  } catch {
-    return fetchFailed("We couldn't download that image. Please try again.");
+  } catch (error) {
+    return fetchFailed(
+      isTimeout(error)
+        ? "That image took too long to download. Please try again."
+        : "We couldn't download that image. Please try again.",
+    );
   }
 
   // DoS guard: reject on the advertised Content-Length *before* the body is

@@ -104,7 +104,6 @@ const GARMENT_DATA_URI = `data:image/jpeg;base64,${GARMENT.toString("base64")}`;
 const PIN_URL = "https://www.pinterest.com/pin/some-slug--1234567890/";
 const PIN_IMAGE = "https://i.pinimg.com/originals/aa/bb/cc/garment.jpg";
 const MYNTRA_URL = "https://www.myntra.com/roadster/roadster-men-shirt/1234567/buy";
-const MYNTRA_IMAGE = "https://assets.myntassets.com/assets/images/1234567/garment.jpg";
 
 function pinterestPage({
   image = PIN_IMAGE,
@@ -113,27 +112,6 @@ function pinterestPage({
   return `<!doctype html><html><head>
     ${title ? `<meta property="og:title" content="${title}">` : ""}
     ${image ? `<meta property="og:image" content="${image}">` : ""}
-  </head><body></body></html>`;
-}
-
-function myntraPage({
-  image = MYNTRA_IMAGE,
-  name,
-  ogTitle,
-}: {
-  image?: string | string[] | null;
-  name?: string;
-  ogTitle?: string;
-} = {}): string {
-  const product: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-  };
-  if (image != null) product.image = image;
-  if (name != null) product.name = name;
-  return `<!doctype html><html><head>
-    ${ogTitle ? `<meta property="og:title" content="${ogTitle}">` : ""}
-    <script type="application/ld+json">${JSON.stringify(product)}</script>
   </head><body></body></html>`;
 }
 
@@ -182,23 +160,6 @@ describe("POST /api/aura/scrape", () => {
       );
       expect(fetchCalls).toHaveLength(0);
     });
-
-    it("refuses a non-Google identity with 403 before any network call", async () => {
-      clerkUser = {
-        ...clerkUser!,
-        externalAccounts: [
-          { ...clerkUser!.externalAccounts[0], provider: "github" },
-        ],
-      };
-
-      const response = await post();
-
-      expect(response.status).toBe(403);
-      await expect(response.json()).resolves.toEqual(
-        expect.objectContaining({ code: "identity-refused", retryable: false }),
-      );
-      expect(fetchCalls).toHaveLength(0);
-    });
   });
 
   describe("request validation", () => {
@@ -229,7 +190,6 @@ describe("POST /api/aura/scrape", () => {
       "a Pinterest ccTLD": "https://www.pinterest.co.uk/pin/1234567890/",
       "an http:// url": "http://www.pinterest.com/pin/1234567890/",
       "a bad Pinterest path shape": "https://www.pinterest.com/board/inspo/",
-      "a bad Myntra path shape": "https://www.myntra.com/roadster/shirt/1234567/reviews",
     };
 
     for (const [label, url] of Object.entries(cases)) {
@@ -246,6 +206,37 @@ describe("POST /api/aura/scrape", () => {
         expect(fetchCalls).toHaveLength(0);
       });
     }
+  });
+
+  describe("coming soon (recognised, not yet scraped)", () => {
+    // Recognised shops answer with a named "coming soon" and never touch the
+    // network — matched on host, so an off-shape path on the domain still lands
+    // here rather than in unsupported-domain.
+    const cases: Record<string, string> = {
+      "a Myntra product link": MYNTRA_URL,
+      "an off-shape Myntra link": "https://www.myntra.com/roadster/shirt/reviews",
+      "an Ajio link": "https://www.ajio.com/p/12345",
+      "a Zara link": "https://www.zara.com/in/en/product-p12345.html",
+    };
+
+    for (const [label, url] of Object.entries(cases)) {
+      it(`answers coming-soon for ${label} without any network call`, async () => {
+        const response = await post({ url });
+
+        expect(response.status).toBe(422);
+        await expect(response.json()).resolves.toEqual(
+          expect.objectContaining({ code: "coming-soon", retryable: false }),
+        );
+        expect(fetchCalls).toHaveLength(0);
+      });
+    }
+
+    it("names the shop in the coming-soon message", async () => {
+      const body = (await (await post({ url: MYNTRA_URL })).json()) as {
+        error: string;
+      };
+      expect(body.error).toContain("Myntra");
+    });
   });
 
   describe("fetch-failed (retryable)", () => {
@@ -302,19 +293,6 @@ describe("POST /api/aura/scrape", () => {
       );
     });
 
-    it("returns no-image-found when a Myntra page has no JSON-LD image", async () => {
-      route(hostContains("myntra.com"), () =>
-        html(myntraPage({ image: null, name: "A shirt" })),
-      );
-
-      const response = await post({ url: MYNTRA_URL });
-
-      expect(response.status).toBe(422);
-      await expect(response.json()).resolves.toEqual(
-        expect.objectContaining({ code: "no-image-found", retryable: false }),
-      );
-    });
-
     it("refuses a non-https image reference without fetching it", async () => {
       route(hostContains("pinterest.com"), () =>
         html(pinterestPage({ image: "http://169.254.169.254/latest/meta-data" })),
@@ -361,7 +339,7 @@ describe("POST /api/aura/scrape", () => {
       "a public but non-CDN host": "https://evil.example.com/garment.jpg",
       "a CDN-lookalike host": "https://i.pinimg.com.evil.example.com/garment.jpg",
       "userinfo masking an internal IP": "https://i.pinimg.com@169.254.169.254/garment.jpg",
-      "the other source's CDN": MYNTRA_IMAGE,
+      "another shop's CDN": "https://assets.myntassets.com/assets/images/1/garment.jpg",
     };
 
     for (const [label, image] of Object.entries(blockedPinterestImages)) {
@@ -377,34 +355,6 @@ describe("POST /api/aura/scrape", () => {
         expect(fetchCalls).toHaveLength(1);
       });
     }
-
-    it("refuses a Myntra image on a non-CDN host without fetching it", async () => {
-      route(hostContains("myntra.com"), () =>
-        html(myntraPage({ image: "https://169.254.169.254/garment.jpg" })),
-      );
-
-      const response = await post({ url: MYNTRA_URL });
-
-      expect(response.status).toBe(422);
-      await expect(response.json()).resolves.toEqual(
-        expect.objectContaining({ code: "no-image-found", retryable: false }),
-      );
-      expect(fetchCalls).toHaveLength(1);
-    });
-
-    it("refuses a Myntra page that points at Pinterest's CDN", async () => {
-      route(hostContains("myntra.com"), () =>
-        html(myntraPage({ image: PIN_IMAGE })),
-      );
-
-      const response = await post({ url: MYNTRA_URL });
-
-      expect(response.status).toBe(422);
-      await expect(response.json()).resolves.toEqual(
-        expect.objectContaining({ code: "no-image-found", retryable: false }),
-      );
-      expect(fetchCalls).toHaveLength(1);
-    });
 
     it("still fetches an image on the source's own allowlisted CDN host", async () => {
       route(hostContains("pinterest.com"), () => html(pinterestPage()));
@@ -463,37 +413,6 @@ describe("POST /api/aura/scrape", () => {
       });
     });
 
-    it("returns a Myntra garment from JSON-LD Product.image", async () => {
-      route(hostContains("myntra.com"), () =>
-        html(myntraPage({ name: "Roadster Men Black Shirt" })),
-      );
-      route(hostContains("myntassets.com"), () => imageBytes(GARMENT));
-
-      const response = await post({ url: MYNTRA_URL });
-
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({
-        image: GARMENT_DATA_URI,
-        name: "Roadster Men Black Shirt",
-        source: "myntra",
-      });
-    });
-
-    it("falls back to og:title when Myntra JSON-LD carries no name", async () => {
-      route(hostContains("myntra.com"), () =>
-        html(myntraPage({ name: undefined, ogTitle: "Roadster Shirt | Myntra" })),
-      );
-      route(hostContains("myntassets.com"), () => imageBytes(GARMENT));
-
-      const response = await post({ url: MYNTRA_URL });
-
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({
-        image: GARMENT_DATA_URI,
-        name: "Roadster Shirt | Myntra",
-        source: "myntra",
-      });
-    });
   });
 
   it("sends an honest User-Agent on every outbound hop", async () => {

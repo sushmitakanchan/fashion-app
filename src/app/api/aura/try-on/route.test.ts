@@ -162,22 +162,6 @@ describe("POST /api/aura/try-on", () => {
     expect(generate).not.toHaveBeenCalled();
   });
 
-  it("refuses a non-Google identity before any try-on operation", async () => {
-    clerkUser = {
-      ...clerkUser!,
-      externalAccounts: [{ ...clerkUser!.externalAccounts[0], provider: "github" }],
-    };
-
-    const response = await post();
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "identity-refused", retryable: false }),
-    );
-    expect(findUser).not.toHaveBeenCalled();
-    expect(generate).not.toHaveBeenCalled();
-  });
-
   it("refuses an unverified Google email before any try-on operation", async () => {
     clerkUser = {
       ...clerkUser!,

@@ -14,6 +14,17 @@
      is scoped to h1/h2 and never reaches labels, tags, or body copy. */
   --font-heading: var(--font-display);
   --font-serif: var(--font-instrument-serif);
+  /* The landing's inverted bands. These are surfaces, not theme roles: the
+     ink band stays an ink band in both modes, so they don't flip the way
+     --primary does. Only --brand-ink shifts, and only enough to stay visible
+     against a dark page. */
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-ink-foreground: var(--brand-ink-foreground);
+  --color-brand-lime: var(--brand-lime);
+  --color-brand-lime-foreground: var(--brand-lime-foreground);
+  --color-brand-magenta: var(--brand-magenta);
+  --color-brand-magenta-foreground: var(--brand-magenta-foreground);
+  --animate-aura-marquee: aura-marquee 18s linear infinite;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -129,6 +140,12 @@
   --sidebar-accent-foreground: oklch(0.181 0.006 55.9);
   --sidebar-border: oklch(0.91 0.016 347.7);
   --sidebar-ring: oklch(0.561 0.212 353.1);
+  --brand-ink: oklch(0.181 0.006 55.9); /* #14110F */
+  --brand-ink-foreground: oklch(0.954 0.017 84.6); /* #F5EFE3, 16.42:1 */
+  --brand-lime: oklch(0.906 0.189 120.7); /* #CFF24C */
+  --brand-lime-foreground: oklch(0.181 0.006 55.9); /* #14110F, 14.74:1 */
+  --brand-magenta: oklch(0.561 0.212 353.1); /* #C9227F */
+  --brand-magenta-foreground: oklch(0.954 0.017 84.6); /* #F5EFE3, 4.56:1 */
 }
 
 /*
@@ -173,6 +190,15 @@
   --sidebar-accent-foreground: oklch(0.954 0.017 84.6);
   --sidebar-border: oklch(0.326 0.018 74);
   --sidebar-ring: oklch(0.906 0.189 120.7);
+  /* The one brand surface that moves: an ink band on an ink page is not a
+     band. It steps up to the warm dark, which still carries cream at 14.77:1
+     and holds the lime cards at 13.26:1. */
+  --brand-ink: oklch(0.23 0.023 84.1); /* #221C10 */
+  --brand-ink-foreground: oklch(0.954 0.017 84.6);
+  --brand-lime: oklch(0.906 0.189 120.7);
+  --brand-lime-foreground: oklch(0.181 0.006 55.9);
+  --brand-magenta: oklch(0.561 0.212 353.1);
+  --brand-magenta-foreground: oklch(0.954 0.017 84.6);
 }
 
 @layer base {
@@ -195,5 +221,17 @@
   }
   html.dark {
     color-scheme: dark;
+  }
+}
+
+/* The landing marquee. Translating a doubled track by exactly -50% lands the
+   second copy where the first began, so the loop has no seam. `transform`
+   only — it stays on the compositor and never triggers layout. */
+@keyframes aura-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
   }
 }

@@ -84,7 +84,7 @@ export default function Home() {
           </p>
           <div className="mx-auto mt-10 grid max-w-6xl items-center gap-10 md:grid-cols-[1.1fr_0.9fr]">
             <div>
-              <h1 className="font-heading text-[clamp(2.75rem,7vw,5.5rem)] leading-[0.96] tracking-wide uppercase">
+              <h1 className="font-heading text-[clamp(2.75rem,7vw,5.5rem)] leading-[0.96] tracking-wide text-balance uppercase">
                 A magnetic{" "}
                 <em className="font-serif text-[1.05em] normal-case italic">
                   portrait
@@ -116,7 +116,7 @@ export default function Home() {
         {/* -------------------------------------------------- HOW IT WORKS */}
         <section className="bg-brand-ink text-brand-ink-foreground px-6 py-20 sm:py-24">
           <div className="mx-auto max-w-6xl">
-            <h2 className="font-heading text-4xl tracking-wide uppercase">
+            <h2 className="font-heading text-4xl tracking-wide text-balance uppercase">
               How it works
             </h2>
             <p className="text-brand-lime font-serif mt-2 text-[22px] italic">
@@ -131,7 +131,7 @@ export default function Home() {
                   <span className="font-heading text-4xl leading-none">
                     {step.n}
                   </span>
-                  <h3 className="mt-3 text-xl font-bold tracking-wide uppercase">
+                  <h3 className="mt-3 text-xl font-bold tracking-wide text-balance uppercase">
                     {step.title}
                   </h3>
                   <p className="mt-2 text-sm leading-relaxed text-pretty">
@@ -148,7 +148,7 @@ export default function Home() {
           <h2 className="sr-only">What AURA gives you</h2>
           <div className="mx-auto grid max-w-6xl gap-7 md:grid-cols-2">
             <div className="bg-muted rounded-3xl p-11">
-              <h3 className="font-heading text-3xl tracking-wide uppercase">
+              <h3 className="font-heading text-3xl tracking-wide text-balance uppercase">
                 Portrait Generator
               </h3>
               <p className="text-muted-foreground mt-3 max-w-sm text-sm leading-relaxed text-pretty">
@@ -157,14 +157,14 @@ export default function Home() {
               </p>
               <Link
                 href="/aura"
-                className="focus-visible:ring-ring mt-5 inline-block rounded-sm text-[13px] font-bold underline underline-offset-4 focus-visible:ring-3 focus-visible:outline-none"
+                className="focus-visible:ring-ring mt-5 inline-block rounded-sm text-[13px] font-bold underline underline-offset-4 touch-manipulation transition-opacity hover:opacity-70 focus-visible:ring-3 focus-visible:outline-none"
               >
                 See sample portraits →
               </Link>
             </div>
 
             <div className="bg-brand-magenta text-brand-magenta-foreground rounded-3xl p-11">
-              <h3 className="font-heading text-3xl tracking-wide uppercase">
+              <h3 className="font-heading text-3xl tracking-wide text-balance uppercase">
                 Stylebook
               </h3>
               <p className="mt-3 max-w-sm text-sm leading-relaxed text-pretty">
@@ -173,7 +173,7 @@ export default function Home() {
               </p>
               <Link
                 href="/aura/style-book"
-                className="focus-visible:ring-brand-magenta-foreground mt-5 inline-block rounded-sm text-[13px] font-bold underline underline-offset-4 focus-visible:ring-2 focus-visible:outline-none"
+                className="focus-visible:ring-brand-magenta-foreground mt-5 inline-block rounded-sm text-[13px] font-bold underline underline-offset-4 touch-manipulation transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:outline-none"
               >
                 Open stylebook →
               </Link>
@@ -236,7 +236,7 @@ export default function Home() {
             className="pointer-events-none absolute top-1/2 left-1/2 size-[560px] max-w-none -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(circle,var(--color-brand-lime)_0%,transparent_70%)] opacity-30"
           />
           <div className="relative">
-            <h2 className="font-heading text-[clamp(2.5rem,6vw,4.75rem)] leading-tight tracking-wide uppercase">
+            <h2 className="font-heading text-[clamp(2.5rem,6vw,4.75rem)] leading-tight tracking-wide text-balance uppercase">
               Ready for{" "}
               <em className="text-brand-lime font-serif text-[1.05em] normal-case italic">
                 your

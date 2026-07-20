@@ -43,6 +43,16 @@ export function BrandMarquee() {
         ))}
       </div>
 
+      {/* Fades the track out before it reaches the control, so the text stops
+          at the edge of the band instead of sliding underneath the button. */}
+      <span
+        aria-hidden="true"
+        className="from-brand-magenta pointer-events-none absolute inset-y-0 right-0 w-28 bg-gradient-to-l to-transparent"
+      />
+
+      {/* Ink rather than a translucent black: at bg-black/15 the button's own
+          edge sat at 1.29:1 against the band, so the only thing identifying
+          the control was the icon inside it. Ink reads at 5.08:1. */}
       <button
         type="button"
         onClick={() => setPaused((p) => !p)}
@@ -50,7 +60,7 @@ export function BrandMarquee() {
         aria-label={
           paused ? "Play the scrolling banner" : "Pause the scrolling banner"
         }
-        className="text-brand-magenta-foreground focus-visible:ring-brand-magenta-foreground absolute right-2 grid size-9 shrink-0 place-items-center rounded-full border border-current/40 bg-black/15 touch-manipulation hover:bg-black/30 focus-visible:ring-2 focus-visible:outline-none"
+        className="bg-brand-ink text-brand-ink-foreground focus-visible:ring-brand-ink-foreground absolute right-3 grid size-9 shrink-0 place-items-center rounded-full touch-manipulation hover:opacity-80 focus-visible:ring-2 focus-visible:outline-none"
       >
         {paused ? (
           <PlayIcon className="size-4" aria-hidden="true" />

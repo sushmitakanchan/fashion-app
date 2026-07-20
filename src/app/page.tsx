@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Show, UserButton } from "@clerk/nextjs";
+import { Show } from "@clerk/nextjs";
 import { BoxIcon, CameraIcon, SparklesIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ModeToggle } from "@/components/mode-toggle";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 
 const steps = [
@@ -37,30 +36,15 @@ const steps = [
 export default function Home() {
   return (
     <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-          <span className="flex items-center gap-2 font-semibold tracking-tight">
-            <SparklesIcon className="size-5" />
-            AURA
-          </span>
-          <nav className="flex items-center gap-2">
-            <ModeToggle />
-            <Show when="signed-out">
-              <GoogleAuthButton size="sm" />
-            </Show>
-            <Show when="signed-in">
-              <UserButton />
-            </Show>
-          </nav>
-        </div>
-      </header>
-
       <main className="flex-1">
-        <section className="mx-auto flex w-full max-w-6xl flex-col items-center px-6 py-24 text-center">
+        {/* v5's hero sits on a pink radial that fades to the page. It is
+            decorative and sits behind text that already clears 17:1 on the
+            palest stop, so it needs no contrast allowance of its own. */}
+        <section className="mx-auto flex w-full max-w-6xl flex-col items-center bg-[radial-gradient(ellipse_80%_65%_at_50%_0%,var(--color-accent)_0%,transparent_70%)] px-6 py-24 text-center">
           <Badge variant="secondary" className="mb-6">
             <SparklesIcon /> Two photos, your AURA portrait
           </Badge>
-          <h1 className="max-w-3xl text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
+          <h1 className="font-heading max-w-3xl text-4xl tracking-wide text-balance uppercase sm:text-6xl">
             Your studio-style portrait starts with AURA
           </h1>
           <p className="text-muted-foreground mt-6 max-w-xl text-lg leading-relaxed text-pretty italic">

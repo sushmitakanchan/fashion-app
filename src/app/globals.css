@@ -9,7 +9,11 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  /* v5 sets headings in Anton. It is a single-weight uppercase display face —
+     legible at scale, and materially slower to read below it, so `font-heading`
+     is scoped to h1/h2 and never reaches labels, tags, or body copy. */
+  --font-heading: var(--font-display);
+  --font-serif: var(--font-instrument-serif);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,103 +53,126 @@
 }
 
 /*
- * Editorial — the site-wide palette. One accent, warm paper, quiet neutrals.
+ * AURA v5 — the site-wide palette. Ink and lime, on pink paper.
  *
- *   Blue     #2147F5  the only accent: fills, links, and focus
- *   Paper    #F7F5F1  the page
- *   Card     #FBFAF7  surfaces, a shade warmer-white than the page
- *   Ink      #171717  primary text
- *   Grey     #6F6F6F  secondary text
- *   Border   #DDD8CF  hairlines
- *   Error    #B94A48  the one exception to the single accent
+ *   Ink      #14110F  primary text, and the light-mode primary fill
+ *   Lime     #CFF24C  the dark-mode primary fill and focus ring
+ *   Magenta  #C9227F  the light-mode focus ring and link accent
+ *   Pink     #F6CFE0  the label on an ink button
+ *   Paper    #FDF3F6  the page
+ *   Card     #FFFFFF  surfaces, a clean white against the pink page
+ *   Rose     #7C606A  secondary text
+ *   Cream    #F5EFE3  primary text in dark mode
  *
  * Nothing in the app hardcodes a colour outside these tokens, so this block is
  * the whole theme.
  *
- * Two deliberate deviations from the brief, both to hold 4.5:1 / 3:1:
- *   - secondary text is #6B6B6B, not #6F6F6F. The spec value is 4.37:1 on
- *     --muted (#F1EFEA), which `text-muted-foreground` on a `bg-muted` chip
- *     actually hits. Four steps down is invisible and lands at 4.64:1.
- *   - dark mode lifts the accent to #3D63FF. The brand blue is 2.80:1 against
- *     near-black, under the 3:1 a button edge needs; the lift reads as the same
- *     blue and hover returns it to the exact brand value.
+ * The primary fill inverts across modes rather than lightening in place: v5
+ * draws its primary button as ink-on-pink over light surfaces and lime-on-ink
+ * over dark ones. Both are the same button in the design, so they are the same
+ * token, and both clear 13:1.
+ *
+ * Four deliberate deviations from the v5 mockup, each to hold 4.5:1 / 3:1:
+ *   - secondary text is #7C606A, not the mockup's #8a6b76. That value is
+ *     3.85:1 on the pink gradient and 4.35:1 on the Colors page — it fails on
+ *     every surface it is used on. Ten percent down is indistinguishable and
+ *     lands at 5.17:1.
+ *   - the magenta is #C9227F, not #F5299B. The hot magenta carries light text
+ *     at 3.23:1 (cream) and 2.84:1 (pink), so it cannot be a text-bearing
+ *     surface as drawn. #C9227F holds cream at 4.56:1. Where the design wants
+ *     the hot magenta specifically, it stays — with ink on it, at 5.08:1.
+ *   - lime is never the focus ring on a light surface (1.6:1 against white).
+ *     Light mode focuses in magenta at 4.81:1; dark mode keeps lime at 14.74:1.
+ *   - --input is a full step darker than --border. The mockup draws control
+ *     edges at rgba(20,17,15,0.2) = 1.54:1; a control boundary needs 3:1, so
+ *     the two split — --border stays a decorative hairline, --input carries
+ *     the edge at 3.36:1.
+ *
+ * One fix that is not about v5: the shadcn primitives draw their focus ring at
+ * `ring-ring/50`, which lands at 2.23:1 here and landed at 2.32:1 under the
+ * previous blue theme — a focus indicator needs 3:1. They are now `/70`, the
+ * first step that clears it on every surface (3.12:1 worst case, light paper).
  */
 :root {
-  --background: oklch(0.971 0.006 84.6); /* #F7F5F1 paper */
-  --foreground: oklch(0.205 0 89.9); /* #171717 ink */
-  --card: oklch(0.985 0.004 91.4); /* #FBFAF7 */
-  --card-foreground: oklch(0.205 0 89.9);
-  --popover: oklch(0.985 0.004 91.4);
-  --popover-foreground: oklch(0.205 0 89.9);
-  --primary: oklch(0.506 0.259 266); /* #2147F5 */
-  --primary-foreground: oklch(1 0 89.9); /* white */
-  --primary-hover: oklch(0.447 0.231 266.2); /* #1B3AD1 — the brief's "slightly darker blue" */
-  --secondary: oklch(0.952 0.007 88.6); /* #F1EFEA */
-  --secondary-foreground: oklch(0.205 0 89.9);
-  --muted: oklch(0.952 0.007 88.6); /* #F1EFEA */
-  --muted-foreground: oklch(0.528 0 89.9); /* #6B6B6B — see note above */
-  --accent: oklch(0.952 0.007 88.6); /* #F1EFEA — the quiet hover surface */
-  --accent-foreground: oklch(0.205 0 89.9);
-  --destructive: oklch(0.556 0.145 24); /* #B94A48 */
-  --border: oklch(0.884 0.013 82.4); /* #DDD8CF */
-  --input: oklch(0.884 0.013 82.4);
-  --ring: oklch(0.506 0.259 266); /* blue outline when active */
-  --chart-1: oklch(0.506 0.259 266); /* accent, then neutrals — one colour only */
-  --chart-2: oklch(0.205 0 89.9);
-  --chart-3: oklch(0.528 0 89.9);
-  --chart-4: oklch(0.713 0.009 84.6);
-  --chart-5: oklch(0.884 0.013 82.4);
+  --background: oklch(0.973 0.011 357); /* #FDF3F6 pink paper */
+  --foreground: oklch(0.181 0.006 55.9); /* #14110F ink */
+  --card: oklch(1 0 89.9); /* #FFFFFF */
+  --card-foreground: oklch(0.181 0.006 55.9);
+  --popover: oklch(1 0 89.9);
+  --popover-foreground: oklch(0.181 0.006 55.9);
+  --primary: oklch(0.181 0.006 55.9); /* #14110F — ink fill */
+  --primary-foreground: oklch(0.892 0.049 350); /* #F6CFE0 pink label, 13.36:1 */
+  --primary-hover: oklch(0.266 0.01 39.3); /* #2A2422 — the ink, lifted */
+  --secondary: oklch(0.976 0 89.9); /* #F7F7F7 */
+  --secondary-foreground: oklch(0.181 0.006 55.9);
+  --muted: oklch(0.976 0 89.9); /* #F7F7F7 */
+  --muted-foreground: oklch(0.52 0.039 355.2); /* #7C606A — see note above */
+  --accent: oklch(0.934 0.028 355.4); /* #FAE2EA — the quiet hover surface */
+  --accent-foreground: oklch(0.181 0.006 55.9);
+  --destructive: oklch(0.501 0.178 28.7); /* #B3261E — 6.02:1 on paper */
+  --border: oklch(0.91 0.016 347.7); /* #EADDE3 decorative hairline */
+  --input: oklch(0.644 0.027 344.8); /* #9A8791 — 3.36:1, a control edge */
+  --ring: oklch(0.561 0.212 353.1); /* #C9227F magenta outline when active */
+  --chart-1: oklch(0.561 0.212 353.1); /* magenta, lime, then neutrals */
+  --chart-2: oklch(0.69 0.146 120.6); /* #8FA82F — lime, dropped to read on white */
+  --chart-3: oklch(0.181 0.006 55.9);
+  --chart-4: oklch(0.52 0.039 355.2);
+  --chart-5: oklch(0.892 0.049 350);
   /* 14px. Buttons (rounded-lg) take it directly; cards (rounded-xl) are
-     calc(radius * 1.4) = ~20px, which is the card radius the brief asks for. */
+     calc(radius * 1.4) = ~20px, which is the card radius v5 draws. */
   --radius: 0.875rem;
-  --sidebar: oklch(0.985 0.004 91.4);
-  --sidebar-foreground: oklch(0.205 0 89.9);
-  --sidebar-primary: oklch(0.506 0.259 266);
-  --sidebar-primary-foreground: oklch(1 0 89.9);
-  --sidebar-accent: oklch(0.952 0.007 88.6);
-  --sidebar-accent-foreground: oklch(0.205 0 89.9);
-  --sidebar-border: oklch(0.884 0.013 82.4);
-  --sidebar-ring: oklch(0.506 0.259 266);
+  --sidebar: oklch(1 0 89.9);
+  --sidebar-foreground: oklch(0.181 0.006 55.9);
+  --sidebar-primary: oklch(0.181 0.006 55.9);
+  --sidebar-primary-foreground: oklch(0.892 0.049 350);
+  --sidebar-accent: oklch(0.934 0.028 355.4);
+  --sidebar-accent-foreground: oklch(0.181 0.006 55.9);
+  --sidebar-border: oklch(0.91 0.016 347.7);
+  --sidebar-ring: oklch(0.561 0.212 353.1);
 }
 
 /*
- * The brief is light-only, but ModeToggle ships in the header, so dark is the
- * same editorial system inverted: ink becomes the page, paper becomes the type,
- * and the accent stays the only colour.
+ * v5 is light-only, but ModeToggle ships in the header, so dark is the same
+ * system inverted: the ink becomes the page, cream becomes the type, and the
+ * primary fill flips to lime — which is how v5 already draws every button that
+ * sits on an ink surface (the upload flow, the CTA footer, the active tab).
+ *
+ * The dark surfaces are v5's own warm darks, not neutral greys: #221C10 is the
+ * dropzone fill it draws on the upload screen.
  */
 .dark {
-  --background: oklch(0.205 0 89.9); /* #171717 — the ink, as the page */
-  --foreground: oklch(0.971 0.006 84.6); /* #F7F5F1 */
-  --card: oklch(0.235 0.004 84.6); /* #1F1E1C */
-  --card-foreground: oklch(0.971 0.006 84.6);
-  --popover: oklch(0.235 0.004 84.6);
-  --popover-foreground: oklch(0.971 0.006 84.6);
-  --primary: oklch(0.571 0.235 267.5); /* #3D63FF — lifted, see note above */
-  --primary-foreground: oklch(1 0 89.9);
-  --primary-hover: oklch(0.506 0.259 266); /* back to the exact brand blue */
-  --secondary: oklch(0.265 0.004 84.6); /* #262523 */
-  --secondary-foreground: oklch(0.971 0.006 84.6);
-  --muted: oklch(0.265 0.004 84.6);
-  --muted-foreground: oklch(0.713 0.009 84.6); /* #A5A29C */
-  --accent: oklch(0.265 0.004 84.6);
-  --accent-foreground: oklch(0.971 0.006 84.6);
-  --destructive: oklch(0.714 0.129 22); /* #E8807E — lifted to read on near-black */
-  --border: oklch(0.971 0.006 84.6 / 12%);
-  --input: oklch(0.971 0.006 84.6 / 18%);
-  --ring: oklch(0.571 0.235 267.5);
-  --chart-1: oklch(0.571 0.235 267.5);
-  --chart-2: oklch(0.971 0.006 84.6);
-  --chart-3: oklch(0.713 0.009 84.6);
-  --chart-4: oklch(0.528 0 89.9);
-  --chart-5: oklch(0.265 0.004 84.6);
-  --sidebar: oklch(0.235 0.004 84.6);
-  --sidebar-foreground: oklch(0.971 0.006 84.6);
-  --sidebar-primary: oklch(0.571 0.235 267.5);
-  --sidebar-primary-foreground: oklch(1 0 89.9);
-  --sidebar-accent: oklch(0.265 0.004 84.6);
-  --sidebar-accent-foreground: oklch(0.971 0.006 84.6);
-  --sidebar-border: oklch(0.971 0.006 84.6 / 12%);
-  --sidebar-ring: oklch(0.571 0.235 267.5);
+  --background: oklch(0.181 0.006 55.9); /* #14110F — the ink, as the page */
+  --foreground: oklch(0.954 0.017 84.6); /* #F5EFE3 cream */
+  --card: oklch(0.23 0.023 84.1); /* #221C10 — v5's warm dark */
+  --card-foreground: oklch(0.954 0.017 84.6);
+  --popover: oklch(0.23 0.023 84.1);
+  --popover-foreground: oklch(0.954 0.017 84.6);
+  --primary: oklch(0.906 0.189 120.7); /* #CFF24C lime fill */
+  --primary-foreground: oklch(0.181 0.006 55.9); /* #14110F ink label, 14.74:1 */
+  --primary-hover: oklch(0.69 0.146 120.6); /* #8FA82F — the lime, dropped */
+  --secondary: oklch(0.263 0.023 84.3); /* #2A2418 */
+  --secondary-foreground: oklch(0.954 0.017 84.6);
+  --muted: oklch(0.263 0.023 84.3);
+  --muted-foreground: oklch(0.814 0.028 90.9); /* #C9C2AE — v5's dark-surface body */
+  --accent: oklch(0.263 0.023 84.3);
+  --accent-foreground: oklch(0.954 0.017 84.6);
+  --destructive: oklch(0.803 0.087 23.6); /* #F2A9A4 — lifted to read on the ink */
+  --border: oklch(0.326 0.018 74); /* #3A332A decorative hairline */
+  --input: oklch(0.525 0.029 81); /* #736958 — 3.48:1, a control edge */
+  --ring: oklch(0.906 0.189 120.7); /* lime outline when active, 14.74:1 */
+  --chart-1: oklch(0.906 0.189 120.7);
+  --chart-2: oklch(0.649 0.248 353.2); /* #F5299B — the hot magenta reads here */
+  --chart-3: oklch(0.954 0.017 84.6);
+  --chart-4: oklch(0.814 0.028 90.9);
+  --chart-5: oklch(0.263 0.023 84.3);
+  --sidebar: oklch(0.23 0.023 84.1);
+  --sidebar-foreground: oklch(0.954 0.017 84.6);
+  --sidebar-primary: oklch(0.906 0.189 120.7);
+  --sidebar-primary-foreground: oklch(0.181 0.006 55.9);
+  --sidebar-accent: oklch(0.263 0.023 84.3);
+  --sidebar-accent-foreground: oklch(0.954 0.017 84.6);
+  --sidebar-border: oklch(0.326 0.018 74);
+  --sidebar-ring: oklch(0.906 0.189 120.7);
 }
 
 @layer base {
@@ -157,5 +184,16 @@
   }
   html {
     @apply font-sans;
+    /* Tells the UA to draw scrollbars, form controls, and the caret to match.
+       next-themes only toggles the class, so without this the dark page keeps
+       light native chrome. */
+    color-scheme: light;
+    /* The default translucent-black flash reads as grey mud over the pink
+       paper and the lime buttons. The accent tint is the same surface every
+       other press state uses. */
+    -webkit-tap-highlight-color: var(--accent);
+  }
+  html.dark {
+    color-scheme: dark;
   }
 }

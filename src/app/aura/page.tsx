@@ -7,16 +7,8 @@ import {
   resolveInitialAuraDisplayName,
 } from "@/lib/aura-identity";
 import { getPrisma } from "@/lib/prisma";
+import { GRID_SURFACE_STYLE } from "@/lib/grid-surface";
 import { AuraForm } from "@/components/forms/aura-form";
-
-// v5's upload screen is a full gridded surface rather than a card on the page.
-// The hatch is drawn from --upload-grid-line, which flips ink-on-pink in light
-// mode to cream-on-ink in dark, so the one style covers both themes.
-const GRID = {
-  backgroundImage:
-    "linear-gradient(var(--upload-grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--upload-grid-line) 1px, transparent 1px)",
-  backgroundSize: "42px 42px",
-} as const;
 
 export const metadata: Metadata = {
   title: "Create your AURA profile",
@@ -58,7 +50,7 @@ export default async function AuraPage() {
     googleName: admission?.ok ? admission.googleName : null,
   });
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-6 py-16" style={GRID}>
+    <main className="min-h-[calc(100vh-4rem)] px-6 py-16" style={GRID_SURFACE_STYLE}>
       <div className="mx-auto w-full max-w-3xl">
         <span className="text-upload-label text-xs tracking-[0.14em] uppercase">
           Your AURA profile

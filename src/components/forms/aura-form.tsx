@@ -16,10 +16,13 @@ import {
   type PhotoAngle,
 } from "@/lib/validations";
 import { downscalePhoto } from "@/lib/aura";
+import { deriveAuraSteps } from "@/lib/aura-form-progress";
 import type { PortraitRequest } from "@/lib/aura-portrait-state";
 import { AuraProfileResult } from "@/components/aura/aura-profile-result";
+import { AuraProgress } from "@/components/aura/aura-progress";
 import { PhotoUploadField } from "@/components/aura/photo-upload-field";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,10 +68,21 @@ export function AuraForm({
     defaultValues: { name: initialName, consent: false },
   });
 
-  // `useWatch` rather than `watch()`: it scopes the re-render to this one field
+  // `useWatch` rather than `watch()`: it scopes the re-render to these fields
   // instead of the whole form, and it doesn't opt the component out of React
   // Compiler memoization the way `watch()` does.
   const consent = useWatch({ control, name: "consent" });
+  const name = useWatch({ control, name: "name" });
+  const front = useWatch({ control, name: "photos.front" });
+  const closeup = useWatch({ control, name: "photos.closeup" });
+
+  // Presentation only — the authoritative gate stays the Zod resolver on
+  // submit. This just drives the completion markers.
+  const steps = deriveAuraSteps({
+    name,
+    hasFront: Boolean(front),
+    hasCloseup: Boolean(closeup),
+  });
 
   async function requestPortrait() {
     setPortraitRequest("generating");
@@ -157,24 +171,44 @@ export function AuraForm({
   }
 
   if (isProfileSaved) {
+    // Kept in its own card so the reskin's gridded upload panel doesn't bleed
+    // into the result view — this branch is unchanged from before.
     return (
-      <AuraProfileResult
-        portraitUrl={portraitUrl}
-        request={portraitRequest}
-        onGenerate={requestPortrait}
-        onEdit={() => {
-          setIsProfileSaved(false);
-          setPortraitUrl(undefined);
-          setPortraitRequest("idle");
-        }}
-      />
+      <Card className="mt-8">
+        <CardContent>
+          <AuraProfileResult
+            portraitUrl={portraitUrl}
+            request={portraitRequest}
+            onGenerate={requestPortrait}
+            onEdit={() => {
+              setIsProfileSaved(false);
+              setPortraitUrl(undefined);
+              setPortraitRequest("idle");
+            }}
+          />
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="grid gap-8" noValidate>
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="mt-10 grid gap-10"
+      noValidate
+    >
+      <AuraProgress steps={steps} />
+
       <section className="grid gap-2">
-        <Label htmlFor="name">AURA display name</Label>
+        <span className="text-upload-label text-[11px] tracking-[0.14em] uppercase">
+          Step one
+        </span>
+        <h2 className="font-heading text-2xl tracking-wide uppercase">
+          Display name
+        </h2>
+        <Label htmlFor="name" className="sr-only">
+          AURA display name
+        </Label>
         <Input
           id="name"
           placeholder="Ada Lovelace"
@@ -189,9 +223,14 @@ export function AuraForm({
         <FieldError message={errors.name?.message} />
       </section>
 
-      <section className="grid gap-3">
+      <section className="grid gap-4">
         <div className="grid gap-1">
-          <Label>AURA reference photos</Label>
+          <span className="text-upload-label text-[11px] tracking-[0.14em] uppercase">
+            Step two
+          </span>
+          <h2 className="font-heading text-2xl tracking-wide uppercase">
+            Reference photos
+          </h2>
           <p className="text-muted-foreground text-sm">
             Required to create your AURA portrait: a full-body front photo and a
             face close-up. Wear fitted clothing and use a plain background.
@@ -220,11 +259,16 @@ export function AuraForm({
         <FieldError message={errors.photos?.root?.message} />
       </section>
 
-      <section className="grid gap-3">
+      <section className="grid gap-4">
         <div className="grid gap-1">
+          <span className="text-upload-label text-[11px] tracking-[0.14em] uppercase">
+            Step three
+          </span>
           <div className="flex flex-wrap items-center gap-2">
-            <Label>3D avatar reference photos</Label>
-            <span className="text-muted-foreground rounded-full border px-2 py-0.5 text-xs font-medium">
+            <h2 className="font-heading text-2xl tracking-wide uppercase">
+              3D avatar photos
+            </h2>
+            <span className="text-upload-label border-upload-accent rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase">
               Coming soon
             </span>
           </div>
@@ -267,7 +311,7 @@ export function AuraForm({
                 checked={field.value}
                 onCheckedChange={field.onChange}
                 aria-invalid={!!errors.consent}
-                className="mt-0.5"
+                className="mt-0.5 data-checked:bg-upload-accent data-checked:border-upload-accent data-checked:text-upload-accent-foreground"
               />
             )}
           />
@@ -285,7 +329,7 @@ export function AuraForm({
           type="submit"
           size="lg"
           disabled={!consent || isSubmitting}
-          className="w-full sm:w-auto sm:justify-self-start"
+          className="bg-upload-accent text-upload-accent-foreground hover:bg-upload-accent/90 w-full rounded-full sm:w-auto sm:justify-self-start"
         >
           <SparklesIcon />
           {isSubmitting ? "Saving…" : "Save AURA profile"}

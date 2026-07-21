@@ -220,7 +220,11 @@ export default function Home() {
                     aria-hidden="true"
                     className="absolute right-2.5 bottom-2.5 size-4 border-r-2 border-b-2 border-neutral-900"
                   />
-                  <span className="bg-brand-ink text-brand-ink-foreground absolute top-3 right-3 rounded-full px-3 py-1.5 text-[9.5px] font-bold tracking-wider uppercase">
+                  {/* 11px, not v5's 9.5px: uppercase + letterspacing strips
+                      word-shape cues, and below ~11px that legibility cost
+                      lands hardest. The tighter tracking keeps the pill the
+                      same visual weight. */}
+                  <span className="bg-brand-ink text-brand-ink-foreground absolute top-3 right-3 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide uppercase">
                     {item.tag}
                   </span>
                 </li>

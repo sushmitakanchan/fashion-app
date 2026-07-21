@@ -83,7 +83,7 @@ export function PhotoUploadField({
         onClick={() => inputRef.current?.click()}
         className={cn(
           "relative flex aspect-3/4 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed transition-colors outline-none",
-          "hover:border-ring focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+          "hover:border-ring focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/70",
           error ? "border-destructive" : "border-input",
           !value && "bg-muted/30",
         )}

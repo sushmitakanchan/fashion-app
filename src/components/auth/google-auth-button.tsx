@@ -9,12 +9,16 @@ import { Button } from "@/components/ui/button";
  */
 export function GoogleAuthButton({
   size = "default",
+  className,
 }: {
   size?: "default" | "sm" | "lg";
+  className?: string;
 }) {
   return (
     <SignInButton mode="redirect" forceRedirectUrl="/aura" withSignUp>
-      <Button size={size}>Continue with Google</Button>
+      <Button size={size} className={className}>
+        Continue with Google
+      </Button>
     </SignInButton>
   );
 }

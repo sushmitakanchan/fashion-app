@@ -39,13 +39,18 @@ export const PHOTO_MAX_EDGE = 1600;
 const PHOTO_TOO_LARGE = "Photo must be under 15 MiB";
 const PHOTO_WRONG_TYPE = "Use a JPEG, PNG, or WebP image";
 
+/** Minimum trimmed length of the AURA display name. Exported so the form's
+ *  completion indicator applies the same "name is filled in" rule the schema
+ *  validates against — the two can't drift. */
+export const AURA_NAME_MIN_LENGTH = 2;
+
 const auraFields = {
   // The AURA display name. It belongs to the AURA profile, not to the Google or
   // Clerk account it was seeded from, so editing it never travels back upstream.
   name: z
     .string({ error: "Please enter your name" })
     .trim()
-    .min(2, "Please enter your name")
+    .min(AURA_NAME_MIN_LENGTH, "Please enter your name")
     .max(60, "That name is a little too long"),
   // Consent gates the submit button, so this is a backstop rather than the
   // primary check — but the server must not take our word for it.

@@ -24,6 +24,15 @@
   --color-brand-lime-foreground: var(--brand-lime-foreground);
   --color-brand-magenta: var(--brand-magenta);
   --color-brand-magenta-foreground: var(--brand-magenta-foreground);
+  /* The upload accent flips across modes — neon pink on the light panel, lime
+     on the dark one — because that's the one place v5 uses the accent as a
+     fill (stamps, dashed zones, the Save button) rather than as a background.
+     --upload-label is the same accent role for small TEXT: neon pink is only
+     3.4:1 as text on pale pink, so light mode drops to the deeper magenta;
+     dark mode keeps lime, which clears 14:1 on ink. */
+  --color-upload-accent: var(--upload-accent);
+  --color-upload-accent-foreground: var(--upload-accent-foreground);
+  --color-upload-label: var(--upload-label);
   --animate-aura-marquee: aura-marquee 18s linear infinite;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -146,6 +155,10 @@
   --brand-lime-foreground: oklch(0.181 0.006 55.9); /* #14110F, 14.74:1 */
   --brand-magenta: oklch(0.561 0.212 353.1); /* #C9227F */
   --brand-magenta-foreground: oklch(0.954 0.017 84.6); /* #F5EFE3, 4.56:1 */
+  --upload-accent: oklch(0.649 0.248 353.2); /* #F5299B neon pink — fill/border only */
+  --upload-accent-foreground: oklch(0.181 0.006 55.9); /* #14110F ink, 5.08:1 on the pink */
+  --upload-label: oklch(0.561 0.212 353.1); /* #C9227F — the accent, safe as text (4.81:1) */
+  --upload-grid-line: oklch(0.181 0.006 55.9 / 0.05); /* ink hatch on the pink panel */
 }
 
 /*
@@ -199,6 +212,10 @@
   --brand-lime-foreground: oklch(0.181 0.006 55.9);
   --brand-magenta: oklch(0.561 0.212 353.1);
   --brand-magenta-foreground: oklch(0.954 0.017 84.6);
+  --upload-accent: oklch(0.906 0.189 120.7); /* #CFF24C lime */
+  --upload-accent-foreground: oklch(0.181 0.006 55.9); /* #14110F ink, 14.74:1 */
+  --upload-label: oklch(0.906 0.189 120.7); /* lime — clears 14:1 as text on ink */
+  --upload-grid-line: oklch(0.954 0.017 84.6 / 0.05); /* cream hatch on the ink panel */
 }
 
 @layer base {

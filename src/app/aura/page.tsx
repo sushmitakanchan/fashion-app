@@ -7,14 +7,16 @@ import {
   resolveInitialAuraDisplayName,
 } from "@/lib/aura-identity";
 import { getPrisma } from "@/lib/prisma";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { AuraForm } from "@/components/forms/aura-form";
+
+// v5's upload screen is a full gridded surface rather than a card on the page.
+// The hatch is drawn from --upload-grid-line, which flips ink-on-pink in light
+// mode to cream-on-ink in dark, so the one style covers both themes.
+const GRID = {
+  backgroundImage:
+    "linear-gradient(var(--upload-grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--upload-grid-line) 1px, transparent 1px)",
+  backgroundSize: "42px 42px",
+} as const;
 
 export const metadata: Metadata = {
   title: "Create your AURA profile",
@@ -56,20 +58,21 @@ export default async function AuraPage() {
     googleName: admission?.ok ? admission.googleName : null,
   });
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-16">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">Create your AURA profile</CardTitle>
-          <CardDescription className="text-pretty">
-            Save your AURA display name and the two AURA reference photos used
-            to create your portrait. Optional 3D avatar photos are clearly
-            marked in the form and can be updated later.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AuraForm initialName={initialName} />
-        </CardContent>
-      </Card>
+    <main className="min-h-[calc(100vh-4rem)] px-6 py-16" style={GRID}>
+      <div className="mx-auto w-full max-w-3xl">
+        <span className="text-upload-label text-xs tracking-[0.14em] uppercase">
+          Your AURA profile
+        </span>
+        <h1 className="font-heading mt-2 text-3xl tracking-wide text-balance uppercase sm:text-4xl">
+          Create your AURA profile
+        </h1>
+        <p className="text-muted-foreground mt-3 max-w-xl text-sm text-pretty">
+          Save your AURA display name and the two reference photos used to
+          create your portrait. Optional 3D avatar photos are clearly marked and
+          can be updated later.
+        </p>
+        <AuraForm initialName={initialName} />
+      </div>
     </main>
   );
 }

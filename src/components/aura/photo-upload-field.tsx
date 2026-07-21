@@ -82,10 +82,11 @@ export function PhotoUploadField({
         type="button"
         onClick={() => inputRef.current?.click()}
         className={cn(
-          "relative flex aspect-3/4 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed transition-colors outline-none",
-          "hover:border-ring focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/70",
-          error ? "border-destructive" : "border-input",
-          !value && "bg-muted/30",
+          "relative flex aspect-3/4 w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed bg-card transition-colors outline-none",
+          "focus-visible:ring-3 focus-visible:ring-ring/70",
+          error
+            ? "border-destructive"
+            : "border-upload-accent hover:border-upload-accent/70 focus-visible:border-upload-accent",
         )}
       >
         {value ? (
@@ -100,7 +101,9 @@ export function PhotoUploadField({
         ) : (
           <span className="text-muted-foreground flex flex-col items-center gap-1.5 px-2 text-center">
             <ImagePlusIcon className="size-5" />
-            <span className="text-xs leading-snug text-pretty">{hint}</span>
+            <span className="font-mono text-xs leading-snug text-pretty">
+              {hint}
+            </span>
           </span>
         )}
       </button>

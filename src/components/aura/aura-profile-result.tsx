@@ -3,7 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  LoaderCircleIcon,
   PaletteIcon,
   PencilIcon,
   RefreshCwIcon,
@@ -15,6 +14,7 @@ import {
   portraitPresentation,
   type PortraitRequest,
 } from "@/lib/aura-portrait-state";
+import { AuraPortraitLoading } from "@/components/aura/aura-portrait-loading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -24,11 +24,13 @@ import { Button } from "@/components/ui/button";
  */
 export function AuraProfileResult({
   portraitUrl,
+  referencePhotoUrl,
   request,
   onGenerate,
   onEdit,
 }: {
   portraitUrl?: string;
+  referencePhotoUrl?: string;
   request: PortraitRequest;
   onGenerate?: () => void;
   onEdit: () => void;
@@ -85,12 +87,13 @@ export function AuraProfileResult({
         {presentation.image === "portrait" && portraitUrl ? (
           <div className="relative">
             <Image
+              key={portraitUrl}
               src={portraitUrl}
               alt="Your full-body AURA portrait"
               width={1024}
               height={1536}
               sizes="(max-width: 768px) 100vw, 640px"
-              className={`h-auto w-full object-cover ${presentation.pending ? "grayscale opacity-50" : ""}`}
+              className={`h-auto w-full object-cover ${presentation.pending ? "grayscale opacity-50" : "pl-reveal"}`}
             />
             {showRegenerate && (
               <Button
@@ -106,27 +109,19 @@ export function AuraProfileResult({
               </Button>
             )}
             {presentation.pending && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="bg-background/80 absolute inset-0 grid place-items-center rounded-xl p-6 text-center backdrop-blur-sm"
-              >
-                <div className="grid justify-items-center gap-3">
-                  <LoaderCircleIcon className="text-primary size-10 animate-spin motion-reduce:animate-none" />
-                  <p className="font-medium">Preparing a replacement portrait</p>
-                </div>
-              </div>
+              <AuraPortraitLoading title={presentation.title} overExistingPortrait />
             )}
           </div>
+        ) : presentation.pending ? (
+          <AuraPortraitLoading
+            title={presentation.title}
+            referenceUrl={referencePhotoUrl}
+          />
         ) : (
           <div className="grid min-h-80 place-items-center p-6 text-center">
             <div className="grid max-w-sm justify-items-center gap-3">
               <Badge variant="secondary">Profile saved</Badge>
-              {presentation.pending ? (
-                <LoaderCircleIcon className="text-primary size-10 animate-spin motion-reduce:animate-none" />
-              ) : (
-                <SparklesIcon className="text-primary size-10" />
-              )}
+              <SparklesIcon className="text-primary size-10" />
               <div className="grid gap-1">
                 <h2 className="text-lg font-medium">{presentation.title}</h2>
                 <p className="text-muted-foreground text-sm text-pretty">

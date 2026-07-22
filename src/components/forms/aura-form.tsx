@@ -55,6 +55,10 @@ export function AuraForm({
 }) {
   const [isProfileSaved, setIsProfileSaved] = React.useState(false);
   const [portraitUrl, setPortraitUrl] = React.useState<string>();
+  // The full-body reference (already downscaled for the save) doubles as the
+  // subject that forms into focus in the loading state — you watch yourself
+  // resolve. Captured client-side; it never round-trips through the server.
+  const [referencePhotoUrl, setReferencePhotoUrl] = React.useState<string>();
   const [portraitRequest, setPortraitRequest] =
     React.useState<PortraitRequest>("idle");
 
@@ -164,6 +168,7 @@ export function AuraForm({
     }
 
     setIsProfileSaved(true);
+    if (photos.front) setReferencePhotoUrl(photos.front);
 
     toast.success("Your AURA profile is saved", {
       description: "You can now create your studio-style portrait.",
@@ -178,11 +183,13 @@ export function AuraForm({
         <CardContent>
           <AuraProfileResult
             portraitUrl={portraitUrl}
+            referencePhotoUrl={referencePhotoUrl}
             request={portraitRequest}
             onGenerate={requestPortrait}
             onEdit={() => {
               setIsProfileSaved(false);
               setPortraitUrl(undefined);
+              setReferencePhotoUrl(undefined);
               setPortraitRequest("idle");
             }}
           />

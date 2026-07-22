@@ -252,3 +252,133 @@
     transform: translateX(-50%);
   }
 }
+
+/*
+ * AURA portrait loading — the "darkroom" where a portrait forms while the
+ * external image model runs. Deliberately indeterminate: the aurora breathes and
+ * the caption loops for as long as the request runs, because generation is a
+ * single opaque model call with no progress signal — there is no honest
+ * percentage to show. The reveal (`pl-reveal`) is triggered by the request
+ * resolving, never a timer. All motion is compositor-only (transform/opacity/
+ * filter) and collapses under `prefers-reduced-motion`.
+ */
+.pl-bloom {
+  position: absolute;
+  border-radius: 9999px;
+  mix-blend-mode: screen;
+  filter: blur(34px);
+  opacity: 0.9;
+}
+.pl-subject {
+  filter: blur(13px) saturate(0.4) brightness(0.85);
+  opacity: 0.5;
+  animation: pl-breathe 6s ease-in-out infinite;
+}
+.pl-indicator::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 42%;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--brand-lime),
+    var(--brand-magenta),
+    transparent
+  );
+  animation: pl-flow 1.9s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+}
+.pl-caption {
+  animation: pl-caption-fade 0.6s ease both;
+}
+.pl-reveal {
+  animation: pl-reveal 1.2s cubic-bezier(0.2, 0.72, 0.24, 1) both;
+}
+
+@keyframes pl-drift-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(8%, 6%) scale(1.12);
+  }
+}
+@keyframes pl-drift-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate(-7%, -5%) scale(0.92);
+  }
+}
+@keyframes pl-drift-c {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(5%, -6%) scale(1.14);
+  }
+}
+@keyframes pl-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+@keyframes pl-flow {
+  0% {
+    transform: translateX(-115%);
+  }
+  100% {
+    transform: translateX(315%);
+  }
+}
+@keyframes pl-caption-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes pl-reveal {
+  0% {
+    filter: blur(16px) saturate(0.4) brightness(0.85);
+    opacity: 0.5;
+    transform: scale(0.96);
+  }
+  55% {
+    filter: blur(0) saturate(1.2) brightness(1.12);
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    filter: blur(0) saturate(1.05) brightness(1);
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-bloom,
+  .pl-subject,
+  .pl-indicator::before,
+  .pl-caption,
+  .pl-reveal {
+    animation: none;
+  }
+  .pl-subject {
+    filter: blur(6px) saturate(0.6);
+    opacity: 0.7;
+  }
+}

@@ -63,9 +63,9 @@ type BoardItem =
 const board: BoardItem[] = [
   {
     kind: "photo",
-    tag: "Office",
-    src: "/looks/office.png",
-    alt: "An office look: a tan tweed blazer over a brown quarter-zip and white shirt, with matching trousers, a leather belt, brown Chelsea boots, a briefcase, watch, and sunglasses.",
+    tag: "OOTD",
+    src: "/looks/ootd.png",
+    alt: "An OOTD flat-lay styled as an iMessage thread — “This is what I'm wearing”: a mannequin in a light-blue shirt and black shorts, with a white tank, cap, crossbody bag, sunglasses, and tailored shorts.",
   },
   {
     kind: "quote",
@@ -90,9 +90,11 @@ const board: BoardItem[] = [
   },
   {
     kind: "photo",
-    tag: "Date",
-    src: "/looks/date.png",
-    alt: "A date-night outfit: a burgundy satin camisole and ruched skirt with a hobo bag, heeled mules, and gold accessories.",
+    tag: "Casual",
+    src: "/looks/casual.png",
+    alt: "A casual look flat-lay on a red wire cart: a brown halter top, denim shorts, olive shorts, a woven bag, a white tank, and brown sandals.",
+    fit: "contain",
+    surface: "bg-[#c01a1d]",
   },
   {
     kind: "photo",

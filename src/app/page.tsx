@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Show } from "@clerk/nextjs";
 import { SparklesIcon } from "lucide-react";
@@ -40,13 +41,65 @@ const steps = [
   },
 ];
 
-const galleryItems = [
-  { tag: "Studio", tone: "bg-neutral-300" },
-  { tag: "AW/25", tone: "bg-neutral-400" },
-  { tag: "Mono", tone: "bg-neutral-200" },
-  { tag: "Weekend", tone: "bg-neutral-400" },
-  { tag: "Event", tone: "bg-neutral-300" },
-  { tag: "Studio", tone: "bg-neutral-200" },
+// The "Let your style speak" board — a Pinterest-style moodboard mixing look
+// photography with aesthetic quote cards. Photos are the app's own assets under
+// `public/looks/` — drop replacements there with the same filenames and they
+// appear here, no code change. Quote lines are original AURA copy. On a photo
+// tile: an omitted `tag` hides its pill, `frame: false` drops the viewfinder
+// corners, and `fit: "contain"` + a matched `surface` letterboxes a whole
+// graphic on its own background instead of cropping it to fill.
+type BoardItem =
+  | {
+      kind: "photo";
+      src: string;
+      alt: string;
+      tag?: string;
+      frame?: boolean;
+      fit?: "cover" | "contain";
+      surface?: string;
+    }
+  | { kind: "quote"; tag: string; line: string; surface: string; pill: string };
+
+const board: BoardItem[] = [
+  {
+    kind: "photo",
+    tag: "Office",
+    src: "/looks/office.png",
+    alt: "An office look: a tan tweed blazer over a brown quarter-zip and white shirt, with matching trousers, a leather belt, brown Chelsea boots, a briefcase, watch, and sunglasses.",
+  },
+  {
+    kind: "quote",
+    tag: "Mood",
+    line: "Main character energy",
+    surface: "bg-brand-lime text-brand-lime-foreground",
+    pill: "bg-brand-ink text-brand-ink-foreground",
+  },
+  {
+    kind: "photo",
+    tag: "Vacation",
+    src: "/looks/vacation.png",
+    alt: "A vacation look: an open suitcase packed with a striped bikini, snorkel mask, sunglasses, sunscreen, jewelry, and beach towels.",
+  },
+  {
+    kind: "photo",
+    tag: "Styleclub",
+    src: "/looks/club.png",
+    alt: "A cream badge reading “Doing My Best Club — Certified Member” in retro red lettering.",
+    fit: "contain",
+    surface: "bg-[#eedecc]",
+  },
+  {
+    kind: "photo",
+    tag: "Date",
+    src: "/looks/date.png",
+    alt: "A date-night outfit: a burgundy satin camisole and ruched skirt with a hobo bag, heeled mules, and gold accessories.",
+  },
+  {
+    kind: "photo",
+    tag: "GRWM",
+    src: "/looks/journey.png",
+    alt: "An AURA promo graphic: a pink mailbox dispensing a card that reads “your style journey starts now!”",
+  },
 ];
 
 function PrimaryCta({ className }: { className?: string }) {
@@ -97,12 +150,20 @@ export default function Home() {
               <PrimaryCta className="mt-7" />
             </div>
 
+            {/* Honest by design: the orb previews where *your* portrait forms,
+                so it stays an abstract brand mark rather than a stock face that
+                would read as someone else's AURA. Decorative, so aria-hidden. */}
             <div className="relative mx-auto w-full max-w-sm">
               <div
                 aria-hidden="true"
-                className="aspect-square w-full rounded-full bg-neutral-300 shadow-[0_0_45px_6px] shadow-brand-lime/50"
-                style={HATCH}
-              />
+                className="bg-brand-lime relative aspect-square w-full overflow-hidden rounded-full shadow-[0_0_45px_6px] shadow-brand-lime/50"
+              >
+                <span className="absolute inset-0 bg-[radial-gradient(circle_at_28%_22%,rgb(255_255_255/0.55)_0%,transparent_45%),radial-gradient(circle_at_75%_80%,var(--color-brand-magenta)_0%,transparent_65%)]" />
+                <span className="absolute inset-0" style={HATCH} />
+                <span className="text-brand-ink/85 absolute inset-0 grid place-items-center font-serif text-6xl italic sm:text-7xl">
+                  aura
+                </span>
+              </div>
               <p className="bg-brand-ink text-brand-ink-foreground absolute bottom-2 left-2 rounded-full px-4 py-2 text-[11px] font-bold tracking-wider uppercase">
                 Two photos
               </p>
@@ -201,31 +262,67 @@ export default function Home() {
             </h2>
 
             <ul className="mt-16 grid grid-cols-2 gap-5 md:grid-cols-3">
-              {galleryItems.map((item, i) => (
+              {board.map((item, i) => (
                 <li
-                  key={`${item.tag}-${i}`}
-                  className={`relative aspect-4/5 overflow-hidden rounded-2xl ${item.tone}`}
+                  key={`${item.tag ?? item.kind}-${i}`}
+                  className={`relative aspect-4/5 overflow-hidden rounded-2xl ${item.kind === "photo" && item.surface ? item.surface : "bg-muted"}`}
                 >
-                  <span
-                    aria-hidden="true"
-                    className="absolute inset-0"
-                    style={HATCH}
-                  />
-                  <span
-                    aria-hidden="true"
-                    className="absolute top-2.5 left-2.5 size-4 border-t-2 border-l-2 border-neutral-900"
-                  />
-                  <span
-                    aria-hidden="true"
-                    className="absolute right-2.5 bottom-2.5 size-4 border-r-2 border-b-2 border-neutral-900"
-                  />
+                  {item.kind === "photo" ? (
+                    <Image
+                      src={item.src}
+                      alt={item.alt}
+                      fill
+                      sizes="(min-width: 768px) 33vw, 50vw"
+                      className={
+                        item.fit === "contain"
+                          ? "object-contain"
+                          : "object-cover"
+                      }
+                    />
+                  ) : (
+                    <div
+                      className={`flex h-full flex-col justify-between p-5 ${item.surface}`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="font-serif text-5xl leading-none italic"
+                      >
+                        &ldquo;
+                      </span>
+                      <p className="font-heading text-2xl leading-[0.95] tracking-wide text-balance uppercase">
+                        {item.line}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Viewfinder corners + tag pill frame every tile the same
+                      way, whatever fills it. Brackets go white over photography
+                      and inherit the tile's own ink elsewhere, so they never
+                      vanish into the surface behind them. A photo with
+                      `frame: false` opts out for a clean, uninterrupted image. */}
+                  {!(item.kind === "photo" && item.frame === false) && (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className={`absolute top-2.5 left-2.5 size-4 border-t-2 border-l-2 ${item.kind === "photo" ? "border-white/80" : "border-current opacity-40"}`}
+                      />
+                      <span
+                        aria-hidden="true"
+                        className={`absolute right-2.5 bottom-2.5 size-4 border-r-2 border-b-2 ${item.kind === "photo" ? "border-white/80" : "border-current opacity-40"}`}
+                      />
+                    </>
+                  )}
                   {/* 11px, not v5's 9.5px: uppercase + letterspacing strips
                       word-shape cues, and below ~11px that legibility cost
                       lands hardest. The tighter tracking keeps the pill the
-                      same visual weight. */}
-                  <span className="bg-brand-ink text-brand-ink-foreground absolute top-3 right-3 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide uppercase">
-                    {item.tag}
-                  </span>
+                      same visual weight. A photo with no `tag` shows no pill. */}
+                  {(item.kind !== "photo" || item.tag) && (
+                    <span
+                      className={`absolute top-3 right-3 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide uppercase ${item.kind === "quote" ? item.pill : "bg-brand-ink text-brand-ink-foreground"}`}
+                    >
+                      {item.tag}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

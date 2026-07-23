@@ -538,7 +538,7 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
           <ResultStage result={result} pending presentation={presentation} />
         ) : isGenerating ? (
           <AuraPortraitLoading
-            title="Styling your AURA"
+            title="Styling your AURA ✨"
             note={presentation.description}
             captions={TRY_ON_CAPTIONS}
             referenceUrl={portraitUrl}
@@ -880,7 +880,7 @@ function ResultStage({
         />
         {pending && (
           <AuraPortraitLoading
-            title="Styling your AURA"
+            title="Styling your AURA ✨"
             note={presentation.description}
             captions={TRY_ON_CAPTIONS}
             overExistingPortrait

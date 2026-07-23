@@ -21,7 +21,7 @@ import type { PortraitRequest } from "@/lib/aura-portrait-state";
 import { AuraProfileResult } from "@/components/aura/aura-profile-result";
 import { AuraProgress } from "@/components/aura/aura-progress";
 import { PhotoUploadField } from "@/components/aura/photo-upload-field";
-import { Button } from "@/components/ui/button";
+import { CtaButton } from "@/components/ui/cta-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -325,15 +325,14 @@ export function AuraForm({
         </div>
         <FieldError message={errors.consent?.message} />
 
-        <Button
+        <CtaButton
           type="submit"
-          size="lg"
           disabled={!consent || isSubmitting}
-          className="bg-upload-accent text-upload-accent-foreground hover:bg-upload-accent/90 w-full rounded-full sm:w-auto sm:justify-self-start"
+          className="w-full sm:w-auto sm:justify-self-start"
         >
           <SparklesIcon />
           {isSubmitting ? "Saving…" : "Save AURA profile"}
-        </Button>
+        </CtaButton>
       </section>
     </form>
   );

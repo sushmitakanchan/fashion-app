@@ -49,5 +49,5 @@ export default async function TryOnPage() {
     redirect("/aura");
   }
 
-  return <TryOnSurface />;
+  return <TryOnSurface portraitUrl={portraitUrl} />;
 }

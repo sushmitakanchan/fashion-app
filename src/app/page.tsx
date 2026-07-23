@@ -90,9 +90,11 @@ const board: BoardItem[] = [
   },
   {
     kind: "photo",
-    tag: "Date",
-    src: "/looks/date.png",
-    alt: "A date-night outfit: a burgundy satin camisole and ruched skirt with a hobo bag, heeled mules, and gold accessories.",
+    tag: "Casual",
+    src: "/looks/casual.png",
+    alt: "A casual look flat-lay on a red wire cart: a brown halter top, denim shorts, olive shorts, a woven bag, a white tank, and brown sandals.",
+    fit: "contain",
+    surface: "bg-[#c01a1d]",
   },
   {
     kind: "photo",

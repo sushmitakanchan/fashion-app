@@ -11,7 +11,7 @@ never cropped.
 | -------------- | -------- | ---------------------------------------------------------- |
 | `office.png`   | Office   | Office look — tan tweed blazer, quarter-zip, trousers, boots |
 | `vacation.png` | Vacation | Vacation look — open suitcase packed for the beach            |
-| `date.png`     | Date     | Date-night look — burgundy satin cami + skirt, bag, heels   |
+| `casual.png`   | Casual   | Casual look — "what's in my cart" flat-lay on red            |
 | `club.png`     | Styleclub | "Doing My Best Club" graphic — shown whole on cream         |
 | `journey.png`  | GRWM      | AURA "your style journey starts now" promo — full-bleed     |
 

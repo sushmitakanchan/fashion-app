@@ -109,12 +109,17 @@ export function AuraProfileResult({
               </Button>
             )}
             {presentation.pending && (
-              <AuraPortraitLoading title={presentation.title} overExistingPortrait />
+              <AuraPortraitLoading
+                title={presentation.title}
+                note={presentation.description}
+                overExistingPortrait
+              />
             )}
           </div>
         ) : presentation.pending ? (
           <AuraPortraitLoading
             title={presentation.title}
+            note={presentation.description}
             referenceUrl={referencePhotoUrl}
           />
         ) : (

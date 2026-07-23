@@ -36,7 +36,7 @@ export function portraitPresentation({
         : "Creating your AURA portrait",
       description: regenerating
         ? "Your current AURA portrait will stay in place until the new portrait is ready."
-        : "OpenAI is creating your studio-style AURA portrait from your saved full-body and face reference photos.",
+        : "This can take up to ~2 minutes while OpenAI creates your studio-style AURA portrait from your full-body and face photos.",
     };
   }
 

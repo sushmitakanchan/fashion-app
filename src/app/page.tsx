@@ -63,9 +63,9 @@ type BoardItem =
 const board: BoardItem[] = [
   {
     kind: "photo",
-    tag: "Office",
-    src: "/looks/office.png",
-    alt: "An office look: a tan tweed blazer over a brown quarter-zip and white shirt, with matching trousers, a leather belt, brown Chelsea boots, a briefcase, watch, and sunglasses.",
+    tag: "OOTD",
+    src: "/looks/ootd.png",
+    alt: "An OOTD flat-lay styled as an iMessage thread — “This is what I'm wearing”: a mannequin in a light-blue shirt and black shorts, with a white tank, cap, crossbody bag, sunglasses, and tailored shorts.",
   },
   {
     kind: "quote",

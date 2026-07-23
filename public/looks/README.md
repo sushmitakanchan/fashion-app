@@ -9,7 +9,7 @@ never cropped.
 
 | File           | Tile     | Look                                                        |
 | -------------- | -------- | ---------------------------------------------------------- |
-| `office.png`   | Office   | Office look — tan tweed blazer, quarter-zip, trousers, boots |
+| `ootd.png`     | OOTD     | OOTD flat-lay — "this is what I'm wearing" iMessage styling  |
 | `vacation.png` | Vacation | Vacation look — open suitcase packed for the beach            |
 | `casual.png`   | Casual   | Casual look — "what's in my cart" flat-lay on red            |
 | `club.png`     | Styleclub | "Doing My Best Club" graphic — shown whole on cream         |

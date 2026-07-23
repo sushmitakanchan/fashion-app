@@ -30,6 +30,12 @@ const buttonVariants = cva(
         // focus outline still shows. `translate-y-px` is overridden to a 4px
         // sink; `motion-reduce` drops only the transition, keeping the state.
         cta: "text-cta-foreground rounded-full font-semibold bg-[linear-gradient(180deg,rgba(255,255,255,0.16),transparent_38%),linear-gradient(0deg,var(--cta),var(--cta))] shadow-[inset_0_1px_0_rgba(255,255,255,0.55),inset_0_-3px_4px_rgba(20,17,15,0.3),0_6px_0_0_var(--cta-base),0_13px_16px_-4px_rgba(20,17,15,0.32)] hover:brightness-105 active:not-aria-[haspopup]:translate-y-[4px] active:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),inset_0_-2px_3px_rgba(20,17,15,0.3),0_2px_0_0_var(--cta-base),0_5px_8px_-2px_rgba(20,17,15,0.3)] motion-reduce:transition-none",
+        // The flat companion to `cta`: the same constant neon-pink action colour
+        // and ink label, no 3D. For inline/persistent primaries (the header
+        // sign-in, a toolbar's save) where the extruded button would be too
+        // heavy — the action colour stays consistent, the weight doesn't.
+        "cta-flat":
+          "bg-cta text-cta-foreground rounded-full hover:brightness-105",
       },
       size: {
         default:

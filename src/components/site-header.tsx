@@ -83,7 +83,11 @@ export function SiteHeader() {
         <div className="order-2 flex items-center gap-1 sm:order-3 sm:gap-2">
           <ModeToggle />
           <Show when="signed-out">
-            <GoogleAuthButton size="sm" />
+            <GoogleAuthButton
+              size="sm"
+              variant="cta-flat"
+              className="rounded-full"
+            />
           </Show>
           <Show when="signed-in">
             <UserButton />

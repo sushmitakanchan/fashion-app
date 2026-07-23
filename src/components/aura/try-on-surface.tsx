@@ -47,6 +47,10 @@ import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/components/ui/cta-button";
 import { Input } from "@/components/ui/input";
 import { SaveBar } from "@/components/aura/save-bar";
+import {
+  AuraPortraitLoading,
+  TRY_ON_CAPTIONS,
+} from "@/components/aura/aura-portrait-loading";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +62,9 @@ import { cn } from "@/lib/utils";
  * (the route returns the look inline as a data URL). The presentation for the
  * single visible stage comes from the pure {@link tryOnPresentation}; this
  * component only owns the attachments, the network calls (scrape + try-on), and
- * the one-active-generation guard.
+ * the one-active-generation guard. `portraitUrl` — the saved portrait every look
+ * is generated onto — doubles as the forming subject in the darkroom loading
+ * state (see {@link AuraPortraitLoading}).
  */
 
 /** A transient placeholder reserving a garment's slot in the grid while its link
@@ -154,7 +160,7 @@ type StyleBookSaveResponse = { caption?: string };
 /** A route failure envelope, mirroring the try-on route's shape. */
 type StyleBookFailure = { error?: string };
 
-export function TryOnSurface() {
+export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
   const router = useRouter();
   const idRef = React.useRef(0);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -532,7 +538,12 @@ export function TryOnSurface() {
         {isGenerating && presentation.image === "result" && result ? (
           <ResultStage result={result} pending presentation={presentation} />
         ) : isGenerating ? (
-          <GeneratingStage presentation={presentation} />
+          <AuraPortraitLoading
+            title="Styling your AURA ✨"
+            note={presentation.description}
+            captions={TRY_ON_CAPTIONS}
+            referenceUrl={portraitUrl}
+          />
         ) : phase === "retryable-failure" || phase === "refused" ? (
           <FailedStage
             presentation={presentation}
@@ -812,48 +823,6 @@ function EmptyStage({
   );
 }
 
-function GeneratingStage({
-  presentation,
-}: {
-  presentation: TryOnPresentation;
-}) {
-  return (
-    <div
-      className="relative min-h-96 overflow-hidden rounded-xl border"
-      aria-busy
-    >
-      <Skeleton className="absolute inset-0" />
-      <PendingOverlay presentation={presentation} className="absolute inset-0" />
-    </div>
-  );
-}
-
-/** The indeterminate "putting the look together" status, shared by the fresh
- * generating stage and the regenerate overlay laid over an existing result. */
-function PendingOverlay({
-  presentation,
-  className,
-}: {
-  presentation: TryOnPresentation;
-  className?: string;
-}) {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={cn("grid place-items-center p-6 text-center", className)}
-    >
-      <div className="grid justify-items-center gap-3">
-        <SparklesIcon className="text-primary size-9 animate-pulse motion-reduce:animate-none" />
-        <p className="font-medium">{presentation.title}</p>
-        <p className="text-muted-foreground text-sm">
-          {presentation.description}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function FailedStage({
   presentation,
   onRetry,
@@ -907,13 +876,15 @@ function ResultStage({
           alt={`Your AURA portrait wearing ${caption}`}
           className={cn(
             "max-h-[70vh] w-auto max-w-full rounded-md object-contain",
-            pending && "opacity-40",
+            pending && "grayscale opacity-50",
           )}
         />
         {pending && (
-          <PendingOverlay
-            presentation={presentation}
-            className="bg-background/70 absolute inset-0 backdrop-blur-sm"
+          <AuraPortraitLoading
+            title="Styling your AURA ✨"
+            note={presentation.description}
+            captions={TRY_ON_CAPTIONS}
+            overExistingPortrait
           />
         )}
       </div>

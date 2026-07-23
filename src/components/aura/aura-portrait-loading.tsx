@@ -3,17 +3,29 @@
 import * as React from "react";
 
 /**
- * Honest captions: each maps to work the pipeline genuinely does — download the
- * two references, edit a studio portrait from the face and full-body, render.
- * They deliberately avoid "body model" / "proportions" (v1 ships a static
- * portrait, not a 3D twin) and they loop rather than marching to a false finish.
+ * Cycling status captions. Both sets loop rather than marching to a false finish
+ * — generation is indeterminate, so neither set ends on a "done" line (the real
+ * completion is the upstream reveal / result swap). The portrait set stays close
+ * to the literal pipeline (download references, edit a studio portrait) and
+ * avoids "body model" / "proportions" (v1 ships a static portrait, not a 3D
+ * twin). The try-on set is the surface's own dressing-room narration for wearing
+ * a garment onto the already-fixed portrait; it never claims to remeasure a body.
  */
-const CAPTIONS = [
+export const PORTRAIT_CAPTIONS = [
   "Gathering your reference photos",
   "Studying your face and pose",
   "Composing your studio portrait",
   "Refining the light and detail",
   "Bringing your AURA into focus",
+] as const;
+
+export const TRY_ON_CAPTIONS = [
+  "Preparing your look…",
+  "Studying the garment…",
+  "Tailoring the fit…",
+  "Matching the drape…",
+  "Perfecting every detail…",
+  "Almost runway-ready…",
 ] as const;
 
 const CAPTION_INTERVAL_MS = 2800;
@@ -49,10 +61,19 @@ export function AuraPortraitLoading({
   title,
   referenceUrl,
   overExistingPortrait = false,
+  captions = PORTRAIT_CAPTIONS,
+  note,
 }: {
   title: string;
   referenceUrl?: string;
   overExistingPortrait?: boolean;
+  /** The cycling status vocabulary. Defaults to the portrait pipeline's; the
+   * try-on surface passes {@link TRY_ON_CAPTIONS}. */
+  captions?: readonly string[];
+  /** A persistent line under the title — the surface's own timing/reassurance
+   * copy (e.g. try-on's "up to ~2 minutes" note). Also feeds the screen-reader
+   * announcement in place of the default one-minute hint. */
+  note?: string;
 }) {
   const [caption, setCaption] = React.useState(0);
   const reduceMotion = usePrefersReducedMotion();
@@ -60,11 +81,11 @@ export function AuraPortraitLoading({
   React.useEffect(() => {
     if (reduceMotion) return;
     const id = window.setInterval(
-      () => setCaption((current) => (current + 1) % CAPTIONS.length),
+      () => setCaption((current) => (current + 1) % captions.length),
       CAPTION_INTERVAL_MS,
     );
     return () => window.clearInterval(id);
-  }, [reduceMotion]);
+  }, [reduceMotion, captions.length]);
 
   return (
     <div
@@ -77,8 +98,11 @@ export function AuraPortraitLoading({
       }
     >
       {/* Screen-reader announcement: stable, not the cycling caption (which would
-          spam the live region). */}
-      <p className="sr-only">{title}. This usually takes up to a minute.</p>
+          spam the live region). The surface's own note (try-on's longer wait)
+          replaces the default one-minute hint when present. */}
+      <p className="sr-only">
+        {title}. {note ?? "This usually takes up to a minute."}
+      </p>
 
       <div aria-hidden="true" className="contents">
         {/* aurora */}
@@ -127,10 +151,12 @@ export function AuraPortraitLoading({
           }}
         />
 
-        {/* the forming subject — the person's own reference photo */}
+        {/* the forming subject — the person's own reference photo (portrait
+            generation) or their saved AURA portrait being dressed (try-on) */}
         {referenceUrl && !overExistingPortrait && (
-          // Decorative, transient, already-downscaled data URI — next/image would
-          // add no value here.
+          // Decorative, transient subject — a downscaled data URI for portraits,
+          // the saved portrait URL for try-on. next/image would add no value for
+          // a brief loading flash.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={referenceUrl}
@@ -142,6 +168,11 @@ export function AuraPortraitLoading({
         {/* header */}
         <div className="relative z-10 self-start p-6 text-center">
           <p className="text-sm font-medium tracking-[0.05em]">{title}</p>
+          {note && (
+            <p className="text-brand-ink-foreground/60 mx-auto mt-2 max-w-[24rem] text-xs text-pretty">
+              {note}
+            </p>
+          )}
         </div>
 
         {/* caption + indeterminate indicator */}
@@ -150,7 +181,7 @@ export function AuraPortraitLoading({
             key={caption}
             className="pl-caption max-w-[16rem] font-serif text-lg text-balance italic"
           >
-            {CAPTIONS[caption]}
+            {captions[caption]}
           </p>
           <span
             className="pl-indicator relative h-0.5 w-32 overflow-hidden rounded-full"

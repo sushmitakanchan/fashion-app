@@ -21,7 +21,9 @@ export const PORTRAIT_CAPTIONS = [
 
 export const TRY_ON_CAPTIONS = [
   "Preparing your look…",
+  "Studying the garment…",
   "Tailoring the fit…",
+  "Matching the drape…",
   "Perfecting every detail…",
   "Almost runway-ready…",
 ] as const;

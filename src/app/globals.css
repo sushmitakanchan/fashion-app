@@ -33,6 +33,12 @@
   --color-upload-accent: var(--upload-accent);
   --color-upload-accent-foreground: var(--upload-accent-foreground);
   --color-upload-label: var(--upload-label);
+  /* The single action colour — constant neon pink in both themes, its ink
+     label, and its lime base. Unlike the accents, these do NOT flip: the CTA is
+     one recognisable colour everywhere (see the note on --cta below). */
+  --color-cta: var(--cta);
+  --color-cta-foreground: var(--cta-foreground);
+  --color-cta-base: var(--cta-base);
   --animate-aura-marquee: aura-marquee 18s linear infinite;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -159,6 +165,17 @@
   --upload-accent-foreground: oklch(0.181 0.006 55.9); /* #14110F ink, 5.08:1 on the pink */
   --upload-label: oklch(0.561 0.212 353.1); /* #C9227F — the accent, safe as text (4.81:1) */
   --upload-grid-line: oklch(0.181 0.006 55.9 / 0.05); /* ink hatch on the pink panel */
+  /*
+   * The call-to-action colour. Deliberately declared once, in :root only, and
+   * NOT overridden in .dark — the CTA is a single constant colour in both
+   * themes (the "one action colour everywhere" decision). Neon pink is the one
+   * hue that holds an edge on both the pink page (3.4:1) and the ink page
+   * (5.1:1) while carrying an ink label (5.08:1), so it needs no theme flip.
+   * Lime is the extruded 3D base — expression, not action.
+   */
+  --cta: oklch(0.649 0.248 353.2); /* #F5299B neon pink — the action face */
+  --cta-foreground: oklch(0.181 0.006 55.9); /* #14110F ink label, 5.08:1 */
+  --cta-base: oklch(0.906 0.189 120.7); /* #CFF24C lime — the pressed base */
 }
 
 /*

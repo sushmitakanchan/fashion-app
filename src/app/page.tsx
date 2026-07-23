@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Show } from "@clerk/nextjs";
 import { SparklesIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { CtaButton } from "@/components/ui/cta-button";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { BrandMarquee } from "@/components/landing/brand-marquee";
 
@@ -56,18 +56,17 @@ function PrimaryCta({ className }: { className?: string }) {
           state. Branching here keeps a signed-in visitor from being asked to
           sign in again. */}
       <Show when="signed-in">
-        <Button
-          size="lg"
+        <CtaButton
           nativeButton={false}
           className={className}
           render={<Link href="/aura" />}
         >
           <SparklesIcon />
           Create your AURA portrait
-        </Button>
+        </CtaButton>
       </Show>
       <Show when="signed-out">
-        <GoogleAuthButton size="lg" className={className} />
+        <GoogleAuthButton cta size="lg" className={className} />
       </Show>
     </>
   );

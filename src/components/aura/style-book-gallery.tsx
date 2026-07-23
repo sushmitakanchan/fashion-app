@@ -14,6 +14,7 @@ import { isLinkSource, type SavedLookSource } from "@/lib/aura-style-book";
 import { cloudinaryThumbUrl } from "@/lib/cloudinary-url";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CtaButton } from "@/components/ui/cta-button";
 
 /** Where the Style Book links back to the try-on surface. */
 const TRY_ON_HREF = "/aura/try-on";
@@ -73,8 +74,14 @@ export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
             you can see it.
           </p>
         </div>
-        {/* Persistent onward path, so a non-empty book is never a dead end. */}
-        <Button variant="outline" nativeButton={false} render={<Link href={TRY_ON_HREF} />}>
+        {/* Persistent onward path, so a non-empty book is never a dead end.
+            Flat pink (not the 3D CTA) — it's a persistent header action, not the
+            page's hero; the empty state gets the extruded button. */}
+        <Button
+          variant="cta-flat"
+          nativeButton={false}
+          render={<Link href={TRY_ON_HREF} />}
+        >
           <SparklesIcon />
           Try on a look
         </Button>
@@ -228,10 +235,10 @@ function EmptyState() {
           Try on a garment on your AURA portrait, then save the look — it lands
           here for you to come back to.
         </p>
-        <Button nativeButton={false} render={<Link href={TRY_ON_HREF} />}>
+        <CtaButton nativeButton={false} render={<Link href={TRY_ON_HREF} />}>
           <SparklesIcon />
           Try on a look
-        </Button>
+        </CtaButton>
       </div>
     </div>
   );

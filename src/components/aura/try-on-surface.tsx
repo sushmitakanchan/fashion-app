@@ -44,6 +44,7 @@ import {
 } from "@/lib/validations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CtaButton } from "@/components/ui/cta-button";
 import { Input } from "@/components/ui/input";
 import { SaveBar } from "@/components/aura/save-bar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -664,13 +665,13 @@ export function TryOnSurface() {
               {attachments.length} piece{attachments.length === 1 ? "" : "s"} ·
               worn together in one result
             </span>
-            <Button
+            <CtaButton
               onClick={() => generate(attachments)}
               disabled={isGenerating || scraping}
             >
               <SparklesIcon />
               {isGenerating ? "Generating…" : "Generate look"}
-            </Button>
+            </CtaButton>
           </div>
         )}
       </section>
@@ -801,10 +802,10 @@ function EmptyStage({
         {/* Generating is owned by the composer button; the stage only offers the
             "attach" entry point when there is nothing attached yet. */}
         {presentation.primaryAction === "attach" && (
-          <Button onClick={onAttach}>
+          <CtaButton onClick={onAttach}>
             <UploadIcon />
             {STAGE_ACTION_LABEL.attach}
-          </Button>
+          </CtaButton>
         )}
       </div>
     </div>

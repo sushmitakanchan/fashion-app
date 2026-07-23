@@ -1,3 +1,4 @@
+import * as React from "react";
 import { SignInButton } from "@clerk/nextjs";
 
 import { Button } from "@/components/ui/button";
@@ -9,23 +10,31 @@ import { CtaButton } from "@/components/ui/cta-button";
  * required instance setting that pairs with this intentionally simple entry.
  *
  * `cta` switches to the 3D action button for the landing's hero and footer;
- * the compact header entry stays the plain button.
+ * `variant` styles the plain path (the header uses `cta-flat` for the constant
+ * action colour without the 3D weight).
  */
 export function GoogleAuthButton({
   size = "default",
   className,
   cta = false,
+  variant,
 }: {
   size?: "default" | "sm" | "lg";
   className?: string;
   cta?: boolean;
+  variant?: React.ComponentProps<typeof Button>["variant"];
 }) {
-  const Comp = cta ? CtaButton : Button;
   return (
     <SignInButton mode="redirect" forceRedirectUrl="/aura" withSignUp>
-      <Comp size={size} className={className}>
-        Continue with Google
-      </Comp>
+      {cta ? (
+        <CtaButton size={size} className={className}>
+          Continue with Google
+        </CtaButton>
+      ) : (
+        <Button size={size} variant={variant} className={className}>
+          Continue with Google
+        </Button>
+      )}
     </SignInButton>
   );
 }

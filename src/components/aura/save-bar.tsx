@@ -57,7 +57,12 @@ export function SaveBar({
   return (
     <div className="bg-card grid gap-3 rounded-xl border p-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <Button className="flex-1" onClick={onSave} disabled={p.saveDisabled}>
+        <Button
+          variant="cta-flat"
+          className="flex-1"
+          onClick={onSave}
+          disabled={p.saveDisabled}
+        >
           {p.saving ? (
             <Loader2Icon className="animate-spin" />
           ) : (

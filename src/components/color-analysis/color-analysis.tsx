@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { PencilIcon } from "lucide-react";
 
 import {
   analyzeSkinTone,
@@ -106,30 +107,46 @@ export function ColorAnalysis() {
       <div className="space-y-6">
         <div className="space-y-3">
           <h3 className="text-sm font-semibold">1. Give us your skin tone</h3>
-          <label className="border-input hover:bg-accent flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-6 text-center transition-colors">
-            <span className="text-sm font-medium">Upload a photo</span>
-            <span className="text-muted-foreground text-xs">
-              then tap your cheek to sample
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={onFile}
-            />
-          </label>
 
-          {imgSrc && (
-            <div className="space-y-1">
-              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL, client-side canvas sampling; next/image can't expose pixels */}
-              <img
-                ref={imgRef}
-                src={imgSrc}
-                alt="Your uploaded photo — tap to sample skin tone"
-                onLoad={drawToCanvas}
-                onClick={sampleAt}
-                className="max-h-64 w-full cursor-crosshair rounded-md border object-contain"
+          {!imgSrc ? (
+            <label className="border-input hover:bg-accent flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-6 text-center transition-colors">
+              <span className="text-sm font-medium">Upload a photo</span>
+              <span className="text-muted-foreground text-xs">
+                then tap your cheek to sample
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={onFile}
               />
+            </label>
+          ) : (
+            <div className="space-y-2">
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element -- local object URL, client-side canvas sampling; next/image can't expose pixels */}
+                <img
+                  ref={imgRef}
+                  src={imgSrc}
+                  alt="Your uploaded photo — tap to sample skin tone"
+                  onLoad={drawToCanvas}
+                  onClick={sampleAt}
+                  className="max-h-64 w-full cursor-crosshair rounded-md border object-contain"
+                />
+                <label
+                  className="bg-background/80 hover:bg-accent absolute top-2 right-2 flex size-8 cursor-pointer items-center justify-center rounded-full border shadow-sm backdrop-blur transition-colors"
+                  title="Choose a different photo"
+                >
+                  <PencilIcon className="size-4" />
+                  <span className="sr-only">Choose a different photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={onFile}
+                  />
+                </label>
+              </div>
               <p className="text-muted-foreground text-xs">Tap your skin to sample it.</p>
               <canvas ref={canvasRef} className="hidden" />
             </div>

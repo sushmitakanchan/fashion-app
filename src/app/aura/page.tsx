@@ -7,11 +7,10 @@ import {
   resolveInitialAuraDisplayName,
 } from "@/lib/aura-identity";
 import { getPrisma } from "@/lib/prisma";
-import { GRID_SURFACE_STYLE } from "@/lib/grid-surface";
 import { AuraForm } from "@/components/forms/aura-form";
 
 export const metadata: Metadata = {
-  title: "Create your AURA profile",
+  title: "Your AURA profile",
   description: "Save the profile and reference photos for your AURA portrait.",
 };
 
@@ -27,7 +26,20 @@ export default async function AuraPage() {
 
   const clerkUser = await currentUser();
   const admission = clerkUser ? admitGoogleAuraIdentity(clerkUser) : null;
-  let persistedName: string | null = null;
+
+  // A profile the returning visitor has already saved. When present, the form
+  // opens on the result view instead of the empty creation screen — this is the
+  // fix for "clicking Profile again just shows the create form", since the
+  // saved-state used to live only in ephemeral client state.
+  let savedProfile: {
+    name: string;
+    photoFrontUrl: string;
+    photoCloseupUrl: string;
+    photoLeftUrl: string | null;
+    photoRightUrl: string | null;
+    photoBackUrl: string | null;
+    portraitUrl: string | null;
+  } | null = null;
 
   // Refused identities do not need profile data and must not reach the database.
   // The route handler returns the clear 403 when they attempt to save.
@@ -35,36 +47,59 @@ export default async function AuraPage() {
     try {
       const user = await getPrisma().user.findUnique({
         where: { clerkId: userId },
-        select: { auraProfile: { select: { name: true } } },
+        select: {
+          auraProfile: {
+            select: {
+              name: true,
+              photoFrontUrl: true,
+              photoCloseupUrl: true,
+              photoLeftUrl: true,
+              photoRightUrl: true,
+              photoBackUrl: true,
+              portraitUrl: true,
+            },
+          },
+        },
       });
-      persistedName = user?.auraProfile?.name ?? null;
+      savedProfile = user?.auraProfile ?? null;
     } catch {
       // The save endpoint remains the authoritative live-config failure boundary.
       // Falling back here lets a first-time form still show its empty placeholder.
-      persistedName = null;
+      savedProfile = null;
     }
   }
 
   const initialName = resolveInitialAuraDisplayName({
-    persistedName,
+    persistedName: savedProfile?.name ?? null,
     googleName: admission?.ok ? admission.googleName : null,
   });
+
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-6 py-16" style={GRID_SURFACE_STYLE}>
-      <div className="mx-auto w-full max-w-3xl">
-        <span className="text-upload-label text-xs tracking-[0.14em] uppercase">
-          Your AURA profile
-        </span>
-        <h1 className="font-heading mt-2 text-3xl tracking-wide text-balance uppercase sm:text-4xl">
-          Create your AURA profile
-        </h1>
-        <p className="text-muted-foreground mt-3 max-w-xl text-sm text-pretty">
-          Save your AURA display name and the two reference photos used to
-          create your portrait. Optional 3D avatar photos are clearly marked and
-          can be updated later.
-        </p>
-        <AuraForm initialName={initialName} />
-      </div>
+    <main className="min-h-[calc(100vh-4rem)]">
+      <AuraForm
+        initialName={initialName}
+        initialProfile={
+          savedProfile
+            ? {
+                photos: {
+                  front: savedProfile.photoFrontUrl,
+                  closeup: savedProfile.photoCloseupUrl,
+                  ...(savedProfile.photoLeftUrl
+                    ? { left: savedProfile.photoLeftUrl }
+                    : {}),
+                  ...(savedProfile.photoRightUrl
+                    ? { right: savedProfile.photoRightUrl }
+                    : {}),
+                  ...(savedProfile.photoBackUrl
+                    ? { back: savedProfile.photoBackUrl }
+                    : {}),
+                },
+                portraitUrl: savedProfile.portraitUrl,
+              }
+            : null
+        }
+        avatarUrl={clerkUser?.imageUrl}
+      />
     </main>
   );
 }

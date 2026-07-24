@@ -1,5 +1,7 @@
 # AURA
 
+**Live:** https://fashion-app-gray.vercel.app
+
 AURA saves a user's AURA display name, two required AURA portrait reference
 photos, optional future 3D-avatar reference photos, and their consent to
 third-party AI processing. Wired for **fully local development**.

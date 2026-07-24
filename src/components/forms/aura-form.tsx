@@ -7,6 +7,7 @@ import { SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  ACCEPTED_PHOTO_TYPES,
   auraFormSchema,
   AURA_REFERENCE_PHOTO_ANGLES,
   AVATAR_PHOTO_ANGLES,
@@ -67,7 +68,9 @@ export function AuraForm({
   // result view rather than an empty form, which is what makes a returning
   // visitor land on their created AURA instead of the creation screen again.
   initialProfile?: {
-    photoFrontUrl: string;
+    // Saved reference/avatar photos keyed by angle, as Cloudinary URLs. Seeds
+    // the loading reference and pre-fills the upload fields when editing.
+    photos: Partial<Record<PhotoAngle, string>>;
     portraitUrl: string | null;
   } | null;
   // The account avatar shown in the profile header (Clerk-hosted).
@@ -85,7 +88,7 @@ export function AuraForm({
   // from the persisted reference photo instead.
   const [referencePhotoUrl, setReferencePhotoUrl] = React.useState<
     string | undefined
-  >(initialProfile?.photoFrontUrl ?? undefined);
+  >(initialProfile?.photos.front ?? undefined);
   const [portraitRequest, setPortraitRequest] =
     React.useState<PortraitRequest>("idle");
 
@@ -93,6 +96,7 @@ export function AuraForm({
     register,
     control,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<AuraFormInput>({
     resolver: zodResolver(auraFormSchema),
@@ -202,6 +206,57 @@ export function AuraForm({
     });
   }
 
+  // A returning visitor's saved photos are Cloudinary URLs, not Files, so
+  // editing rebuilds Files from them to pre-fill the upload fields. Seeded once:
+  // after the first edit the form holds whatever the visitor last picked, so a
+  // second edit never clobbers an in-session change with the stale saved copy.
+  // (A fresh save keeps its Files in form state already, so this is a no-op.)
+  const photosSeeded = React.useRef(false);
+  const [isSeedingPhotos, setIsSeedingPhotos] = React.useState(false);
+
+  async function seedSavedPhotos() {
+    if (photosSeeded.current || !initialProfile) return;
+    photosSeeded.current = true;
+
+    const saved = initialProfile.photos;
+    if (!PHOTO_ANGLES.some((angle) => saved[angle])) return;
+
+    setIsSeedingPhotos(true);
+    await Promise.all(
+      PHOTO_ANGLES.map(async (angle) => {
+        const url = saved[angle];
+        if (!url) return;
+        try {
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!response.ok) return;
+          const blob = await response.blob();
+          const type = ACCEPTED_PHOTO_TYPES.includes(blob.type)
+            ? blob.type
+            : "image/jpeg";
+          const ext = type.split("/")[1] ?? "jpg";
+          setValue(
+            `photos.${angle}`,
+            new File([blob], `${angle}.${ext}`, { type }),
+            { shouldValidate: false, shouldDirty: false },
+          );
+        } catch {
+          // Non-fatal: leave the slot empty for the visitor to re-upload.
+        }
+      }),
+    );
+    setIsSeedingPhotos(false);
+  }
+
+  function handleEdit() {
+    setIsProfileSaved(false);
+    setPortraitUrl(undefined);
+    setReferencePhotoUrl(undefined);
+    setPortraitRequest("idle");
+    void seedSavedPhotos();
+  }
+
   if (isProfileSaved) {
     // The result view owns its own surface — no gridded upload hatch — so the
     // two states never share a background.
@@ -215,12 +270,7 @@ export function AuraForm({
             referencePhotoUrl={referencePhotoUrl}
             request={portraitRequest}
             onGenerate={requestPortrait}
-            onEdit={() => {
-              setIsProfileSaved(false);
-              setPortraitUrl(undefined);
-              setReferencePhotoUrl(undefined);
-              setPortraitRequest("idle");
-            }}
+            onEdit={handleEdit}
           />
         </div>
       </div>
@@ -252,6 +302,12 @@ export function AuraForm({
           noValidate
         >
           <AuraProgress steps={steps} />
+
+          {isSeedingPhotos && (
+            <p className="text-muted-foreground text-sm" role="status">
+              Loading your saved photos…
+            </p>
+          )}
 
           <section className="grid gap-2">
             <span className="text-upload-label text-[11px] tracking-[0.14em] uppercase">
@@ -383,7 +439,7 @@ export function AuraForm({
             <Button
               type="submit"
               size="lg"
-              disabled={!consent || isSubmitting}
+              disabled={!consent || isSubmitting || isSeedingPhotos}
               className="bg-upload-accent text-upload-accent-foreground hover:bg-upload-accent/90 w-full rounded-full sm:w-auto sm:justify-self-start"
             >
               <SparklesIcon />

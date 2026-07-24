@@ -34,6 +34,10 @@ export default async function AuraPage() {
   let savedProfile: {
     name: string;
     photoFrontUrl: string;
+    photoCloseupUrl: string;
+    photoLeftUrl: string | null;
+    photoRightUrl: string | null;
+    photoBackUrl: string | null;
     portraitUrl: string | null;
   } | null = null;
 
@@ -45,7 +49,15 @@ export default async function AuraPage() {
         where: { clerkId: userId },
         select: {
           auraProfile: {
-            select: { name: true, photoFrontUrl: true, portraitUrl: true },
+            select: {
+              name: true,
+              photoFrontUrl: true,
+              photoCloseupUrl: true,
+              photoLeftUrl: true,
+              photoRightUrl: true,
+              photoBackUrl: true,
+              portraitUrl: true,
+            },
           },
         },
       });
@@ -69,7 +81,19 @@ export default async function AuraPage() {
         initialProfile={
           savedProfile
             ? {
-                photoFrontUrl: savedProfile.photoFrontUrl,
+                photos: {
+                  front: savedProfile.photoFrontUrl,
+                  closeup: savedProfile.photoCloseupUrl,
+                  ...(savedProfile.photoLeftUrl
+                    ? { left: savedProfile.photoLeftUrl }
+                    : {}),
+                  ...(savedProfile.photoRightUrl
+                    ? { right: savedProfile.photoRightUrl }
+                    : {}),
+                  ...(savedProfile.photoBackUrl
+                    ? { back: savedProfile.photoBackUrl }
+                    : {}),
+                },
                 portraitUrl: savedProfile.portraitUrl,
               }
             : null

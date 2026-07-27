@@ -270,6 +270,33 @@
   }
 }
 
+@keyframes aura-perfect-confetti {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -12vh, 0) rotate(0deg) scale(0.65);
+  }
+  3%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--confetti-x), 115vh, 0)
+      rotate(var(--confetti-rotation)) scale(1);
+  }
+}
+
+.aura-perfect-confetti {
+  position: absolute;
+  top: 0;
+  width: var(--confetti-size);
+  height: calc(var(--confetti-size) * 0.64);
+  border-radius: 2px;
+  background: var(--confetti-tone);
+  animation: aura-perfect-confetti var(--confetti-duration)
+    cubic-bezier(0.18, 0.64, 0.38, 1) var(--confetti-delay) both;
+}
+
 /*
  * AURA portrait loading — the "darkroom" where a portrait forms while the
  * external image model runs. Deliberately indeterminate: the aurora breathes and
@@ -388,6 +415,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .aura-perfect-confetti {
+    animation: none;
+    opacity: 0;
+  }
+
   .pl-bloom,
   .pl-subject,
   .pl-indicator::before,

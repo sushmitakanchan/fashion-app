@@ -2,7 +2,11 @@ import "server-only";
 
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
-import { generateText as aiGenerateText, type LanguageModel } from "ai";
+import {
+  generateText as aiGenerateText,
+  type LanguageModel,
+  type UserContent,
+} from "ai";
 
 import { ANTHROPIC_MODEL } from "@/lib/anthropic";
 import { env } from "@/lib/env";
@@ -36,6 +40,11 @@ export type GenerateTextOptions = {
   /** Frames the request — the "system prompt". */
   instructions: string;
   prompt: string;
+  /**
+   * Optional server-known image URLs for vision-capable text models. Feature
+   * code must never accept these from a browser request; it owns the lookup.
+   */
+  images?: readonly { url: string; mediaType?: string }[];
 };
 
 export type GeneratedText = {
@@ -48,13 +57,14 @@ export type GeneratedText = {
  * reply text out. Feature code goes through here rather than touching a vendor
  * SDK, so which provider serves a request stays a deployment concern.
  *
- * Non-streaming by design, and deliberately narrow — streaming, tool calls,
- * images, and provider-specific request options are not part of this capability
- * (see CONTEXT.md, "Text generation"). Widen it when a caller actually needs to.
+ * Non-streaming by design, and deliberately narrow — feature code gets a
+ * prompt plus optional server-owned vision images, never tools, streaming, or
+ * provider-specific options (see CONTEXT.md, "Text generation").
  */
 export async function generateText({
   instructions,
   prompt,
+  images,
 }: GenerateTextOptions): Promise<GeneratedText> {
   // Throws AiProviderConfigError when the selected provider has no key — it
   // never silently reroutes the prompt to whichever provider is set up.
@@ -63,11 +73,29 @@ export async function generateText({
     readProviderCredentials(process.env),
   );
 
-  const { text } = await aiGenerateText({
-    model: MODELS[provider](),
-    instructions,
-    prompt,
-  });
+  const model = MODELS[provider]();
+  const { text } = images?.length
+    ? await aiGenerateText({
+        model,
+        instructions,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              ...images.map(
+                (image) =>
+                  ({
+                    type: "image",
+                    image: new URL(image.url),
+                    ...(image.mediaType ? { mediaType: image.mediaType } : {}),
+                  }) as const,
+              ),
+            ] satisfies UserContent,
+          },
+        ],
+      })
+    : await aiGenerateText({ model, instructions, prompt });
 
   return { text, provider };
 }

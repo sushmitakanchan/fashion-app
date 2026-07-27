@@ -15,6 +15,7 @@ import { GoogleAuthButton } from "@/components/auth/google-auth-button";
  */
 const NAV = [
   { href: "/aura", label: "Profile" },
+  { href: "/wardrobe", label: "Wardrobe" },
   { href: "/aura/style-book", label: "Style Book" },
   { href: "/colors", label: "Colours" },
 ] as const;

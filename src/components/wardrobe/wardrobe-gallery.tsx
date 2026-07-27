@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PlusIcon, ShirtIcon, SparklesIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 
 import {
   getWardrobeItems,
@@ -52,7 +52,7 @@ export function WardrobeGallery() {
     <main className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-10">
       <section className="bg-brand-ink text-brand-ink-foreground relative overflow-hidden rounded-[2rem] px-6 py-8 sm:px-10 sm:py-11">
         <div aria-hidden="true" className="absolute inset-0 opacity-30" style={HATCH} />
-        <div className="relative grid items-center gap-7 md:grid-cols-[minmax(0,1fr)_15rem] md:gap-10">
+        <div className="relative">
           <div>
             <p className="text-brand-lime text-xs font-bold tracking-[0.18em] uppercase">
               Your digital closet
@@ -73,11 +73,6 @@ export function WardrobeGallery() {
             </a>
           </div>
 
-          <div aria-hidden="true" className="relative mx-auto grid aspect-square w-full max-w-[13rem] place-items-center rounded-[1.5rem] bg-brand-lime text-brand-lime-foreground shadow-[10px_10px_0_rgb(245_41_155)]">
-            <span className="absolute inset-4 rounded-[1rem] border border-brand-ink/20" />
-            <ShirtIcon className="size-24 stroke-[1.25]" />
-            <SparklesIcon className="absolute top-7 right-7 size-5" />
-          </div>
         </div>
       </section>
 

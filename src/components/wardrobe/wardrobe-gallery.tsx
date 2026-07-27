@@ -50,23 +50,23 @@ export function WardrobeGallery() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-10">
-      <section className="bg-brand-ink text-brand-ink-foreground relative overflow-hidden rounded-[2rem] px-6 py-8 sm:px-10 sm:py-11">
-        <div aria-hidden="true" className="absolute inset-0 opacity-30" style={HATCH} />
+      <section className="bg-card text-card-foreground relative overflow-hidden rounded-[2rem] border px-6 py-8 shadow-sm sm:px-10 sm:py-11">
+        <div aria-hidden="true" className="absolute inset-0 opacity-[0.08]" style={HATCH} />
         <div className="relative">
           <div>
-            <p className="text-brand-lime text-xs font-bold tracking-[0.18em] uppercase">
+            <p className="text-brand-magenta text-xs font-bold tracking-[0.18em] uppercase">
               Your digital closet
             </p>
             <h1 className="font-heading mt-3 max-w-lg text-5xl leading-[0.9] tracking-wide uppercase sm:text-6xl">
               What&apos;s in your wardrobe?
             </h1>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-pretty text-brand-ink-foreground/75">
+            <p className="text-muted-foreground mt-4 max-w-md text-sm leading-relaxed text-pretty">
               A clear view of the pieces you reach for, ready to mix into your
               next look.
             </p>
             <a
               href="#wardrobe-items"
-              className="bg-brand-lime text-brand-lime-foreground focus-visible:ring-brand-lime mt-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold tracking-wide uppercase transition-transform hover:-translate-y-0.5 focus-visible:ring-3 focus-visible:outline-none"
+              className="bg-cta text-cta-foreground focus-visible:ring-ring mt-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold tracking-wide uppercase transition-transform hover:-translate-y-0.5 hover:brightness-105 focus-visible:ring-3 focus-visible:outline-none"
             >
               <PlusIcon aria-hidden="true" className="size-3.5" />
               Explore pieces

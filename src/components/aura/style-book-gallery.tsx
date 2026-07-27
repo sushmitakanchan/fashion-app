@@ -58,31 +58,11 @@ export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b pb-6">
-        <div className="grid gap-2">
-          <h1 className="text-3xl font-medium tracking-tight text-balance">
-            Your Style Book
-          </h1>
-          <p className="text-muted-foreground text-pretty">
-            Every look you&rsquo;ve saved, newest first — kept privately, only
-            you can see it.
-          </p>
-        </div>
-        {/* Persistent onward path, so a non-empty book is never a dead end.
-            Flat pink (not the 3D CTA) — it's a persistent header action, not the
-            page's hero; the empty state gets the extruded button. */}
-        <Button
-          variant="cta-flat"
-          nativeButton={false}
-          render={<Link href={TRY_ON_HREF} />}
-        >
-          <SparklesIcon />
-          Try on a look
-        </Button>
-      </header>
-
       {looks.length === 0 ? (
-        <EmptyState />
+        <>
+          <StyleBookHeader />
+          <EmptyState />
+        </>
       ) : open ? (
         <StyleBookOutfitVerdict
           key={open.id}
@@ -90,9 +70,38 @@ export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
           onBack={() => setOpenId(null)}
         />
       ) : (
-        <Grid looks={looks} onOpen={setOpenId} />
+        <>
+          <StyleBookHeader />
+          <Grid looks={looks} onOpen={setOpenId} />
+        </>
       )}
     </main>
+  );
+}
+
+function StyleBookHeader() {
+  return (
+    <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b pb-6">
+      <div className="grid gap-2">
+        <h1 className="text-3xl font-medium tracking-tight text-balance">
+          Your Style Book
+        </h1>
+        <p className="text-muted-foreground text-pretty">
+          Every look you&rsquo;ve saved, newest first — kept privately, only you can see it.
+        </p>
+      </div>
+      {/* Persistent onward path, so a non-empty book is never a dead end.
+          Flat pink (not the 3D CTA) — it's a persistent header action, not the
+          page's hero; the empty state gets the extruded button. */}
+      <Button
+        variant="cta-flat"
+        nativeButton={false}
+        render={<Link href={TRY_ON_HREF} />}
+      >
+        <SparklesIcon />
+        Try on a look
+      </Button>
+    </header>
   );
 }
 

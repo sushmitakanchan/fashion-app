@@ -21,7 +21,6 @@ import { isLinkSource, type SavedLookSource } from "@/lib/aura-style-book";
 import { cloudinaryThumbUrl } from "@/lib/cloudinary-url";
 import type { StyleBookReviewVariant } from "@/lib/style-book-review-prototype-state";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type StyleBookReviewLook = {
@@ -304,10 +303,14 @@ function useAuraReview(
 
 function BackButton({ onBack }: { onBack: () => void }) {
   return (
-    <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2">
-      <ArrowLeftIcon />
+    <button
+      type="button"
+      onClick={onBack}
+      className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none"
+    >
+      <ArrowLeftIcon className="size-4" aria-hidden="true" />
       Back to Style Book
-    </Button>
+    </button>
   );
 }
 
@@ -482,10 +485,17 @@ function ReviewCard({
 }
 
 /** Collapses the detailed model response into one concise, scan-friendly review. */
-function CompactOutfitReview({ review }: { review: AuraStyleBookReview }) {
+function CompactOutfitReview({
+  review,
+  sources,
+}: {
+  review: AuraStyleBookReview;
+  sources: SavedLookSource[];
+}) {
   const stylingNextStep = review.categories.find(
     (category) => category.key === "styling",
   )?.nextStep;
+  const linkSources = sources.filter(isLinkSource);
 
   return (
     <section
@@ -496,6 +506,22 @@ function CompactOutfitReview({ review }: { review: AuraStyleBookReview }) {
       <p className="line-clamp-2 text-sm leading-6 text-foreground/80">
         {review.outfitReview}
       </p>
+      {linkSources.length > 0 ? (
+        <div className="grid gap-1.5 text-xs">
+          {linkSources.map((source) => (
+            <a
+              key={source.url}
+              href={source.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-fit max-w-full items-center gap-1.5 text-primary transition-colors hover:text-primary/75 focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none"
+            >
+              <LinkIcon className="size-3 shrink-0" />
+              <span className="truncate">Source: {source.url}</span>
+            </a>
+          ))}
+        </div>
+      ) : null}
       {stylingNextStep ? (
         <p className="border-l-4 border-brand-magenta pl-3 text-sm leading-5">
           <span className="font-bold">Try next: </span>
@@ -536,7 +562,7 @@ function SourceStrip({ sources, direction = "row" }: { sources: SavedLookSource[
                     href={source.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-primary underline decoration-brand-magenta decoration-2 underline-offset-2"
+                    className="inline-flex items-center gap-1 text-xs text-primary transition-colors hover:text-primary/75 focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none"
                   >
                     <LinkIcon className="size-3" /> from {source.site}
                   </a>
@@ -607,7 +633,12 @@ function AuraVerdict({
     <div className="grid gap-7">
       {onBack ? <BackButton onBack={onBack} /> : null}
       <div className="grid items-start gap-6 sm:grid-cols-[minmax(0,.85fr)_minmax(0,1.15fr)] lg:gap-8">
-        <LookImage look={look} className="lg:sticky lg:top-6" />
+        <div className="grid gap-4 lg:sticky lg:top-6">
+          <div className="grid gap-1">
+            <p className="font-heading text-3xl tracking-wide uppercase">FIT CHECK</p>
+          </div>
+          <LookImage look={look} />
+        </div>
         <aside className="grid content-start gap-5">
           <header>
             <p className="font-heading text-sm tracking-[0.18em] uppercase text-brand-magenta">AURA verdict</p>
@@ -624,7 +655,7 @@ function AuraVerdict({
             )}
           </section>
           {review ? (
-            <CompactOutfitReview review={review} />
+            <CompactOutfitReview review={review} sources={look.sources} />
           ) : (
             <section
               className="grid gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--color-border)]"

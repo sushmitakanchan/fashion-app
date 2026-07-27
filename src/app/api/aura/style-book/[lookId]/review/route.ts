@@ -43,11 +43,18 @@ harmony, contrast, saturation, and the colours nearest the face. Do not claim
 certainty about undertone if lighting makes it unclear. Give useful, specific
 feedback without judging the person.
 
+Generate an independent verdict for this exact outfit and portrait pair. Do
+not reuse a generic score, occasion, colour observation, or recommendation
+from another look. Base the overall score and every category score on visible
+evidence from this specific image. For the outfitReview, name the most plausible
+occasion from its visible formality and styling, say how its silhouette reads on
+the person, and call out the visible palette or face-adjacent colour effect.
+
 Return only valid JSON. It must match this shape exactly:
 {
   "overallScore": number from 1 through 5,
   "description": "one concise outfit description",
-  "outfitReview": "one natural, contemporary Gen Z editorial sentence, concise enough to display in two lines. It must name a plausible occasion where the look works (such as brunch, a casual date, dinner, or the office) and synthesize style, how the outfit reads on the person, and colour-science observations. Keep it warm and specific, never try-hard or overly slangy.",
+  "outfitReview": "one natural, contemporary Gen Z editorial sentence, concise enough to display in two lines. It must name a plausible occasion where the look works (such as brunch, a casual date, dinner, or the office) and synthesize this outfit's style, how the outfit reads on the person, and specific visible colour-science observations. Keep it warm and specific, never try-hard or overly slangy.",
   "categories": [
     {"key":"fit","score":number,"verdict":"short verdict","evidence":"visible evidence","nextStep":"one practical suggestion"},
     {"key":"colour","score":number,"verdict":"short verdict","evidence":"visible evidence","nextStep":"one practical suggestion"},

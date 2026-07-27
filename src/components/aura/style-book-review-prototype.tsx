@@ -612,6 +612,31 @@ function AuraVerdict({
   );
 }
 
+/**
+ * The selected, user-facing Style Book detail view. Unlike the visual board
+ * below, this is deliberately fixed to the approved compact AURA verdict.
+ */
+export function StyleBookOutfitVerdict({
+  look,
+  onBack,
+}: {
+  look: StyleBookReviewLook;
+  onBack: () => void;
+}) {
+  const reviewState = useAuraReview(look.id);
+  const props = { look, onBack, ...reviewState };
+
+  return (
+    <>
+      <PerfectScoreCelebration
+        lookId={look.id}
+        score={reviewState.review.overallScore}
+      />
+      <AuraVerdict {...props} />
+    </>
+  );
+}
+
 function StyleReport({
   look,
   review,

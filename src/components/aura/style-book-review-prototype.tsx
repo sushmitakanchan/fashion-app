@@ -241,8 +241,14 @@ function sourceCount(n: number): string {
   return `${n} source${n === 1 ? "" : "s"}`;
 }
 
-function useAuraReview(lookId: string) {
-  const [review, setReview] = React.useState<AuraStyleBookReview>(PROTOTYPE_REVIEW);
+function useAuraReview(
+  lookId: string,
+  prototypeFallback?: AuraStyleBookReview,
+) {
+  const showPrototypeFallback = prototypeFallback !== undefined;
+  const [review, setReview] = React.useState<AuraStyleBookReview | null>(
+    prototypeFallback ?? null,
+  );
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [attempt, setAttempt] = React.useState(0);
@@ -253,10 +259,11 @@ function useAuraReview(lookId: string) {
     async function loadReview() {
       setLoading(true);
       setError(null);
+      if (!showPrototypeFallback) setReview(null);
       try {
         const response = await fetch(
           `/api/aura/style-book/${encodeURIComponent(lookId)}/review`,
-          { signal: controller.signal },
+          { cache: "no-store", signal: controller.signal },
         );
         const body: unknown = await response.json().catch(() => null);
         const parsed = auraStyleBookReviewSchema.safeParse(body);
@@ -285,7 +292,7 @@ function useAuraReview(lookId: string) {
 
     void loadReview();
     return () => controller.abort();
-  }, [attempt, lookId]);
+  }, [attempt, lookId, showPrototypeFallback]);
 
   return {
     review,
@@ -414,7 +421,7 @@ function ReviewStatus({
     return (
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" role="status">
         <CircleAlertIcon className="size-3.5 text-brand-magenta" />
-        <span>{error} Showing a prototype preview.</span>
+        <span>{error}</span>
         <button
           type="button"
           onClick={retry}
@@ -558,6 +565,8 @@ function EditorialDossier({
   retry,
   onBack,
 }: LayoutProps) {
+  if (!review) return null;
+
   return (
     <div className="grid gap-7">
       {onBack ? <BackButton onBack={onBack} /> : null}
@@ -589,6 +598,9 @@ function EditorialDossier({
 function AuraVerdict({
   look,
   review,
+  loading,
+  error,
+  retry,
   onBack,
 }: LayoutProps) {
   return (
@@ -603,9 +615,25 @@ function AuraVerdict({
             <p className="mt-3 text-sm text-muted-foreground">Saved {formatDate(look.createdAt)}</p>
           </header>
           <section className="grid gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--foreground)]">
-            <MinimalRating score={review.overallScore} />
+            {review ? (
+              <MinimalRating score={review.overallScore} />
+            ) : (
+              <p className="text-sm font-medium" role="status">
+                {error ? "AURA rating unavailable" : "AURA is scoring this look…"}
+              </p>
+            )}
           </section>
-          <CompactOutfitReview review={review} />
+          {review ? (
+            <CompactOutfitReview review={review} />
+          ) : (
+            <section
+              className="grid gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--color-border)]"
+              aria-label="AURA outfit review"
+            >
+              <p className="font-heading text-2xl tracking-wide uppercase">AURA outfit review</p>
+              <ReviewStatus loading={loading} error={error} retry={retry} />
+            </section>
+          )}
         </aside>
       </div>
     </div>
@@ -630,7 +658,7 @@ export function StyleBookOutfitVerdict({
     <>
       <PerfectScoreCelebration
         lookId={look.id}
-        score={reviewState.review.overallScore}
+        score={reviewState.review?.overallScore ?? 0}
       />
       <AuraVerdict {...props} />
     </>
@@ -645,6 +673,8 @@ function StyleReport({
   retry,
   onBack,
 }: LayoutProps) {
+  if (!review) return null;
+
   return (
     <div className="grid gap-7">
       {onBack ? <BackButton onBack={onBack} /> : null}
@@ -681,7 +711,7 @@ function StyleReport({
 
 type LayoutProps = {
   look: StyleBookReviewLook;
-  review: AuraStyleBookReview;
+  review: AuraStyleBookReview | null;
   loading: boolean;
   error: string | null;
   retry: () => void;
@@ -707,8 +737,8 @@ export function StyleBookReviewPrototype({
   /** Development-only loop for auditioning the celebration sound. */
   previewSoundLoop?: boolean;
 }) {
-  const reviewState = useAuraReview(look.id);
-  const review = previewPerfectScore
+  const reviewState = useAuraReview(look.id, PROTOTYPE_REVIEW);
+  const review = previewPerfectScore && reviewState.review
     ? { ...reviewState.review, overallScore: 5 }
     : reviewState.review;
   const props = { look, onBack, ...reviewState, review };
@@ -717,7 +747,7 @@ export function StyleBookReviewPrototype({
     <>
       <PerfectScoreCelebration
         lookId={look.id}
-        score={review.overallScore}
+        score={review?.overallScore ?? 0}
         loopSound={previewSoundLoop}
       />
       {variant === "verdict" ? <AuraVerdict {...props} /> : null}

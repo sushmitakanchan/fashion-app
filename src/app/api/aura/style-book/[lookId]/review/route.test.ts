@@ -116,6 +116,9 @@ describe("GET /api/aura/style-book/[lookId]/review", () => {
     });
     expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
+        instructions: expect.stringContaining(
+          "Generate an independent verdict for this exact outfit and portrait pair.",
+        ),
         images: [
           { url: "https://res.cloudinary.test/look.jpg" },
           { url: "https://res.cloudinary.test/portrait.jpg" },

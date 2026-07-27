@@ -2,19 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  ArrowLeftIcon,
-  BookmarkIcon,
-  ImageIcon,
-  LinkIcon,
-  SparklesIcon,
-} from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { BookmarkIcon, SparklesIcon } from "lucide-react";
 
-import { isLinkSource, type SavedLookSource } from "@/lib/aura-style-book";
+import type { SavedLookSource } from "@/lib/aura-style-book";
 import { cloudinaryThumbUrl } from "@/lib/cloudinary-url";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/components/ui/cta-button";
+import { StyleBookPrototypeSwitcher } from "@/components/aura/style-book-prototype-switcher";
+import { StyleBookReviewPrototype } from "@/components/aura/style-book-review-prototype";
+import { readStyleBookReviewVariant } from "@/lib/style-book-review-prototype-state";
 
 /** Where the Style Book links back to the try-on surface. */
 const TRY_ON_HREF = "/aura/try-on";
@@ -61,6 +58,8 @@ function sourceCount(n: number): string {
 export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
   const [openId, setOpenId] = React.useState<string | null>(null);
   const open = looks.find((look) => look.id === openId) ?? null;
+  const searchParams = useSearchParams();
+  const variant = readStyleBookReviewVariant(searchParams.get("variant"));
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
@@ -90,7 +89,14 @@ export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
       {looks.length === 0 ? (
         <EmptyState />
       ) : open ? (
-        <Detail look={open} onBack={() => setOpenId(null)} />
+        <>
+          <StyleBookReviewPrototype
+            look={open}
+            onBack={() => setOpenId(null)}
+            variant={variant}
+          />
+          <StyleBookPrototypeSwitcher current={variant} />
+        </>
       ) : (
         <Grid looks={looks} onOpen={setOpenId} />
       )}
@@ -132,93 +138,6 @@ function Grid({
           </div>
         </button>
       ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ detail */
-
-function Detail({
-  look,
-  onBack,
-}: {
-  look: StyleBookLook;
-  onBack: () => void;
-}) {
-  return (
-    <div className="grid gap-6">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onBack}
-        className="justify-self-start"
-      >
-        <ArrowLeftIcon />
-        Back to Style Book
-      </Button>
-      <div className="grid gap-8 md:grid-cols-[1.4fr_1fr]">
-        {/* Full-bleed generated look on the left. */}
-        <figure className="bg-muted/30 grid place-items-center self-start overflow-hidden rounded-2xl border p-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={look.lookImageUrl}
-            alt={look.caption}
-            className="max-h-[70vh] w-auto rounded-xl object-contain"
-          />
-        </figure>
-        {/* Sources as a tall rail on the right. */}
-        <div className="grid content-start gap-5">
-          <div className="grid gap-1">
-            <h2 className="text-xl font-medium text-balance">{look.caption}</h2>
-            <p className="text-muted-foreground text-sm">
-              Saved {formatDate(look.createdAt)}
-            </p>
-          </div>
-          <div className="grid gap-3">
-            <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-              {sourceCount(look.sources.length)}
-            </p>
-            {look.sources.map((source, index) => (
-              <SourceRow key={index} source={source} />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SourceRow({ source }: { source: SavedLookSource }) {
-  const link = isLinkSource(source);
-  return (
-    <div className="flex items-center gap-3 rounded-xl border bg-card p-2">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={cloudinaryThumbUrl(source.imageUrl, { width: 128, height: 128 })}
-        alt={source.name}
-        className="size-16 shrink-0 rounded-lg object-cover"
-      />
-      <div className="grid min-w-0 gap-1">
-        <p className="truncate text-sm font-medium">{source.name}</p>
-        {link ? (
-          // A dead original link simply 404s on click — no liveness checking.
-          <a
-            href={source.url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-primary inline-flex items-center gap-1 text-xs hover:underline"
-          >
-            <LinkIcon className="size-3" /> from {source.site}
-          </a>
-        ) : (
-          <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-            <ImageIcon className="size-3" /> uploaded image
-          </span>
-        )}
-      </div>
-      <Badge variant={link ? "secondary" : "outline"} className="mr-1 ml-auto">
-        {link ? "link" : "upload"}
-      </Badge>
     </div>
   );
 }

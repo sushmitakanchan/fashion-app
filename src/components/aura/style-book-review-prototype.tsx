@@ -403,6 +403,33 @@ function MinimalRating({ score }: { score: number }) {
   );
 }
 
+/**
+ * Loading placeholder for the rating box, mirroring {@link MinimalRating}'s
+ * shape so the layout doesn't jump when the real score lands. Ghost stars pulse
+ * and the label spins — the rating gets the same "working" affordance the
+ * outfit review already has.
+ */
+function RatingLoading() {
+  return (
+    <div className="grid gap-1.5" role="status" aria-label="AURA is scoring this look">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-muted-foreground">
+          AURA rating
+        </p>
+        <span className="flex animate-pulse items-center gap-1" aria-hidden="true">
+          {Array.from({ length: 5 }, (_, index) => (
+            <StarIcon key={index} className="size-5 text-foreground/15" />
+          ))}
+        </span>
+      </div>
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <LoaderCircleIcon className="size-3.5 animate-spin" />
+        AURA is scoring this look…
+      </p>
+    </div>
+  );
+}
+
 function ReviewStatus({
   loading,
   error,
@@ -484,6 +511,32 @@ function ReviewCard({
   );
 }
 
+/**
+ * The pasted-link source(s) behind a saved look, shown inside the review card.
+ * Deterministic saved data — deliberately not gated on the AI review, so the
+ * link is visible whether the verdict is loading, failed, or landed.
+ */
+function ReviewSourceLinks({ sources }: { sources: SavedLookSource[] }) {
+  const linkSources = sources.filter(isLinkSource);
+  if (linkSources.length === 0) return null;
+  return (
+    <div className="grid gap-1.5 text-xs">
+      {linkSources.map((source) => (
+        <a
+          key={source.url}
+          href={source.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex w-fit max-w-full items-center gap-1.5 text-primary transition-colors hover:text-primary/75 focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none"
+        >
+          <LinkIcon className="size-3 shrink-0" />
+          <span className="truncate">Source: {source.url}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 /** Collapses the detailed model response into one concise, scan-friendly review. */
 function CompactOutfitReview({
   review,
@@ -495,7 +548,6 @@ function CompactOutfitReview({
   const stylingNextStep = review.categories.find(
     (category) => category.key === "styling",
   )?.nextStep;
-  const linkSources = sources.filter(isLinkSource);
 
   return (
     <section
@@ -506,22 +558,7 @@ function CompactOutfitReview({
       <p className="line-clamp-2 text-sm leading-6 text-foreground/80">
         {review.outfitReview}
       </p>
-      {linkSources.length > 0 ? (
-        <div className="grid gap-1.5 text-xs">
-          {linkSources.map((source) => (
-            <a
-              key={source.url}
-              href={source.url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex w-fit max-w-full items-center gap-1.5 text-primary transition-colors hover:text-primary/75 focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none"
-            >
-              <LinkIcon className="size-3 shrink-0" />
-              <span className="truncate">Source: {source.url}</span>
-            </a>
-          ))}
-        </div>
-      ) : null}
+      <ReviewSourceLinks sources={sources} />
       {stylingNextStep ? (
         <p className="border-l-4 border-brand-magenta pl-3 text-sm leading-5">
           <span className="font-bold">Try next: </span>
@@ -648,10 +685,12 @@ function AuraVerdict({
           <section className="grid gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--foreground)]">
             {review ? (
               <MinimalRating score={review.overallScore} />
-            ) : (
+            ) : error ? (
               <p className="text-sm font-medium" role="status">
-                {error ? "AURA rating unavailable" : "AURA is scoring this look…"}
+                AURA rating unavailable
               </p>
+            ) : (
+              <RatingLoading />
             )}
           </section>
           {review ? (
@@ -663,6 +702,7 @@ function AuraVerdict({
             >
               <p className="font-heading text-2xl tracking-wide uppercase">AURA outfit review</p>
               <ReviewStatus loading={loading} error={error} retry={retry} />
+              <ReviewSourceLinks sources={look.sources} />
             </section>
           )}
         </aside>

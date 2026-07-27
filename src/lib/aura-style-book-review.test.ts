@@ -39,6 +39,16 @@ describe("the AURA Style Book review contract", () => {
     expect(auraStyleBookReviewSchema.safeParse(review()).success).toBe(true);
   });
 
+  it("accepts a rich ~220-char outfitReview the vision model actually returns", () => {
+    // Regression: the 180-char cap rejected real model output (~200–220 chars),
+    // failing the whole review. The cap now clears that band with margin.
+    const rich = review();
+    rich.outfitReview =
+      "This is peak dinner-date energy: the tailored charcoal layers read elongated and intentional on you, while the cool-toned neutrals stay harmonious and flatter the face without ever tipping into flat or washed-out.";
+    expect(rich.outfitReview.length).toBeGreaterThan(180);
+    expect(auraStyleBookReviewSchema.safeParse(rich).success).toBe(true);
+  });
+
   it("rejects an invalid score and a reordered category payload", () => {
     const invalidScore = review();
     invalidScore.overallScore = 5.1;

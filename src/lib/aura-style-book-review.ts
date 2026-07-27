@@ -21,8 +21,14 @@ export const auraStyleBookReviewSchema = z
   .object({
     overallScore: z.number().min(1).max(5),
     description: z.string().trim().min(1).max(220),
-    /** One concise, UI-ready verdict for the compact review card. */
-    outfitReview: z.string().trim().min(1).max(180),
+    /**
+     * One concise, UI-ready verdict for the compact review card (rendered
+     * `line-clamp-2`). The instructions ask it to fold occasion, silhouette,
+     * and a colour-science note into one sentence, which the vision model
+     * reliably lands at ~200–220 chars — so the cap sits above that with
+     * margin rather than hard-failing an otherwise-valid review at 180.
+     */
+    outfitReview: z.string().trim().min(1).max(280),
     categories: z.array(reviewCategorySchema).length(3),
   })
   .superRefine((review, context) => {

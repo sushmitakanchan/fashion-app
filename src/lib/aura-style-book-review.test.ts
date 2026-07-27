@@ -6,6 +6,8 @@ function review() {
   return {
     overallScore: 4.2,
     description: "A polished, layered neutral look.",
+    outfitReview:
+      "It’s giving date-night energy: the layered neutrals read balanced on you with a harmonious, face-framing palette.",
     categories: [
       {
         key: "fit",

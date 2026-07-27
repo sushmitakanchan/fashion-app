@@ -21,6 +21,8 @@ export const auraStyleBookReviewSchema = z
   .object({
     overallScore: z.number().min(1).max(5),
     description: z.string().trim().min(1).max(220),
+    /** One concise, UI-ready verdict for the compact review card. */
+    outfitReview: z.string().trim().min(1).max(180),
     categories: z.array(reviewCategorySchema).length(3),
   })
   .superRefine((review, context) => {

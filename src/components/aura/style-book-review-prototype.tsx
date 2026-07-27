@@ -58,6 +58,8 @@ const PROTOTYPE_REVIEW: AuraStyleBookReview = {
   overallScore: 4.4,
   description:
     "A refined off-duty look that balances tailored structure with relaxed denim proportions.",
+  outfitReview:
+    "It’s giving brunch-to-date energy: tailored layers keep it polished on you, while the deep neutrals make the whole look feel effortlessly put together.",
   categories: [
     {
       key: "fit",
@@ -86,12 +88,153 @@ const PROTOTYPE_REVIEW: AuraStyleBookReview = {
   ],
 };
 
+const CONFETTI_PIECES = Array.from({ length: 132 }, (_, index) => ({
+  delay: `${(index % 12) * 20}ms`,
+  duration: `${7800 + (index % 7) * 220}ms`,
+  left: `${(index * 37) % 100}%`,
+  top: `${-12 + (index % 8) * 11}vh`,
+  rotation: `${(index * 47) % 360}deg`,
+  size: `${7 + (index % 4) * 3}px`,
+  tone:
+    index % 3 === 0
+      ? "var(--brand-magenta)"
+      : index % 3 === 1
+        ? "var(--brand-lime)"
+        : "var(--foreground)",
+  x: `${((index * 23) % 140) - 70}px`,
+}));
+
+async function playPerfectScoreChime(): Promise<boolean> {
+  const audioContext = new window.AudioContext();
+
+  try {
+    await audioContext.resume();
+    if (audioContext.state !== "running") throw new Error("Audio is unavailable");
+
+    const now = audioContext.currentTime;
+    const notes = [
+      { frequency: 523.25, start: 0, duration: 0.42 },
+      { frequency: 659.25, start: 0.16, duration: 0.44 },
+      { frequency: 783.99, start: 0.32, duration: 0.54 },
+      { frequency: 1046.5, start: 0.52, duration: 1.15 },
+    ];
+
+    notes.forEach(({ frequency, start: offset, duration }, index) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const start = now + offset;
+
+      oscillator.type = index === notes.length - 1 ? "triangle" : "sine";
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.07, start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.02);
+    });
+    window.setTimeout(() => void audioContext.close(), 1900);
+    return true;
+  } catch {
+    void audioContext.close();
+    return false;
+  }
+}
+
+function PerfectScoreCelebration({
+  lookId,
+  score,
+  loopSound = false,
+}: {
+  lookId: string;
+  score: number;
+  /** Development-only replay mode for auditioning the celebration sound. */
+  loopSound?: boolean;
+}) {
+  const [visible, setVisible] = React.useState(false);
+  const celebratedLookRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (score !== 5) return;
+
+    const interactionController = new AbortController();
+    let cancelled = false;
+    let loopTimer: number | undefined;
+    const playSound = async (): Promise<boolean> => {
+      const played = await playPerfectScoreChime();
+      if (played && loopSound && !cancelled) {
+        loopTimer = window.setTimeout(() => void playSound(), 2200);
+      }
+      return played;
+    };
+    const playAfterInteraction = () => {
+      interactionController.abort();
+      void playSound();
+    };
+
+    if (celebratedLookRef.current !== lookId || loopSound) {
+      celebratedLookRef.current = lookId;
+      void playSound().then((played) => {
+        if (played || cancelled) return;
+        window.addEventListener("pointerdown", playAfterInteraction, {
+          once: true,
+          signal: interactionController.signal,
+        });
+        window.addEventListener("keydown", playAfterInteraction, {
+          once: true,
+          signal: interactionController.signal,
+        });
+      });
+    }
+
+    const reveal = window.requestAnimationFrame(() => setVisible(true));
+    const dismiss = window.setTimeout(() => setVisible(false), 11_500);
+    return () => {
+      cancelled = true;
+      interactionController.abort();
+      window.clearTimeout(loopTimer);
+      window.cancelAnimationFrame(reveal);
+      window.clearTimeout(dismiss);
+    };
+  }, [lookId, loopSound, score]);
+
+  if (!visible || score !== 5) return null;
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[60] overflow-hidden" aria-live="assertive">
+      <p className="sr-only">Perfect outfit score. AURA gave this look all five stars.</p>
+      <div aria-hidden="true">
+        {CONFETTI_PIECES.map((piece, index) => (
+          <span
+            key={index}
+            className="aura-perfect-confetti"
+            style={{
+              "--confetti-delay": piece.delay,
+              "--confetti-duration": piece.duration,
+              "--confetti-rotation": piece.rotation,
+              "--confetti-size": piece.size,
+              "--confetti-tone": piece.tone,
+              "--confetti-x": piece.x,
+              left: piece.left,
+              top: piece.top,
+            } as React.CSSProperties}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
+}
+
+function formatRatingScore(score: number): string {
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
 }
 
 function sourceCount(n: number): string {
@@ -190,11 +333,11 @@ function Score({ score, large = false }: { score: number; large?: boolean }) {
           large ? "text-7xl sm:text-8xl" : "text-4xl",
         )}
       >
-        {score.toFixed(1)}
+        {formatRatingScore(score)}
       </p>
       <div className="pb-1">
         <p className="text-[10px] font-bold tracking-[0.18em] uppercase">AURA score</p>
-        <div className="flex items-center gap-1" aria-label={`${score.toFixed(1)} out of 5`}>
+        <div className="flex items-center gap-1" aria-label={`${formatRatingScore(score)} out of 5`}>
           <span className="flex" aria-hidden="true">
             {Array.from({ length: 5 }, (_, index) => (
               <StarIcon
@@ -211,6 +354,41 @@ function Score({ score, large = false }: { score: number; large?: boolean }) {
           <span className="sr-only">out of 5</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** A quieter score treatment for the side-rail verdict layout. */
+function MinimalRating({ score }: { score: number }) {
+  const rounded = Math.round(score);
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-muted-foreground">
+          AURA rating
+        </p>
+        <div className="flex items-center gap-1" aria-label={`${formatRatingScore(score)} out of 5`}>
+          <span className="flex" aria-hidden="true">
+            {Array.from({ length: 5 }, (_, index) => (
+              <StarIcon
+                key={index}
+                className={cn(
+                  "size-5",
+                  index < rounded
+                    ? "fill-brand-magenta text-brand-magenta"
+                    : "text-foreground/20",
+                )}
+              />
+            ))}
+          </span>
+          <span className="ml-1 text-sm font-semibold tabular-nums">
+            {formatRatingScore(score)}/5
+          </span>
+        </div>
+      </div>
+      {score === 5 ? (
+        <p className="text-sm font-semibold text-brand-magenta">Perfect score!</p>
+      ) : null}
     </div>
   );
 }
@@ -282,7 +460,7 @@ function ReviewCard({
             <h3 className="font-heading text-xl tracking-wide uppercase">{meta.title}</h3>
           </div>
         </div>
-        <span className="shrink-0 text-sm font-bold tabular-nums">{category.score.toFixed(1)}/5</span>
+        <span className="shrink-0 text-sm font-bold tabular-nums">{formatRatingScore(category.score)}/5</span>
       </div>
       <div className="grid gap-1.5">
         <p className="font-heading text-base tracking-wide uppercase">{category.verdict}</p>
@@ -293,6 +471,31 @@ function ReviewCard({
         {category.nextStep}
       </p>
     </article>
+  );
+}
+
+/** Collapses the detailed model response into one concise, scan-friendly review. */
+function CompactOutfitReview({ review }: { review: AuraStyleBookReview }) {
+  const stylingNextStep = review.categories.find(
+    (category) => category.key === "styling",
+  )?.nextStep;
+
+  return (
+    <section
+      className="grid gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--color-border)]"
+      aria-label="AURA outfit review"
+    >
+      <p className="font-heading text-2xl tracking-wide uppercase">AURA outfit review</p>
+      <p className="line-clamp-2 text-sm leading-6 text-foreground/80">
+        {review.outfitReview}
+      </p>
+      {stylingNextStep ? (
+        <p className="border-l-4 border-brand-magenta pl-3 text-sm leading-5">
+          <span className="font-bold">Try next: </span>
+          {stylingNextStep}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -357,7 +560,7 @@ function EditorialDossier({
 }: LayoutProps) {
   return (
     <div className="grid gap-7">
-      <BackButton onBack={onBack} />
+      {onBack ? <BackButton onBack={onBack} /> : null}
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,.85fr)]">
         <LookImage look={look} />
         <aside className="grid gap-5 lg:pt-7">
@@ -386,34 +589,24 @@ function EditorialDossier({
 function AuraVerdict({
   look,
   review,
-  loading,
-  error,
-  retry,
   onBack,
 }: LayoutProps) {
   return (
     <div className="grid gap-7">
-      <BackButton onBack={onBack} />
-      <section className="grid gap-6 rounded-[1.75rem] border-2 border-foreground bg-foreground p-6 text-primary-foreground shadow-[7px_7px_0_var(--color-brand-magenta)] sm:p-8 lg:grid-cols-[.85fr_1.15fr] lg:items-end">
-        <div className="grid gap-5">
-          <p className="font-heading text-lg tracking-[0.18em] uppercase text-brand-lime">AURA verdict</p>
-          <Score score={review.overallScore} large />
-          <p className="max-w-sm text-lg leading-7">{review.description}</p>
-          <ReviewStatus loading={loading} error={error} retry={retry} />
-        </div>
-        <div className="border-t border-primary-foreground/30 pt-5 lg:border-t-0 lg:border-l lg:pl-7 lg:pt-0">
-          <p className="font-heading text-3xl leading-none tracking-wide uppercase sm:text-4xl">{look.caption}</p>
-          <p className="mt-3 text-sm text-primary-foreground/70">A saved look from {formatDate(look.createdAt)}. AURA sees the outfit first, then the portrait it was generated against.</p>
-        </div>
-      </section>
-      <div className="grid gap-7 lg:grid-cols-[minmax(17rem,.75fr)_minmax(0,1.25fr)]">
-        <div className="grid content-start gap-5">
-          <LookImage look={look} className="max-h-[65vh]" />
-          <SourceStrip sources={look.sources} />
-        </div>
-        <section className="grid gap-4" aria-label="AURA category review">
-          {review.categories.map((category) => <ReviewCard key={category.key} category={category} />)}
-        </section>
+      {onBack ? <BackButton onBack={onBack} /> : null}
+      <div className="grid items-start gap-6 sm:grid-cols-[minmax(0,.85fr)_minmax(0,1.15fr)] lg:gap-8">
+        <LookImage look={look} className="lg:sticky lg:top-6" />
+        <aside className="grid content-start gap-5">
+          <header>
+            <p className="font-heading text-sm tracking-[0.18em] uppercase text-brand-magenta">AURA verdict</p>
+            <h2 className="mt-2 font-heading text-4xl leading-[.9] tracking-wide uppercase text-balance sm:text-5xl">{look.caption}</h2>
+            <p className="mt-3 text-sm text-muted-foreground">Saved {formatDate(look.createdAt)}</p>
+          </header>
+          <section className="grid gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--foreground)]">
+            <MinimalRating score={review.overallScore} />
+          </section>
+          <CompactOutfitReview review={review} />
+        </aside>
       </div>
     </div>
   );
@@ -429,7 +622,7 @@ function StyleReport({
 }: LayoutProps) {
   return (
     <div className="grid gap-7">
-      <BackButton onBack={onBack} />
+      {onBack ? <BackButton onBack={onBack} /> : null}
       <header className="border-y-2 border-foreground py-5 sm:flex sm:items-end sm:justify-between sm:gap-6">
         <div>
           <p className="text-xs font-bold tracking-[0.18em] uppercase text-brand-magenta">AURA style report</p>
@@ -467,7 +660,7 @@ type LayoutProps = {
   loading: boolean;
   error: string | null;
   retry: () => void;
-  onBack: () => void;
+  onBack?: () => void;
 };
 
 /**
@@ -478,20 +671,33 @@ export function StyleBookReviewPrototype({
   look,
   onBack,
   variant,
+  previewPerfectScore = false,
+  previewSoundLoop = false,
 }: {
   look: StyleBookReviewLook;
-  onBack: () => void;
+  onBack?: () => void;
   variant: StyleBookReviewVariant;
+  /** Development-only trigger for reviewing the perfect-score celebration. */
+  previewPerfectScore?: boolean;
+  /** Development-only loop for auditioning the celebration sound. */
+  previewSoundLoop?: boolean;
 }) {
   const reviewState = useAuraReview(look.id);
-  const props = { look, onBack, ...reviewState };
+  const review = previewPerfectScore
+    ? { ...reviewState.review, overallScore: 5 }
+    : reviewState.review;
+  const props = { look, onBack, ...reviewState, review };
 
-  switch (variant) {
-    case "verdict":
-      return <AuraVerdict {...props} />;
-    case "report":
-      return <StyleReport {...props} />;
-    case "editorial":
-      return <EditorialDossier {...props} />;
-  }
+  return (
+    <>
+      <PerfectScoreCelebration
+        lookId={look.id}
+        score={review.overallScore}
+        loopSound={previewSoundLoop}
+      />
+      {variant === "verdict" ? <AuraVerdict {...props} /> : null}
+      {variant === "report" ? <StyleReport {...props} /> : null}
+      {variant === "editorial" ? <EditorialDossier {...props} /> : null}
+    </>
+  );
 }

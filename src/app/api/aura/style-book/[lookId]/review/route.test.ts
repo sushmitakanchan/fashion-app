@@ -30,6 +30,8 @@ function validReview() {
   return JSON.stringify({
     overallScore: 4.4,
     description: "A polished layered look with a crisp, tailored finish.",
+    outfitReview:
+      "It’s giving brunch-to-date energy: tailored layers read polished on you, with a cohesive tonal palette near the face.",
     categories: [
       {
         key: "fit",

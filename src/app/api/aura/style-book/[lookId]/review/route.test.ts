@@ -7,9 +7,11 @@ let row: {
   lookImageUrl: string;
   portraitUrl: string;
   sources: unknown;
+  auraReview: unknown;
 } | null = null;
 
 const findFirst = mock(async () => row);
+const update = mock(async () => ({}));
 const generateText = mock(async () => ({ text: validReview() }));
 
 class AiProviderConfigError extends Error {}
@@ -19,7 +21,7 @@ mock.module("@clerk/nextjs/server", () => ({
 }));
 
 mock.module("@/lib/prisma", () => ({
-  getPrisma: () => ({ savedLook: { findFirst } }),
+  getPrisma: () => ({ savedLook: { findFirst, update } }),
 }));
 
 mock.module("@/lib/ai", () => ({ AiProviderConfigError, generateText }));
@@ -70,11 +72,14 @@ beforeEach(() => {
     lookImageUrl: "https://res.cloudinary.test/look.jpg",
     portraitUrl: "https://res.cloudinary.test/portrait.jpg",
     sources: [{ name: "Wool coat" }, { name: "Cropped trousers" }],
+    auraReview: null,
   };
   findFirst.mockClear();
   findFirst.mockImplementation(async () => row);
   generateText.mockClear();
   generateText.mockImplementation(async () => ({ text: validReview() }));
+  update.mockClear();
+  update.mockImplementation(async () => ({}));
 });
 
 describe("GET /api/aura/style-book/[lookId]/review", () => {
@@ -117,6 +122,45 @@ describe("GET /api/aura/style-book/[lookId]/review", () => {
         ],
       }),
     );
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "look_1" },
+      data: { auraReview: expect.objectContaining({ overallScore: 4.4 }) },
+    });
+  });
+
+  it("returns a previously saved valid review without calling the model again", async () => {
+    row = { ...row!, auraReview: JSON.parse(validReview()) };
+
+    const response = await request();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ overallScore: 4.4 });
+    expect(generateText).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("replaces an invalid saved review with a freshly validated verdict", async () => {
+    row = { ...row!, auraReview: { overallScore: 8 } };
+
+    const response = await request();
+
+    expect(response.status).toBe(200);
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a retryable failure when a generated review cannot be saved", async () => {
+    update.mockImplementation(async () => {
+      throw new Error("database unavailable");
+    });
+
+    const response = await request();
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "review-save-failed",
+      retryable: true,
+    });
   });
 
   it("returns a retryable failure for malformed model output", async () => {

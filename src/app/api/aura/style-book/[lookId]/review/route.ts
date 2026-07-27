@@ -57,9 +57,9 @@ Return only valid JSON. It must match this shape exactly:
 `;
 
 /**
- * Transient, owner-scoped vision review for one immutable Saved Look. The
- * browser supplies only the route id; this handler retrieves both Cloudinary
- * image URLs through the signed-in owner's record before calling the AI.
+ * Owner-scoped vision review for one Saved Look. The browser supplies only the
+ * route id; this handler returns a previously validated verdict when available,
+ * or retrieves server-owned image URLs to generate and save the first verdict.
  */
 export async function GET(_request: Request, context: RouteContext) {
   const { userId } = await auth();
@@ -77,6 +77,7 @@ export async function GET(_request: Request, context: RouteContext) {
     lookImageUrl: string;
     portraitUrl: string;
     sources: unknown;
+    auraReview: unknown;
   } | null;
 
   try {
@@ -87,6 +88,7 @@ export async function GET(_request: Request, context: RouteContext) {
         lookImageUrl: true,
         portraitUrl: true,
         sources: true,
+        auraReview: true,
       },
     });
   } catch (error) {
@@ -105,6 +107,11 @@ export async function GET(_request: Request, context: RouteContext) {
       error: "We couldn't find that saved look.",
       retryable: false,
     });
+  }
+
+  const savedReview = auraStyleBookReviewSchema.safeParse(look.auraReview);
+  if (savedReview.success) {
+    return NextResponse.json(savedReview.data);
   }
 
   try {
@@ -132,6 +139,20 @@ export async function GET(_request: Request, context: RouteContext) {
       return failure(502, {
         code: "invalid-review-response",
         error: "AURA couldn't format this review. Please try again.",
+        retryable: true,
+      });
+    }
+
+    try {
+      await getPrisma().savedLook.update({
+        where: { id: lookId },
+        data: { auraReview: review },
+      });
+    } catch (error) {
+      console.error("Style Book review persistence failed", error);
+      return failure(500, {
+        code: "review-save-failed",
+        error: "AURA reviewed this look, but we couldn't save it. Please try again.",
         retryable: true,
       });
     }

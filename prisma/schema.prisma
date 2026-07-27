@@ -72,6 +72,9 @@ model SavedLook {
   /// Array of SavedLookSource (see `@/lib/validations`). The database does NOT
   /// validate this JSON — it MUST be Zod-guarded at write time.
   sources      Json
+  /// A validated AURA verdict, generated once for this saved look. JSON keeps
+  /// the version-one review contract together without a separate history table.
+  auraReview   Json?
   createdAt    DateTime @default(now())
 
   @@index([userId, createdAt]) // newest-first per-owner grid

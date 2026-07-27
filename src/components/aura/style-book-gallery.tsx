@@ -84,7 +84,11 @@ export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
       {looks.length === 0 ? (
         <EmptyState />
       ) : open ? (
-        <StyleBookOutfitVerdict look={open} onBack={() => setOpenId(null)} />
+        <StyleBookOutfitVerdict
+          key={open.id}
+          look={open}
+          onBack={() => setOpenId(null)}
+        />
       ) : (
         <Grid looks={looks} onOpen={setOpenId} />
       )}

@@ -1,10 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import * as React from "react";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, XIcon } from "lucide-react";
 
 import {
   getWardrobeItems,
+  inferWardrobeCategory,
   wardrobeCategories,
   type WardrobeCategory,
   type WardrobeItem,
@@ -16,6 +18,7 @@ const categoryLabels: Record<WardrobeCategory, string> = {
   tops: "Tops",
   bottoms: "Bottoms",
   bags: "Bags",
+  shoes: "Shoes",
   accessories: "Accessories",
 };
 
@@ -24,14 +27,8 @@ const categoryHeadings: Record<WardrobeCategory, string> = {
   tops: "Tops",
   bottoms: "Bottoms",
   bags: "Bags",
+  shoes: "Shoes",
   accessories: "Accessories",
-};
-
-const toneClasses: Record<WardrobeItem["tone"], string> = {
-  lime: "bg-brand-lime text-brand-lime-foreground",
-  magenta: "bg-brand-magenta text-brand-magenta-foreground",
-  ink: "bg-brand-ink text-brand-ink-foreground",
-  paper: "bg-[#f5efe3] text-brand-ink dark:bg-card",
 };
 
 const HATCH = {
@@ -39,20 +36,124 @@ const HATCH = {
     "repeating-linear-gradient(70deg, rgb(20 17 15 / 0.12) 0 2px, transparent 2px 12px)",
 } as const;
 
+type PendingWardrobeItem = {
+  name: string;
+  imageUrl: string;
+};
+
+function nameFromFile(file: File): string {
+  return file.name
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function readPhoto(file: File): Promise<PendingWardrobeItem> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Image preview unavailable"));
+        return;
+      }
+      resolve({ name: nameFromFile(file), imageUrl: reader.result });
+    });
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
+}
+
 /**
- * The wardrobe's interactive island. The full collection is intentionally
- * static, so changing a filter is instant and does not ask the server to
- * re-render a page that already has every item it needs.
+ * The wardrobe's interactive island. New items live in this browser session,
+ * so a newly added piece is immediately available in All and its category.
  */
 export function WardrobeGallery() {
   const [category, setCategory] = React.useState<WardrobeCategory>("all");
-  const items = getWardrobeItems(category);
+  const [addedItems, setAddedItems] = React.useState<WardrobeItem[]>([]);
+  const [isAdding, setIsAdding] = React.useState(false);
+  const [pendingItems, setPendingItems] = React.useState<PendingWardrobeItem[]>([]);
+  const [formError, setFormError] = React.useState("");
+  const items = getWardrobeItems(category, addedItems);
+
+  function resetForm() {
+    setPendingItems([]);
+    setFormError("");
+  }
+
+  function closeAddItem() {
+    setIsAdding(false);
+    resetForm();
+  }
+
+  async function handlePhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    setFormError("");
+
+    if (files.length === 0) {
+      setPendingItems([]);
+      return;
+    }
+    if (files.some((file) => !file.type.startsWith("image/"))) {
+      setFormError("Choose image files for your wardrobe pieces.");
+      return;
+    }
+    if (files.some((file) => file.size > 2 * 1024 * 1024)) {
+      setFormError("Choose images smaller than 2 MB each for this preview.");
+      return;
+    }
+
+    try {
+      setPendingItems(await Promise.all(files.map(readPhoto)));
+    } catch {
+      setFormError("We couldn’t read one of those images. Please try again.");
+    }
+  }
+
+  function handleAddItem(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (pendingItems.length === 0) {
+      setFormError("Choose at least one clothing photo to continue.");
+      return;
+    }
+
+    setAddedItems((current) => [
+      ...pendingItems.map((item) => {
+        const itemCategory = inferWardrobeCategory(item.name);
+        return {
+          id: crypto.randomUUID(),
+          name: item.name,
+          category: itemCategory,
+          note: `Added to ${categoryLabels[itemCategory]}`,
+          imageUrl: item.imageUrl,
+        };
+      }),
+      ...current,
+    ]);
+    setCategory("all");
+    closeAddItem();
+  }
 
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-10">
-      <section className="bg-card text-card-foreground relative overflow-hidden rounded-[2rem] border px-6 py-8 shadow-sm sm:px-10 sm:py-11">
+      <section className="bg-card text-card-foreground relative min-h-80 overflow-hidden rounded-[2rem] border px-6 py-8 shadow-sm sm:px-10 sm:py-11 md:min-h-96">
         <div aria-hidden="true" className="absolute inset-0 opacity-[0.08]" style={HATCH} />
-        <div className="relative">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 w-full opacity-70 dark:opacity-55 md:w-[72%] md:opacity-80 dark:md:opacity-100"
+        >
+          <Image
+            src="/images/wardrobe-hero.png"
+            alt=""
+            fill
+            priority
+            sizes="(max-width: 767px) 100vw, 68vw"
+            className="object-cover object-[62%_center] saturate-125 contrast-110"
+          />
+          <div className="bg-gradient-to-b from-card/80 via-brand-magenta/25 to-brand-magenta/10 dark:from-card/85 dark:via-card/35 dark:to-transparent absolute inset-0 md:bg-gradient-to-r md:from-card md:via-brand-magenta/20 md:to-brand-magenta/8 dark:md:via-card/25 dark:md:to-transparent" />
+        </div>
+        <div className="relative z-10 flex min-h-64 items-center md:min-h-80">
           <div>
             <p className="text-brand-magenta text-xs font-bold tracking-[0.18em] uppercase">
               Your digital closet
@@ -60,19 +161,11 @@ export function WardrobeGallery() {
             <h1 className="font-heading mt-3 max-w-lg text-5xl leading-[0.9] tracking-wide uppercase sm:text-6xl">
               What&apos;s in your wardrobe?
             </h1>
-            <p className="text-muted-foreground mt-4 max-w-md text-sm leading-relaxed text-pretty">
-              A clear view of the pieces you reach for, ready to mix into your
-              next look.
+            <p className="mt-4 max-w-md text-left text-sm leading-relaxed font-medium text-black text-pretty dark:text-white">
+              Add your own pieces and keep every outfit-building block in one
+              place.
             </p>
-            <a
-              href="#wardrobe-items"
-              className="bg-cta text-cta-foreground focus-visible:ring-ring mt-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold tracking-wide uppercase transition-transform hover:-translate-y-0.5 hover:brightness-105 focus-visible:ring-3 focus-visible:outline-none"
-            >
-              <PlusIcon aria-hidden="true" className="size-3.5" />
-              Explore pieces
-            </a>
           </div>
-
         </div>
       </section>
 
@@ -99,37 +192,79 @@ export function WardrobeGallery() {
       </div>
 
       <section id="wardrobe-items" className="scroll-mt-24 pt-8" aria-live="polite">
-        <div className="mb-5 flex items-baseline gap-3">
-          <h2 className="font-heading text-3xl tracking-wide uppercase">
-            {categoryHeadings[category]}
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            {items.length} {items.length === 1 ? "piece" : "pieces"}
-          </p>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-baseline gap-3">
+            <h2 className="font-heading text-3xl tracking-wide uppercase">
+              {categoryHeadings[category]}
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              {items.length} {items.length === 1 ? "piece" : "pieces"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAdding(true)}
+            className="bg-cta text-cta-foreground focus-visible:ring-ring inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-bold tracking-wide uppercase hover:brightness-105 focus-visible:ring-3 focus-visible:outline-none"
+          >
+            <PlusIcon aria-hidden="true" className="size-3.5" />
+            Add items
+          </button>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-          {items.map((item) => (
-            <WardrobeCard key={item.id} item={item} />
-          ))}
-        </div>
+        {items.length === 0 ? (
+          <EmptyWardrobe onAdd={() => setIsAdding(true)} />
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+            {items.map((item) => (
+              <WardrobeCard
+                key={item.id}
+                item={item}
+                onDelete={(id) =>
+                  setAddedItems((current) =>
+                    current.filter((addedItem) => addedItem.id !== id),
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
       </section>
+      {isAdding ? (
+        <AddItemDialog
+          items={pendingItems}
+          error={formError}
+          onClose={closeAddItem}
+          onPhotoChange={handlePhotoChange}
+          onSubmit={handleAddItem}
+        />
+      ) : null}
     </main>
   );
 }
 
-function WardrobeCard({ item }: { item: WardrobeItem }) {
+function WardrobeCard({
+  item,
+  onDelete,
+}: {
+  item: WardrobeItem;
+  onDelete: (id: string) => void;
+}) {
   return (
-    <article className="group overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">
-      <div
-        aria-hidden="true"
-        className={cn(
-          "relative grid aspect-[4/5] place-items-center overflow-hidden",
-          toneClasses[item.tone],
-        )}
-        style={HATCH}
+    <article className="group relative overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">
+      <button
+        type="button"
+        onClick={() => onDelete(item.id)}
+        className="bg-card/95 text-foreground focus-visible:ring-ring absolute top-2 right-2 z-10 grid size-8 place-items-center rounded-full border shadow-sm transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:outline-none"
+        aria-label={`Delete ${item.name}`}
       >
-        <Garment illustration={item.illustration} />
-      </div>
+        <XIcon aria-hidden="true" className="size-3.5" />
+      </button>
+      {/* The photo is supplied by the visitor and stays in this local preview. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={item.imageUrl}
+        alt={item.name}
+        className="aspect-[4/5] w-full object-cover"
+      />
       <div className="p-3.5 sm:p-4">
         <h3 className="text-sm font-bold text-balance">{item.name}</h3>
         <p className="text-muted-foreground mt-1 text-xs">{item.note}</p>
@@ -138,35 +273,107 @@ function WardrobeCard({ item }: { item: WardrobeItem }) {
   );
 }
 
-function Garment({ illustration }: Pick<WardrobeItem, "illustration">) {
-  const base = "bg-current shadow-[0_7px_0_rgb(20_17_15_/_0.13)]";
+function EmptyWardrobe({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div className="border-border bg-card grid min-h-52 place-items-center rounded-2xl border border-dashed p-6 text-center">
+      <div>
+        <p className="font-heading text-2xl tracking-wide uppercase">
+          Your wardrobe is ready
+        </p>
+        <p className="text-muted-foreground mt-2 max-w-sm text-sm text-pretty">
+          Add your first pieces and they will appear here and in their matching
+          categories.
+        </p>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="text-brand-magenta focus-visible:ring-ring mt-4 text-xs font-bold tracking-wide uppercase underline underline-offset-4 focus-visible:ring-3 focus-visible:outline-none"
+        >
+          Add items
+        </button>
+      </div>
+    </div>
+  );
+}
 
-  if (illustration === "tank") {
-    return <span className={cn(base, "h-28 w-20 rounded-t-[2.25rem] rounded-b-xl border-x-8 border-current/30")} />;
-  }
-  if (illustration === "tee") {
-    return <span className={cn(base, "h-24 w-28 rounded-xl [clip-path:polygon(19%_0,37%_0,43%_10%,57%_10%,63%_0,81%_0,100%_28%,84%_40%,77%_28%,77%_100%,23%_100%,23%_28%,16%_40%,0_28%)]")} />;
-  }
-  if (illustration === "shirt") {
-    return <span className={cn(base, "h-28 w-24 rounded-b-xl [clip-path:polygon(15%_0,36%_0,50%_13%,64%_0,85%_0,100%_28%,83%_36%,78%_25%,78%_100%,22%_100%,22%_25%,17%_36%,0_28%)]")} />;
-  }
-  if (illustration === "trousers" || illustration === "jeans") {
-    return <span className={cn(base, "h-28 w-24 [clip-path:polygon(5%_0,95%_0,84%_100%,53%_100%,50%_46%,47%_100%,16%_100%)]")} />;
-  }
-  if (illustration === "skirt") {
-    return <span className={cn(base, "h-28 w-28 [clip-path:polygon(23%_0,77%_0,100%_100%,0_100%)]")} />;
-  }
-  if (illustration === "bag" || illustration === "tote") {
-    return <span className={cn(base, illustration === "bag" ? "h-20 w-28 rounded-2xl before:absolute before:-top-7 before:left-8 before:h-10 before:w-12 before:rounded-t-full before:border-[7px] before:border-current" : "h-24 w-24 rounded-b-2xl [clip-path:polygon(10%_0,90%_0,100%_100%,0_100%)]")} />;
-  }
-  if (illustration === "shoe") {
-    return <span className={cn(base, "h-12 w-32 rounded-l-xl rounded-br-[2rem] [clip-path:polygon(20%_0,62%_0,76%_50%,100%_60%,100%_100%,0_100%,0_55%,17%_46%)]")} />;
-  }
-  if (illustration === "watch") {
-    return <span className="relative size-20 rounded-full border-[10px] border-current bg-transparent before:absolute before:-top-16 before:left-4 before:h-10 before:w-6 before:rounded-t-lg before:bg-current after:absolute after:-bottom-16 after:left-4 after:h-10 after:w-6 after:rounded-b-lg after:bg-current" />;
-  }
-  if (illustration === "scarf") {
-    return <span className={cn(base, "h-28 w-20 rounded-full [clip-path:polygon(20%_0,80%_0,100%_45%,70%_75%,82%_100%,50%_88%,18%_100%,30%_75%,0_45%)]")} />;
-  }
-  return <span className="relative h-11 w-28 rounded-full border-[7px] border-current bg-transparent before:absolute before:-left-8 before:top-1/2 before:size-8 before:-translate-y-1/2 before:rounded-full before:border-[7px] before:border-current after:absolute after:-right-8 after:top-1/2 after:size-8 after:-translate-y-1/2 after:rounded-full after:border-[7px] after:border-current" />;
+type AddItemDialogProps = {
+  items: PendingWardrobeItem[];
+  error: string;
+  onClose: () => void;
+  onPhotoChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+};
+
+function AddItemDialog({
+  items,
+  error,
+  onClose,
+  onPhotoChange,
+  onSubmit,
+}: AddItemDialogProps) {
+  return (
+    <div className="bg-brand-ink/35 fixed inset-0 z-50 grid place-items-end p-3 backdrop-blur-sm sm:place-items-center sm:p-6">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-item-title"
+        className="bg-card text-card-foreground w-full max-w-md rounded-3xl border p-5 shadow-2xl sm:p-7"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-brand-magenta text-xs font-bold tracking-[0.18em] uppercase">
+              Build your closet
+            </p>
+            <h2 id="add-item-title" className="font-heading mt-2 text-3xl tracking-wide uppercase">
+              Add items
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="focus-visible:ring-ring grid size-9 place-items-center rounded-full border hover:bg-accent focus-visible:ring-3 focus-visible:outline-none"
+            aria-label="Close add item"
+          >
+            <XIcon aria-hidden="true" className="size-4" />
+          </button>
+        </div>
+        <form className="mt-6 grid gap-5" onSubmit={onSubmit}>
+          <label className="grid gap-2 text-sm font-semibold">
+            Clothing photos
+            <input
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp"
+              onChange={onPhotoChange}
+              className="border-input bg-background file:bg-accent file:text-foreground h-11 cursor-pointer rounded-xl border px-2 text-sm font-normal file:mr-3 file:rounded-lg file:border-0 file:px-3 file:py-1.5 file:text-xs file:font-bold"
+            />
+          </label>
+          {items.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {items.map((item) => (
+                <figure key={item.imageUrl} className="overflow-hidden rounded-xl border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={item.imageUrl} alt={item.name} className="aspect-square w-full object-cover" />
+                  <figcaption className="truncate px-2 py-1.5 text-xs">{item.name}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : null}
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            Select one or more photos. AURA uses each file name to place it in
+            a wardrobe category, so use clear names such as “linen-shirt”.
+          </p>
+          {error ? <p className="text-destructive text-sm" role="alert">{error}</p> : null}
+          <button
+            type="submit"
+            className="bg-cta text-cta-foreground focus-visible:ring-ring inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 text-xs font-bold tracking-wide uppercase hover:brightness-105 focus-visible:ring-3 focus-visible:outline-none"
+          >
+            <PlusIcon aria-hidden="true" className="size-4" />
+            Add {items.length || "selected"} {items.length === 1 ? "item" : "items"}
+            {items.length > 0 ? " to wardrobe" : ""}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
 }

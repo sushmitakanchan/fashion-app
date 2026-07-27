@@ -13,7 +13,12 @@ const DEMO_LOOK: StyleBookReviewLook = {
   lookImageUrl: "/looks/ootd.png",
   createdAt: "2026-07-24T00:00:00.000Z",
   sources: [
-    { name: "Tailored coat", imageUrl: "/looks/casual.png" },
+    {
+      name: "Tailored coat",
+      imageUrl: "/looks/casual.png",
+      url: "https://www.pinterest.com/",
+      site: "pinterest",
+    },
     { name: "Wide-leg denim", imageUrl: "/looks/journey.png" },
     { name: "Structured bag", imageUrl: "/looks/vacation.png" },
   ],
@@ -33,6 +38,7 @@ export function StyleBookReviewDemo({
     <>
       <StyleBookReviewPrototype
         look={DEMO_LOOK}
+        onBack={() => window.history.back()}
         variant={variant}
         previewPerfectScore={previewPerfectScore}
         previewSoundLoop={previewSoundLoop}

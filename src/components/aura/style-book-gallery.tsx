@@ -2,16 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { BookmarkIcon, SparklesIcon } from "lucide-react";
 
 import type { SavedLookSource } from "@/lib/aura-style-book";
 import { cloudinaryThumbUrl } from "@/lib/cloudinary-url";
 import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/components/ui/cta-button";
-import { StyleBookPrototypeSwitcher } from "@/components/aura/style-book-prototype-switcher";
-import { StyleBookReviewPrototype } from "@/components/aura/style-book-review-prototype";
-import { readStyleBookReviewVariant } from "@/lib/style-book-review-prototype-state";
+import { StyleBookOutfitVerdict } from "@/components/aura/style-book-review-prototype";
 
 /** Where the Style Book links back to the try-on surface. */
 const TRY_ON_HREF = "/aura/try-on";
@@ -58,8 +55,6 @@ function sourceCount(n: number): string {
 export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
   const [openId, setOpenId] = React.useState<string | null>(null);
   const open = looks.find((look) => look.id === openId) ?? null;
-  const searchParams = useSearchParams();
-  const variant = readStyleBookReviewVariant(searchParams.get("variant"));
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
@@ -89,14 +84,7 @@ export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
       {looks.length === 0 ? (
         <EmptyState />
       ) : open ? (
-        <>
-          <StyleBookReviewPrototype
-            look={open}
-            onBack={() => setOpenId(null)}
-            variant={variant}
-          />
-          <StyleBookPrototypeSwitcher current={variant} />
-        </>
+        <StyleBookOutfitVerdict look={open} onBack={() => setOpenId(null)} />
       ) : (
         <Grid looks={looks} onOpen={setOpenId} />
       )}

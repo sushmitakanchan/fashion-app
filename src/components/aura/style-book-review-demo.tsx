@@ -16,7 +16,9 @@ const DEMO_LOOK: StyleBookReviewLook = {
     {
       name: "Tailored coat",
       imageUrl: "/looks/casual.png",
-      url: "https://www.pinterest.com/",
+      // A realistic deep-link pin URL — real Saved Looks store the full pin path
+      // (e.g. .../pin/1087126797584723580/), never a bare pinterest.com homepage.
+      url: "https://in.pinterest.com/pin/1087126797584723580/",
       site: "pinterest",
     },
     { name: "Wide-leg denim", imageUrl: "/looks/journey.png" },

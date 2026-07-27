@@ -20,9 +20,30 @@ function failure(status: number, body: Failure) {
   return NextResponse.json(body, { status });
 }
 
+/**
+ * Isolate the JSON object from a model reply. `generateText` is non-JSON-mode,
+ * so a vision model reliably wraps its object in a ```json fence (and sometimes
+ * a line of prose), which bare `JSON.parse` rejects. Strip a leading/trailing
+ * fence, then fall back to the outermost `{…}` span so surrounding text can't
+ * fail an otherwise-valid review.
+ */
+function extractJson(text: string): string {
+  const unfenced = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  if (unfenced.startsWith("{")) return unfenced;
+  const start = unfenced.indexOf("{");
+  const end = unfenced.lastIndexOf("}");
+  return start !== -1 && end > start ? unfenced.slice(start, end + 1) : unfenced;
+}
+
 function parseReview(text: string): AuraStyleBookReview | null {
   try {
-    const parsed = auraStyleBookReviewSchema.safeParse(JSON.parse(text));
+    const parsed = auraStyleBookReviewSchema.safeParse(
+      JSON.parse(extractJson(text)),
+    );
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -54,7 +75,7 @@ Return only valid JSON. It must match this shape exactly:
 {
   "overallScore": number from 1 through 5,
   "description": "one concise outfit description",
-  "outfitReview": "one natural, contemporary Gen Z editorial sentence, concise enough to display in two lines. It must name a plausible occasion where the look works (such as brunch, a casual date, dinner, or the office) and synthesize this outfit's style, how the outfit reads on the person, and specific visible colour-science observations. Keep it warm and specific, never try-hard or overly slangy.",
+  "outfitReview": "one natural, contemporary Gen Z editorial sentence of at most 240 characters, concise enough to display in two lines. It must name a plausible occasion where the look works (such as brunch, a casual date, dinner, or the office) and synthesize this outfit's style, how the outfit reads on the person, and specific visible colour-science observations. Keep it warm and specific, never try-hard or overly slangy.",
   "categories": [
     {"key":"fit","score":number,"verdict":"short verdict","evidence":"visible evidence","nextStep":"one practical suggestion"},
     {"key":"colour","score":number,"verdict":"short verdict","evidence":"visible evidence","nextStep":"one practical suggestion"},

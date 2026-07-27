@@ -166,6 +166,19 @@ describe("GET /api/aura/style-book/[lookId]/review", () => {
     });
   });
 
+  it("accepts a valid review wrapped in a ```json markdown fence", async () => {
+    // gpt-4o-mini fences its JSON when not in JSON mode; the route must cope.
+    generateText.mockImplementation(async () => ({
+      text: "```json\n" + validReview() + "\n```",
+    }));
+
+    const response = await request();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ overallScore: 4.4 });
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
   it("returns a retryable failure for malformed model output", async () => {
     generateText.mockImplementation(async () => ({ text: "not JSON" }));
 

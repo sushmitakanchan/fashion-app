@@ -3,6 +3,7 @@ export const wardrobeCategories = [
   "tops",
   "bottoms",
   "bags",
+  "shoes",
   "accessories",
 ] as const;
 
@@ -14,29 +15,67 @@ export type WardrobeItem = {
   name: string;
   category: WardrobeItemCategory;
   note: string;
-  illustration: "tank" | "tee" | "shirt" | "trousers" | "skirt" | "jeans" | "bag" | "tote" | "shoe" | "watch" | "scarf" | "glasses";
-  tone: "lime" | "magenta" | "ink" | "paper";
+  imageUrl: string;
 };
 
-export const wardrobeItems: WardrobeItem[] = [
-  { id: "rib-tank", name: "Rib tank", category: "tops", note: "Cream", illustration: "tank", tone: "paper" },
-  { id: "weekend-tee", name: "Weekend tee", category: "tops", note: "Cherry red", illustration: "tee", tone: "magenta" },
-  { id: "pinstripe-shirt", name: "Pinstripe shirt", category: "tops", note: "Blue stripe", illustration: "shirt", tone: "lime" },
-  { id: "silk-shirt", name: "Silk shirt", category: "tops", note: "Espresso", illustration: "shirt", tone: "ink" },
-  { id: "wide-leg", name: "Wide-leg trouser", category: "bottoms", note: "Stone", illustration: "trousers", tone: "paper" },
-  { id: "denim-maxi", name: "Denim maxi", category: "bottoms", note: "Indigo", illustration: "skirt", tone: "ink" },
-  { id: "straight-jeans", name: "Straight jeans", category: "bottoms", note: "Washed blue", illustration: "jeans", tone: "lime" },
-  { id: "mini-skirt", name: "Mini skirt", category: "bottoms", note: "Cherry red", illustration: "skirt", tone: "magenta" },
-  { id: "everyday-bag", name: "Everyday bag", category: "bags", note: "Chocolate", illustration: "bag", tone: "ink" },
-  { id: "market-tote", name: "Market tote", category: "bags", note: "Canvas", illustration: "tote", tone: "paper" },
-  { id: "leather-loafer", name: "Leather loafer", category: "accessories", note: "Black", illustration: "shoe", tone: "ink" },
-  { id: "gold-watch", name: "Gold watch", category: "accessories", note: "Everyday", illustration: "watch", tone: "lime" },
-  { id: "silk-scarf", name: "Silk scarf", category: "accessories", note: "Berry print", illustration: "scarf", tone: "magenta" },
-  { id: "round-sunglasses", name: "Round sunglasses", category: "accessories", note: "Tortoise", illustration: "glasses", tone: "paper" },
-];
+/** The wardrobe starts empty: every tile represents a piece the visitor added. */
+export const wardrobeItems: WardrobeItem[] = [];
 
-export function getWardrobeItems(category: WardrobeCategory): WardrobeItem[] {
+const CATEGORY_KEYWORDS: Record<WardrobeItemCategory, readonly string[]> = {
+  tops: [
+    "blouse",
+    "cardigan",
+    "hoodie",
+    "jacket",
+    "shirt",
+    "sweater",
+    "tank",
+    "tee",
+    "top",
+  ],
+  bottoms: [
+    "jean",
+    "legging",
+    "pant",
+    "short",
+    "skirt",
+    "trouser",
+  ],
+  bags: ["bag", "clutch", "purse", "satchel", "tote"],
+  shoes: ["boot", "loafer", "sandal", "shoe", "sneaker", "trainer"],
+  accessories: [
+    "belt",
+    "earring",
+    "glasses",
+    "hat",
+    "necklace",
+    "scarf",
+    "sunglasses",
+    "watch",
+  ],
+};
+
+/**
+ * The local-preview classifier works from the item name. It keeps the user
+ * experience testable without claiming a remote image model is available.
+ */
+export function inferWardrobeCategory(name: string): WardrobeItemCategory {
+  const normalized = name.toLowerCase();
+
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (keywords.some((keyword) => normalized.includes(keyword))) {
+      return category as WardrobeItemCategory;
+    }
+  }
+
+  return "accessories";
+}
+
+export function getWardrobeItems(
+  category: WardrobeCategory,
+  items: WardrobeItem[] = wardrobeItems,
+): WardrobeItem[] {
   return category === "all"
-    ? wardrobeItems
-    : wardrobeItems.filter((item) => item.category === category);
+    ? items
+    : items.filter((item) => item.category === category);
 }

@@ -223,9 +223,12 @@ function EmptyWardrobe() {
         <p className="text-muted-foreground mt-2 max-w-sm text-sm text-pretty">
           Saved pieces will appear here and in their matching categories.
         </p>
-        <Button render={<Link href="/wardrobe/import" />} className="mt-5">
-          Import your first pieces
-        </Button>
+        <Link
+          href="/wardrobe/import"
+          className="text-brand-magenta focus-visible:ring-ring mt-4 inline-block text-xs font-bold tracking-wide uppercase underline underline-offset-4 focus-visible:ring-3 focus-visible:outline-none"
+        >
+          Add items
+        </Link>
       </div>
     </div>
   );

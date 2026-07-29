@@ -46,6 +46,14 @@ const INITIAL_ITEMS: Item[] = [
   { id: "6", name: "IMG_2041", category: "", colour: "", brand: "", status: "failed", tone: "bg-zinc-300" },
 ];
 
+function nameFromFile(file: File): string {
+  return file.name
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function readVariant(value: string | undefined): Variant {
   return VARIANTS.some(({ key }) => key === value) ? (value as Variant) : "grid";
 }
@@ -95,6 +103,7 @@ export function WardrobeReviewPrototype({ requestedVariant }: { requestedVariant
   const [selected, setSelected] = React.useState<string[]>(["2", "4"]);
   const [activeId, setActiveId] = React.useState("2");
   const [saved, setSaved] = React.useState(false);
+  const retryUploadRef = React.useRef<HTMLInputElement>(null);
   const variant = readVariant(requestedVariant);
   const ready = items.filter((item) => item.status === "ready").length;
   const failed = items.filter((item) => item.status === "failed").length;
@@ -103,6 +112,14 @@ export function WardrobeReviewPrototype({ requestedVariant }: { requestedVariant
   const update = (id: string, changes: Partial<Item>) => setItems((current) => current.map((item) => item.id === id ? { ...item, ...changes, status: item.status === "failed" ? "failed" : "ready" } : item));
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((itemId) => itemId !== id) : [...current, id]);
   const applyBulk = () => setItems((current) => current.map((item) => selected.includes(item.id) && item.status !== "failed" ? { ...item, category: "Tops", colour: "Black", status: "ready" } : item));
+  const retryUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const failedItem = items.find((item) => item.status === "failed");
+    if (!file || !failedItem) return;
+    setItems((current) => current.map((item) => item.id === failedItem.id ? { ...item, name: nameFromFile(file), status: "needs-review", tone: "bg-zinc-100" } : item));
+    setActiveId(failedItem.id);
+    event.target.value = "";
+  };
 
   return (
     <main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
@@ -117,11 +134,12 @@ export function WardrobeReviewPrototype({ requestedVariant }: { requestedVariant
       </header>
 
       {variant === "grid" ? <BulkGrid items={items} selected={selected} toggle={toggle} applyBulk={applyBulk} /> : null}
-      {variant === "focus" ? <FocusQueue items={items} active={active} setActiveId={setActiveId} update={update} /> : null}
+      {variant === "focus" ? <FocusQueue items={items} active={active} setActiveId={setActiveId} update={update} onRetryUpload={() => retryUploadRef.current?.click()} /> : null}
       {variant === "board" ? <CategoryBoard items={items} selected={selected} toggle={toggle} update={update} /> : null}
       {variant === "triage" ? <ConfidenceTriage items={items} update={update} /> : null}
       {variant === "checklist" ? <BatchChecklist items={items} update={update} /> : null}
       <PrototypeSwitcher current={variant} />
+      <input ref={retryUploadRef} type="file" accept="image/*" className="sr-only" onChange={retryUpload} />
     </main>
   );
 }
@@ -130,13 +148,16 @@ function BulkGrid({ items, selected, toggle, applyBulk }: { items: Item[]; selec
   return <div className="grid gap-6 lg:grid-cols-[1fr_18rem]"><section className="overflow-hidden rounded-2xl border bg-card"><div className="flex items-center justify-between border-b px-5 py-4"><div><h2 className="font-heading text-2xl uppercase">Every item at once</h2><p className="text-xs text-muted-foreground">Select cards to edit a group.</p></div><span className="text-xs font-bold">{selected.length} selected</span></div><div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3">{items.map((item) => <article key={item.id} className="min-w-0"><ItemPhoto item={item} selected={selected.includes(item.id)} onClick={() => toggle(item.id)} /><p className="mt-2 truncate text-sm font-bold">{item.name}</p><ReviewBadge item={item} /></article>)}</div></section><aside className="h-fit rounded-2xl border bg-card p-5"><p className="text-xs font-bold tracking-[0.16em] uppercase text-muted-foreground">Bulk edit {selected.length} pieces</p><div className="mt-5 space-y-4"><Field label="Category" value="Tops" onChange={() => undefined} /><Field label="Colour" value="Black" onChange={() => undefined} /><button type="button" onClick={applyBulk} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-xs font-bold uppercase text-primary-foreground"><CheckIcon className="size-4" /> Apply to selected</button></div><p className="mt-5 border-t pt-4 text-xs leading-relaxed text-muted-foreground">Failed uploads stay out of the batch until retried; suggestions remain editable on every card.</p></aside></div>;
 }
 
-function FocusQueue({ items, active, setActiveId, update }: { items: Item[]; active: Item; setActiveId: (id: string) => void; update: (id: string, changes: Partial<Item>) => void }) {
+function FocusQueue({ items, active, setActiveId, update, onRetryUpload }: { items: Item[]; active: Item; setActiveId: (id: string) => void; update: (id: string, changes: Partial<Item>) => void; onRetryUpload: () => void }) {
   const index = items.findIndex((item) => item.id === active.id);
   const adjacent = (direction: number) => setActiveId(items[(index + direction + items.length) % items.length].id);
   const confirmed = items.filter((item) => item.status === "ready").length;
   const needsReview = items.filter((item) => item.status === "needs-review").length;
   const failed = items.filter((item) => item.status === "failed").length;
-  return <section className="mx-auto max-w-5xl"><div className="mb-5 grid gap-3 sm:grid-cols-3"><div className="rounded-xl border border-emerald-500/35 bg-emerald-500/5 p-4"><p className="text-xs font-bold tracking-[0.14em] uppercase text-muted-foreground">High confidence</p><p className="font-heading mt-1 text-2xl uppercase">{confirmed} ready</p><p className="mt-1 text-xs text-muted-foreground">Already clear enough to save.</p></div><div className="rounded-xl border border-amber-500/45 bg-amber-500/5 p-4"><p className="text-xs font-bold tracking-[0.14em] uppercase text-muted-foreground">Your attention</p><p className="font-heading mt-1 text-2xl uppercase">{needsReview} calls</p><p className="mt-1 text-xs text-muted-foreground">You confirm only uncertain suggestions.</p></div><div className="rounded-xl border border-destructive/35 bg-destructive/5 p-4"><p className="text-xs font-bold tracking-[0.14em] uppercase text-muted-foreground">Import health</p><p className="font-heading mt-1 text-2xl uppercase">{failed} retry</p><p className="mt-1 text-xs text-muted-foreground">Failed photos stay separate from review.</p></div></div><div className="rounded-2xl border bg-card p-5 sm:p-7"><div className="grid gap-7 sm:grid-cols-[minmax(12rem,20rem)_1fr]"><ItemPhoto item={active} /><div><ReviewBadge item={active} /><h2 className="font-heading mt-3 text-3xl uppercase">{active.name}</h2><p className="mt-2 text-sm text-muted-foreground">AI filled these fields from the photo. Correct anything before moving on.</p><div className="mt-6 grid gap-4"><Field label="Category" value={active.category} placeholder="Choose category" onChange={(category) => update(active.id, { category })} /><Field label="Colour" value={active.colour} placeholder="Add colour" onChange={(colour) => update(active.id, { colour })} /><Field label="Brand (optional)" value={active.brand} placeholder="Leave blank if unknown" onChange={(brand) => update(active.id, { brand })} /></div></div></div><div className="mt-7 flex items-center justify-between border-t pt-5"><button type="button" onClick={() => adjacent(-1)} className="inline-flex items-center gap-1 text-sm font-bold"><ArrowLeftIcon className="size-4" /> Previous</button><span className="text-xs text-muted-foreground">Review {index + 1} of {items.length}</span><button type="button" onClick={() => adjacent(1)} className="inline-flex items-center gap-1 text-sm font-bold">Next <ArrowRightIcon className="size-4" /></button></div></div></section>;
+  const firstReady = items.find((item) => item.status === "ready");
+  const firstReview = items.find((item) => item.status === "needs-review");
+  const failedItem = items.find((item) => item.status === "failed");
+  return <section className="mx-auto max-w-5xl"><div className="mb-5 grid gap-3 sm:grid-cols-3"><button type="button" onClick={() => firstReady && setActiveId(firstReady.id)} className="rounded-xl border border-emerald-500/35 bg-emerald-500/5 p-4 text-left transition hover:bg-emerald-500/10 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"><p className="text-xs font-bold tracking-[0.14em] uppercase text-muted-foreground">High confidence</p><p className="font-heading mt-1 text-2xl uppercase">{confirmed} ready</p><p className="mt-1 text-xs text-muted-foreground">Open {firstReady?.name ?? "a ready item"}.</p></button><button type="button" onClick={() => firstReview && setActiveId(firstReview.id)} className="rounded-xl border border-amber-500/45 bg-amber-500/5 p-4 text-left transition hover:bg-amber-500/10 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"><p className="text-xs font-bold tracking-[0.14em] uppercase text-muted-foreground">Your attention</p><p className="font-heading mt-1 text-2xl uppercase">{needsReview} calls</p><p className="mt-1 text-xs text-muted-foreground">Open {firstReview?.name ?? "an uncertain item"}.</p></button><div className="rounded-xl border border-destructive/35 bg-destructive/5 p-4"><button type="button" onClick={() => failedItem && setActiveId(failedItem.id)} className="block w-full text-left focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"><p className="text-xs font-bold tracking-[0.14em] uppercase text-muted-foreground">Import health</p><p className="font-heading mt-1 text-2xl uppercase">{failed} retry</p><p className="mt-1 text-xs text-muted-foreground">Open {failedItem?.name ?? "the failed item"}.</p></button>{failedItem ? <button type="button" onClick={onRetryUpload} className="mt-3 text-xs font-bold underline underline-offset-4">Upload again</button> : null}</div></div><div className="rounded-2xl border bg-card p-5 sm:p-7"><div className="grid gap-7 sm:grid-cols-[minmax(12rem,20rem)_1fr]"><ItemPhoto item={active} /><div><ReviewBadge item={active} /><h2 className="font-heading mt-3 text-3xl uppercase">{active.name}</h2><p className="mt-2 text-sm text-muted-foreground">AI filled these fields from the photo. Correct anything before moving on.</p><div className="mt-6 grid gap-4"><Field label="Category" value={active.category} placeholder="Choose category" onChange={(category) => update(active.id, { category })} /><Field label="Colour" value={active.colour} placeholder="Add colour" onChange={(colour) => update(active.id, { colour })} /><Field label="Brand (optional)" value={active.brand} placeholder="Leave blank if unknown" onChange={(brand) => update(active.id, { brand })} /></div></div></div><div className="mt-7 flex items-center justify-between border-t pt-5"><button type="button" onClick={() => adjacent(-1)} className="inline-flex items-center gap-1 text-sm font-bold"><ArrowLeftIcon className="size-4" /> Previous</button><span className="text-xs text-muted-foreground">Review {index + 1} of {items.length}</span><button type="button" onClick={() => adjacent(1)} className="inline-flex items-center gap-1 text-sm font-bold">Next <ArrowRightIcon className="size-4" /></button></div></div></section>;
 }
 
 function CategoryBoard({ items, selected, toggle, update }: { items: Item[]; selected: string[]; toggle: (id: string) => void; update: (id: string, changes: Partial<Item>) => void }) {

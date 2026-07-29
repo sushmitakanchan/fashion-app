@@ -17,7 +17,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
-type Variant = "grid" | "focus" | "board";
+type Variant = "grid" | "focus" | "board" | "triage" | "checklist";
 type Status = "ready" | "needs-review" | "failed";
 type Item = {
   id: string;
@@ -33,6 +33,8 @@ const VARIANTS: { key: Variant; label: string }[] = [
   { key: "grid", label: "A — Bulk grid" },
   { key: "focus", label: "B — One-at-a-time queue" },
   { key: "board", label: "C — Category board" },
+  { key: "triage", label: "D — Confidence triage" },
+  { key: "checklist", label: "E — Batch checklist" },
 ];
 
 const INITIAL_ITEMS: Item[] = [
@@ -117,6 +119,8 @@ export function WardrobeReviewPrototype({ requestedVariant }: { requestedVariant
       {variant === "grid" ? <BulkGrid items={items} selected={selected} toggle={toggle} applyBulk={applyBulk} /> : null}
       {variant === "focus" ? <FocusQueue items={items} active={active} setActiveId={setActiveId} update={update} /> : null}
       {variant === "board" ? <CategoryBoard items={items} selected={selected} toggle={toggle} update={update} /> : null}
+      {variant === "triage" ? <ConfidenceTriage items={items} update={update} /> : null}
+      {variant === "checklist" ? <BatchChecklist items={items} update={update} /> : null}
       <PrototypeSwitcher current={variant} />
     </main>
   );
@@ -136,6 +140,23 @@ function CategoryBoard({ items, selected, toggle, update }: { items: Item[]; sel
   const columns = ["Needs review", "Ready to save", "Upload problem"];
   const matches = (item: Item, column: string) => column === "Needs review" ? item.status === "needs-review" : column === "Ready to save" ? item.status === "ready" : item.status === "failed";
   return <section className="overflow-x-auto"><div className="grid min-w-[54rem] grid-cols-3 gap-4">{columns.map((column) => <div key={column} className="rounded-2xl border bg-card/70 p-4"><div className="mb-4 flex items-center justify-between"><h2 className="font-heading text-xl uppercase">{column}</h2><span className="rounded-full bg-muted px-2 py-1 text-xs">{items.filter((item) => matches(item, column)).length}</span></div><div className="space-y-3">{items.filter((item) => matches(item, column)).map((item) => <article key={item.id} className={cn("rounded-xl border bg-background p-3", selected.includes(item.id) && "border-brand-magenta")}><div className="flex gap-3"><ItemPhoto item={item} selected={selected.includes(item.id)} onClick={() => toggle(item.id)} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{item.name}</p><ReviewBadge item={item} /><button type="button" onClick={() => update(item.id, { category: item.category || "Accessories", colour: item.colour || "Black" })} className="mt-3 inline-flex items-center gap-1 text-xs font-bold underline underline-offset-4"><PencilIcon className="size-3" /> Confirm</button></div></div></article>)}</div></div>)}</div></section>;
+}
+
+function ConfidenceTriage({ items, update }: { items: Item[]; update: (id: string, changes: Partial<Item>) => void }) {
+  const certain = items.filter((item) => item.status === "ready");
+  const uncertain = items.filter((item) => item.status === "needs-review");
+  const failed = items.filter((item) => item.status === "failed");
+  return <section className="grid gap-5 lg:grid-cols-[1fr_1fr_18rem]"><TriageLane title="High confidence" detail="These can be saved without a decision." items={certain} tone="border-emerald-500/45" update={update} /><TriageLane title="Your attention" detail="Only ambiguous suggestions surface here." items={uncertain} tone="border-amber-500/60" update={update} /><aside className="rounded-2xl border bg-card p-5"><p className="text-xs font-bold tracking-[0.16em] uppercase text-muted-foreground">Import health</p><p className="font-heading mt-3 text-4xl uppercase">{uncertain.length} calls</p><p className="mt-2 text-sm text-muted-foreground">The review starts with uncertainty, not every photo.</p><div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4"><p className="font-bold">{failed.length} file needs retry</p><p className="mt-1 text-xs text-muted-foreground">Keep it separate from classification work.</p><button type="button" className="mt-3 text-xs font-bold underline underline-offset-4">Retry upload</button></div></aside></section>;
+}
+
+function TriageLane({ title, detail, items, tone, update }: { title: string; detail: string; items: Item[]; tone: string; update: (id: string, changes: Partial<Item>) => void }) {
+  return <div className={cn("rounded-2xl border bg-card p-5", tone)}><h2 className="font-heading text-2xl uppercase">{title}</h2><p className="mt-1 text-xs text-muted-foreground">{detail}</p><div className="mt-5 space-y-3">{items.map((item) => <article key={item.id} className="flex items-center gap-3 rounded-xl border bg-background p-3"><span className={cn("size-12 shrink-0 rounded-lg", item.tone)} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{item.name}</p><p className="truncate text-xs text-muted-foreground">{item.category || "No category"} · {item.colour || "No colour"} · {item.brand || "Brand unknown"}</p></div>{item.status === "needs-review" ? <button type="button" onClick={() => update(item.id, { category: item.category || "Tops", colour: item.colour || "Cream" })} className="rounded-full border px-3 py-1.5 text-xs font-bold">Confirm</button> : <CircleCheckIcon className="size-5 text-emerald-600" />}</article>)}</div></div>;
+}
+
+function BatchChecklist({ items, update }: { items: Item[]; update: (id: string, changes: Partial<Item>) => void }) {
+  const pending = items.filter((item) => item.status === "needs-review");
+  const failure = items.find((item) => item.status === "failed");
+  return <section className="mx-auto max-w-3xl rounded-[2rem] border bg-card p-6 sm:p-10"><p className="text-brand-magenta text-xs font-bold tracking-[0.18em] uppercase">Import 1 of 1</p><h2 className="font-heading mt-3 text-4xl uppercase">Finish the batch</h2><p className="mt-3 max-w-xl text-sm text-muted-foreground">A single closeout screen turns a large import into a short checklist: resolve exceptions, then save once.</p><ol className="mt-8 space-y-3">{pending.map((item, index) => <li key={item.id} className="flex items-center gap-4 rounded-xl border p-4"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-magenta text-xs font-bold text-white">{index + 1}</span><span className={cn("size-11 shrink-0 rounded-lg", item.tone)} /><div className="min-w-0 flex-1"><p className="font-bold">Confirm {item.name}</p><p className="text-xs text-muted-foreground">{item.category || "Category"} · {item.colour || "Colour"} · {item.brand || "Brand optional"}</p></div><button type="button" onClick={() => update(item.id, { category: item.category || "Tops", colour: item.colour || "Cream" })} className="rounded-full bg-primary px-3 py-2 text-xs font-bold text-primary-foreground">Done</button></li>)}{failure ? <li className="flex items-center gap-4 rounded-xl border border-destructive/40 bg-destructive/5 p-4"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-destructive text-xs font-bold text-white">!</span><span className="size-11 shrink-0 rounded-lg bg-muted" /><div className="flex-1"><p className="font-bold">Retry {failure.name}</p><p className="text-xs text-muted-foreground">This file never reached review.</p></div><button type="button" className="rounded-full border px-3 py-2 text-xs font-bold">Retry</button></li> : null}</ol><div className="mt-8 flex items-center justify-between border-t pt-5"><p className="text-xs text-muted-foreground">{pending.length} classifications · {failure ? "1 retry" : "No upload failures"}</p><button type="button" className="inline-flex h-10 items-center gap-2 rounded-full bg-cta px-4 text-xs font-bold uppercase text-cta-foreground">Save completed batch <CheckIcon className="size-4" /></button></div></section>;
 }
 
 function PrototypeSwitcher({ current }: { current: Variant }) {

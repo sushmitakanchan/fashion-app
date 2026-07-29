@@ -125,6 +125,34 @@ export function editItem(
   return changed ? { ...state, items } : state;
 }
 
+/** An editable AI categorisation suggestion for one image. Structurally the
+ *  optional-analysis output, redeclared here so this client-safe module never
+ *  imports the server-only analysis boundary. */
+export type ReviewSuggestion = {
+  category: WardrobeItemCategoryValue;
+  color: string | null;
+  brand: string | null;
+};
+
+/**
+ * Pre-fill a pending item's category, colour, and brand from an AI suggestion.
+ * The values are only a starting point — the item stays fully editable, exactly
+ * like a manual entry — and a null colour/brand becomes an empty field rather
+ * than an invented value. The name is never touched; analysis doesn't name a
+ * piece. Failed or unknown ids are no-ops.
+ */
+export function applySuggestion(
+  state: ReviewState,
+  id: string,
+  suggestion: ReviewSuggestion,
+): ReviewState {
+  return editItem(state, id, {
+    category: suggestion.category,
+    color: suggestion.color ?? "",
+    brand: suggestion.brand ?? "",
+  });
+}
+
 export function goToIndex(state: ReviewState, index: number): ReviewState {
   return { ...state, currentIndex: clampIndex(state.items, index) };
 }

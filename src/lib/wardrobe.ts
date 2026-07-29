@@ -53,3 +53,21 @@ export function wardrobeCapacityErrorBody(activeCount: number) {
     limit: WARDROBE_MAX_ACTIVE_ITEMS,
   };
 }
+
+/**
+ * Whether a stored analysis-consent record still authorises analysis. Active
+ * means: a record exists, it hasn't been withdrawn, and it was granted under the
+ * policy version currently in force — a bumped policy silently deactivates old
+ * consent, forcing a fresh opt-in. Pure and shared by the consent and analyze
+ * routes so the "is consent active" rule lives in exactly one place.
+ */
+export function isWardrobeAnalysisConsentActive(
+  consent: { policyVersion: string; withdrawnAt: Date | null } | null | undefined,
+  currentPolicyVersion: string,
+): boolean {
+  return (
+    !!consent &&
+    consent.withdrawnAt === null &&
+    consent.policyVersion === currentPolicyVersion
+  );
+}

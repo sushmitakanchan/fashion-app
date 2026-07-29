@@ -25,6 +25,7 @@ model User {
   auraProfile AuraProfile?
   savedLooks  SavedLook[]
   wardrobeItems WardrobeItem[]
+  wardrobeAnalysisConsent WardrobeAnalysisConsent?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -69,6 +70,24 @@ model WardrobeItem {
   updatedAt          DateTime @updatedAt
 
   @@index([userId, deletedAt, category, createdAt])
+}
+
+/// One participant's consent to optional AI analysis of wardrobe import images.
+/// Exactly one row per user (upserted): granting (re)sets `consentedAt` and the
+/// `policyVersion` disclosed at that moment; withdrawal sets `withdrawnAt` and
+/// only bars *future* analysis — it never touches a saved Wardrobe Item. Consent
+/// is active when `withdrawnAt` is null and `policyVersion` still matches the
+/// current disclosure. Confirmed attributes and edit history are never stored
+/// here; this record is only the consent fact the analysis boundary checks.
+model WardrobeAnalysisConsent {
+  id            String    @id @default(cuid())
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String    @unique
+  policyVersion String
+  consentedAt   DateTime
+  withdrawnAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 /// Reference photos and consent for one user's AURA portrait profile.

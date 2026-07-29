@@ -31,6 +31,10 @@ mock.module("@/lib/aura-config", () => ({
   AURA_CONFIGURATION_UNAVAILABLE_MESSAGE: "AURA isn't configured.",
   isCloudinaryConfigured: () => live,
   isDatabaseConfigured: () => live,
+  // Surfaced (though this route doesn't use them) so this process-wide mock
+  // can't shadow the exports a co-running analyze-route test needs.
+  isOpenAIConfigured: () => live,
+  isOpenAIImageConfigured: () => live,
 }));
 
 let countedWhere: unknown = null;

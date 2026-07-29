@@ -17,6 +17,7 @@ import {
   type WardrobeItemCategoryValue,
 } from "@/lib/validations";
 import {
+  applySuggestion,
   canSave,
   confirmedItemsForSave,
   createReviewState,
@@ -30,9 +31,15 @@ import {
   removeItem,
   replaceFailedItem,
   type ImportOutcome,
+  type PendingReviewItem,
   type ReviewFields,
   type ReviewState,
 } from "@/lib/wardrobe-import-review";
+import {
+  WARDROBE_ANALYSIS_DISCLOSURE,
+  WARDROBE_ANALYSIS_POLICY_VERSION,
+  type WardrobeAnalysisOutcome,
+} from "@/lib/wardrobe-analysis-policy";
 
 const CATEGORY_LABELS: Record<WardrobeItemCategoryValue, string> = {
   tops: "Tops",
@@ -76,6 +83,10 @@ export function WardrobeImport() {
   const fileInput = React.useRef<HTMLInputElement>(null);
   const replaceInput = React.useRef<HTMLInputElement>(null);
   const replaceTargetId = React.useRef<string | null>(null);
+  // Optional AI-suggestion flow. `analyzing` blocks the review controls while a
+  // batch is out to the model; `showDisclosure` gates the first opt-in.
+  const [analyzing, setAnalyzing] = React.useState(false);
+  const [showDisclosure, setShowDisclosure] = React.useState(false);
 
   async function runImport(
     files: File[],
@@ -195,6 +206,124 @@ export function WardrobeImport() {
     }
   }
 
+  /** Send this batch's pending normalized images for optional AI suggestions and
+   *  pre-fill each editable field. Only "suggested" outcomes apply; anything the
+   *  model was unsure about stays in manual review, unfabricated. */
+  async function analyzeBatch() {
+    if (!review) return;
+    const pending = review.items.filter(
+      (item): item is PendingReviewItem => item.status === "pending",
+    );
+    if (pending.length === 0) {
+      toast("Nothing to analyse yet.");
+      return;
+    }
+
+    setAnalyzing(true);
+    try {
+      const response = await fetch("/api/wardrobe/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          items: pending.map((item) => ({
+            clientId: item.id,
+            normalizedMediaId: item.media.normalizedMediaId,
+            normalizedMediaFormat: item.media.normalizedMediaFormat,
+          })),
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        items?: (WardrobeAnalysisOutcome & { clientId: string })[];
+        error?: string;
+      } | null;
+      if (!response.ok || !body?.items) {
+        toast.error("We couldn't get AI suggestions", {
+          description: body?.error ?? "Please try again.",
+        });
+        return;
+      }
+
+      const outcomes = body.items;
+      setReview((state) => {
+        if (!state) return state;
+        return outcomes.reduce(
+          (next, outcome) =>
+            outcome.status === "suggested"
+              ? applySuggestion(next, outcome.clientId, outcome.suggestion)
+              : next,
+          state,
+        );
+      });
+
+      const suggested = outcomes.filter((o) => o.status === "suggested").length;
+      const needsReview = outcomes.length - suggested;
+      toast.success(`AI suggested ${suggested} ${suggested === 1 ? "piece" : "pieces"}`, {
+        description:
+          needsReview > 0
+            ? `${needsReview} left for you to review — nothing was guessed.`
+            : "Every suggestion is editable.",
+      });
+    } catch {
+      toast.error("We couldn't get AI suggestions", { description: "Please try again." });
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  /** Entry point for the AI-suggestions button: analyse straight away when
+   *  consent is already active, otherwise open the disclosure first. */
+  async function requestSuggestions() {
+    if (!review || analyzing) return;
+    let active = false;
+    try {
+      const response = await fetch("/api/wardrobe/analyze/consent");
+      const body = (await response.json().catch(() => null)) as { active?: boolean } | null;
+      active = Boolean(response.ok && body?.active);
+    } catch {
+      active = false;
+    }
+    if (active) await analyzeBatch();
+    else setShowDisclosure(true);
+  }
+
+  /** Record consent for the disclosed policy version, then analyse. */
+  async function grantConsentAndAnalyze() {
+    try {
+      const response = await fetch("/api/wardrobe/analyze/consent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ policyVersion: WARDROBE_ANALYSIS_POLICY_VERSION }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        active?: boolean;
+        error?: string;
+      } | null;
+      if (!response.ok || !body?.active) {
+        toast.error("We couldn't record your choice", {
+          description: body?.error ?? "Please try again.",
+        });
+        return;
+      }
+      setShowDisclosure(false);
+      await analyzeBatch();
+    } catch {
+      toast.error("We couldn't record your choice", { description: "Please try again." });
+    }
+  }
+
+  /** Withdraw consent to future analysis; saved pieces are untouched. */
+  async function withdrawConsent() {
+    try {
+      const response = await fetch("/api/wardrobe/analyze/consent", { method: "DELETE" });
+      if (!response.ok) throw new Error("withdraw failed");
+      toast.success("AI analysis turned off", {
+        description: "Future imports won't be analysed. Your saved pieces are untouched.",
+      });
+    } catch {
+      toast.error("We couldn't update that choice", { description: "Please try again." });
+    }
+  }
+
   return (
     <main className="mx-auto w-full max-w-3xl px-5 py-7 sm:px-6 sm:py-10">
       <header className="mb-6">
@@ -211,21 +340,28 @@ export function WardrobeImport() {
       </header>
 
       {phase === "review" && review ? (
-        <ReviewPanel
-          review={review}
-          previews={previews}
-          busy={false}
-          onEdit={(id, patch) => setReview((state) => (state ? editItem(state, id, patch) : state))}
-          onGoTo={(index) => setReview((state) => (state ? goToIndex(state, index) : state))}
-          onPrev={() => setReview((state) => (state ? prevItem(state) : state))}
-          onNext={() => setReview((state) => (state ? nextItem(state) : state))}
-          onRemove={(id) => setReview((state) => (state ? removeItem(state, id) : state))}
-          onReplace={(id) => {
-            replaceTargetId.current = id;
-            replaceInput.current?.click();
-          }}
-          onSave={onSave}
-        />
+        <div className="grid gap-5">
+          <AiSuggestBar
+            analyzing={analyzing}
+            onSuggest={() => void requestSuggestions()}
+            onWithdraw={() => void withdrawConsent()}
+          />
+          <ReviewPanel
+            review={review}
+            previews={previews}
+            busy={analyzing}
+            onEdit={(id, patch) => setReview((state) => (state ? editItem(state, id, patch) : state))}
+            onGoTo={(index) => setReview((state) => (state ? goToIndex(state, index) : state))}
+            onPrev={() => setReview((state) => (state ? prevItem(state) : state))}
+            onNext={() => setReview((state) => (state ? nextItem(state) : state))}
+            onRemove={(id) => setReview((state) => (state ? removeItem(state, id) : state))}
+            onReplace={(id) => {
+              replaceTargetId.current = id;
+              replaceInput.current?.click();
+            }}
+            onSave={onSave}
+          />
+        </div>
       ) : phase === "saving" && review ? (
         <ReviewPanel
           review={review}
@@ -265,7 +401,85 @@ export function WardrobeImport() {
         tabIndex={-1}
         onChange={(event) => void onReplaceFile(event.target.files)}
       />
+
+      {showDisclosure ? (
+        <DisclosureModal
+          onAgree={() => void grantConsentAndAnalyze()}
+          onCancel={() => setShowDisclosure(false)}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function AiSuggestBar({
+  analyzing,
+  onSuggest,
+  onWithdraw,
+}: {
+  analyzing: boolean;
+  onSuggest: () => void;
+  onWithdraw: () => void;
+}) {
+  return (
+    <div className="border-border bg-card flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-3.5 sm:p-4">
+      <div className="min-w-0">
+        <p className="text-sm font-bold">Speed this up with AI</p>
+        <p className="text-muted-foreground text-xs text-pretty">
+          Optional. Suggests a category, colour, and brand — you confirm every one.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onWithdraw}
+          disabled={analyzing}
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring text-xs underline underline-offset-4 focus-visible:ring-3 focus-visible:outline-none disabled:opacity-50"
+        >
+          Turn off
+        </button>
+        <Button type="button" onClick={onSuggest} disabled={analyzing}>
+          {analyzing ? "Analysing…" : "Suggest with AI"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DisclosureModal({
+  onAgree,
+  onCancel,
+}: {
+  onAgree: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="bg-brand-ink/35 fixed inset-0 z-50 grid place-items-end p-3 backdrop-blur-sm sm:place-items-center sm:p-6">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ai-disclosure-title"
+        className="bg-card text-card-foreground w-full max-w-md rounded-3xl border p-5 shadow-2xl sm:p-7"
+      >
+        <h2
+          id="ai-disclosure-title"
+          className="font-heading text-2xl tracking-wide uppercase"
+        >
+          Before AURA uses AI
+        </h2>
+        <p className="text-muted-foreground mt-3 text-sm leading-relaxed text-pretty">
+          {WARDROBE_ANALYSIS_DISCLOSURE}
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Not now
+          </Button>
+          <Button type="button" onClick={onAgree}>
+            I agree — suggest
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }
 

@@ -24,10 +24,51 @@ model User {
   imageUrl    String?
   auraProfile AuraProfile?
   savedLooks  SavedLook[]
+  wardrobeItems WardrobeItem[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([email])
+}
+
+/// The owner-confirmed category for a private wardrobe item. These values are
+/// deliberately shared with the wardrobe browsing filter, but exclude its UI-
+/// only "all" option so every persisted item has one concrete category.
+enum WardrobeItemCategory {
+  tops
+  bottoms
+  bags
+  shoes
+  accessories
+}
+
+/// A participant-owned clothing item. The original upload and normalized
+/// working rendition are separate private Cloudinary objects: only their public
+/// identifiers and formats are persisted, never a durable delivery URL.
+model WardrobeItem {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  /// Current participant-confirmed attributes; future import/review work may
+  /// suggest values, but this record stores only what its owner confirmed.
+  category WardrobeItemCategory
+  name     String
+  color    String
+  brand    String?
+  /// Separate private media objects. The format is kept because Cloudinary's
+  /// expiring private-download URL requires the stored asset format.
+  originalMediaId         String
+  originalMediaFormat     String
+  normalizedMediaId       String
+  normalizedMediaFormat   String
+  /// `deletedAt` starts the recoverable-deletion lifecycle. Active records have
+  /// both fields null; a deletion worker later removes expired records/media.
+  deletedAt          DateTime?
+  recoveryExpiresAt  DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId, deletedAt, category, createdAt])
 }
 
 /// Reference photos and consent for one user's AURA portrait profile.

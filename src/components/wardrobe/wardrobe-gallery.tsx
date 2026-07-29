@@ -2,14 +2,11 @@
 
 import Image from "next/image";
 import * as React from "react";
-import { PlusIcon, XIcon } from "lucide-react";
 
 import {
-  getWardrobeItems,
-  inferWardrobeCategory,
   wardrobeCategories,
   type WardrobeCategory,
-  type WardrobeItem,
+  type WardrobeItemCategory,
 } from "@/lib/wardrobe";
 import { cn } from "@/lib/utils";
 
@@ -36,104 +33,60 @@ const HATCH = {
     "repeating-linear-gradient(70deg, rgb(20 17 15 / 0.12) 0 2px, transparent 2px 12px)",
 } as const;
 
-type PendingWardrobeItem = {
+type WardrobeItem = {
+  id: string;
   name: string;
-  imageUrl: string;
+  category: WardrobeItemCategory;
+  color: string;
+  brand: string | null;
+  normalizedMediaId: string;
+  createdAt: string;
 };
 
-function nameFromFile(file: File): string {
-  return file.name
-    .replace(/\.[^/.]+$/, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function readPhoto(file: File): Promise<PendingWardrobeItem> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error("Image preview unavailable"));
-        return;
-      }
-      resolve({ name: nameFromFile(file), imageUrl: reader.result });
-    });
-    reader.addEventListener("error", () => reject(reader.error));
-    reader.readAsDataURL(file);
-  });
-}
+type WardrobeResponse = { items?: WardrobeItem[]; error?: string };
+type MediaResponse = { url?: string };
 
 /**
- * The wardrobe's interactive island. New items live in this browser session,
- * so a newly added piece is immediately available in All and its category.
+ * The persisted, owner-scoped wardrobe browser. Item metadata comes from the
+ * active-item API; every image is separately resolved through the owner-only
+ * media endpoint so the browser never receives a durable asset URL.
  */
 export function WardrobeGallery() {
   const [category, setCategory] = React.useState<WardrobeCategory>("all");
-  const [addedItems, setAddedItems] = React.useState<WardrobeItem[]>([]);
-  const [isAdding, setIsAdding] = React.useState(false);
-  const [pendingItems, setPendingItems] = React.useState<PendingWardrobeItem[]>([]);
-  const [formError, setFormError] = React.useState("");
-  const items = getWardrobeItems(category, addedItems);
+  const [items, setItems] = React.useState<WardrobeItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
 
-  function resetForm() {
-    setPendingItems([]);
-    setFormError("");
-  }
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const query = category === "all" ? "" : `?category=${category}`;
 
-  function closeAddItem() {
-    setIsAdding(false);
-    resetForm();
-  }
-
-  async function handlePhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    setFormError("");
-
-    if (files.length === 0) {
-      setPendingItems([]);
-      return;
-    }
-    if (files.some((file) => !file.type.startsWith("image/"))) {
-      setFormError("Choose image files for your wardrobe pieces.");
-      return;
-    }
-    if (files.some((file) => file.size > 2 * 1024 * 1024)) {
-      setFormError("Choose images smaller than 2 MB each for this preview.");
-      return;
+    async function loadItems() {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await fetch(`/api/wardrobe${query}`, {
+          signal: controller.signal,
+        });
+        const body = (await response.json().catch(() => null)) as WardrobeResponse | null;
+        if (!response.ok || !body?.items) {
+          throw new Error(body?.error ?? "We couldn't load your wardrobe.");
+        }
+        if (!controller.signal.aborted) setItems(body.items);
+      } catch (reason) {
+        if (controller.signal.aborted) return;
+        setItems([]);
+        setError(
+          reason instanceof Error ? reason.message : "We couldn't load your wardrobe.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
     }
 
-    try {
-      setPendingItems(await Promise.all(files.map(readPhoto)));
-    } catch {
-      setFormError("We couldn’t read one of those images. Please try again.");
-    }
-  }
-
-  function handleAddItem(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (pendingItems.length === 0) {
-      setFormError("Choose at least one clothing photo to continue.");
-      return;
-    }
-
-    setAddedItems((current) => [
-      ...pendingItems.map((item) => {
-        const itemCategory = inferWardrobeCategory(item.name);
-        return {
-          id: crypto.randomUUID(),
-          name: item.name,
-          category: itemCategory,
-          note: `Added to ${categoryLabels[itemCategory]}`,
-          imageUrl: item.imageUrl,
-        };
-      }),
-      ...current,
-    ]);
-    setCategory("all");
-    closeAddItem();
-  }
+    void loadItems();
+    return () => controller.abort();
+  }, [category]);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-10">
@@ -162,8 +115,8 @@ export function WardrobeGallery() {
               What&apos;s in your wardrobe?
             </h1>
             <p className="mt-4 max-w-md text-left text-sm leading-relaxed font-medium text-black text-pretty dark:text-white">
-              Add your own pieces and keep every outfit-building block in one
-              place.
+              Your confirmed pieces stay private and are available wherever you
+              sign in to AURA.
             </p>
           </div>
         </div>
@@ -192,188 +145,88 @@ export function WardrobeGallery() {
       </div>
 
       <section id="wardrobe-items" className="scroll-mt-24 pt-8" aria-live="polite">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-baseline gap-3">
-            <h2 className="font-heading text-3xl tracking-wide uppercase">
-              {categoryHeadings[category]}
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              {items.length} {items.length === 1 ? "piece" : "pieces"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsAdding(true)}
-            className="bg-cta text-cta-foreground focus-visible:ring-ring inline-flex h-9 items-center gap-2 rounded-full px-4 text-xs font-bold tracking-wide uppercase hover:brightness-105 focus-visible:ring-3 focus-visible:outline-none"
-          >
-            <PlusIcon aria-hidden="true" className="size-3.5" />
-            Add items
-          </button>
+        <div className="mb-5 flex items-baseline gap-3">
+          <h2 className="font-heading text-3xl tracking-wide uppercase">
+            {categoryHeadings[category]}
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            {loading ? "Loading…" : `${items.length} ${items.length === 1 ? "piece" : "pieces"}`}
+          </p>
         </div>
-        {items.length === 0 ? (
-          <EmptyWardrobe onAdd={() => setIsAdding(true)} />
+        {error ? (
+          <LoadError message={error} />
+        ) : loading ? (
+          <WardrobeLoading />
+        ) : items.length === 0 ? (
+          <EmptyWardrobe />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-            {items.map((item) => (
-              <WardrobeCard
-                key={item.id}
-                item={item}
-                onDelete={(id) =>
-                  setAddedItems((current) =>
-                    current.filter((addedItem) => addedItem.id !== id),
-                  )
-                }
-              />
-            ))}
+            {items.map((item) => <WardrobeCard key={item.id} item={item} />)}
           </div>
         )}
       </section>
-      {isAdding ? (
-        <AddItemDialog
-          items={pendingItems}
-          error={formError}
-          onClose={closeAddItem}
-          onPhotoChange={handlePhotoChange}
-          onSubmit={handleAddItem}
-        />
-      ) : null}
     </main>
   );
 }
 
-function WardrobeCard({
-  item,
-  onDelete,
-}: {
-  item: WardrobeItem;
-  onDelete: (id: string) => void;
-}) {
+function WardrobeCard({ item }: { item: WardrobeItem }) {
+  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    async function loadImage() {
+      const response = await fetch(
+        `/api/wardrobe/${item.id}/media?variant=normalized`,
+        { signal: controller.signal },
+      );
+      const body = (await response.json().catch(() => null)) as MediaResponse | null;
+      if (!controller.signal.aborted && response.ok && body?.url) setImageUrl(body.url);
+    }
+    void loadImage();
+    return () => controller.abort();
+  }, [item.id, item.normalizedMediaId]);
+
   return (
-    <article className="group relative overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">
-      <button
-        type="button"
-        onClick={() => onDelete(item.id)}
-        className="bg-card/95 text-foreground focus-visible:ring-ring absolute top-2 right-2 z-10 grid size-8 place-items-center rounded-full border shadow-sm transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:outline-none"
-        aria-label={`Delete ${item.name}`}
-      >
-        <XIcon aria-hidden="true" className="size-3.5" />
-      </button>
-      {/* The photo is supplied by the visitor and stays in this local preview. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={item.imageUrl}
-        alt={item.name}
-        className="aspect-[4/5] w-full object-cover"
-      />
+    <article className="overflow-hidden rounded-2xl border bg-card">
+      <div className="bg-muted aspect-[4/5]">
+        {imageUrl ? (
+          // The URL was freshly authorized by the server and expires quickly.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt={item.name} className="size-full object-cover" />
+        ) : null}
+      </div>
       <div className="p-3.5 sm:p-4">
         <h3 className="text-sm font-bold text-balance">{item.name}</h3>
-        <p className="text-muted-foreground mt-1 text-xs">{item.note}</p>
+        <p className="text-muted-foreground mt-1 text-xs">
+          {item.color}{item.brand ? ` · ${item.brand}` : ""}
+        </p>
       </div>
     </article>
   );
 }
 
-function EmptyWardrobe({ onAdd }: { onAdd: () => void }) {
+function WardrobeLoading() {
+  return <div className="bg-muted min-h-52 animate-pulse rounded-2xl" aria-label="Loading wardrobe" />;
+}
+
+function EmptyWardrobe() {
   return (
     <div className="border-border bg-card grid min-h-52 place-items-center rounded-2xl border border-dashed p-6 text-center">
       <div>
-        <p className="font-heading text-2xl tracking-wide uppercase">
-          Your wardrobe is ready
-        </p>
+        <p className="font-heading text-2xl tracking-wide uppercase">Your wardrobe is ready</p>
         <p className="text-muted-foreground mt-2 max-w-sm text-sm text-pretty">
-          Add your first pieces and they will appear here and in their matching
-          categories.
+          Saved pieces will appear here and in their matching categories.
         </p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="text-brand-magenta focus-visible:ring-ring mt-4 text-xs font-bold tracking-wide uppercase underline underline-offset-4 focus-visible:ring-3 focus-visible:outline-none"
-        >
-          Add items
-        </button>
       </div>
     </div>
   );
 }
 
-type AddItemDialogProps = {
-  items: PendingWardrobeItem[];
-  error: string;
-  onClose: () => void;
-  onPhotoChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
-};
-
-function AddItemDialog({
-  items,
-  error,
-  onClose,
-  onPhotoChange,
-  onSubmit,
-}: AddItemDialogProps) {
+function LoadError({ message }: { message: string }) {
   return (
-    <div className="bg-brand-ink/35 fixed inset-0 z-50 grid place-items-end p-3 backdrop-blur-sm sm:place-items-center sm:p-6">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-item-title"
-        className="bg-card text-card-foreground w-full max-w-md rounded-3xl border p-5 shadow-2xl sm:p-7"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-brand-magenta text-xs font-bold tracking-[0.18em] uppercase">
-              Build your closet
-            </p>
-            <h2 id="add-item-title" className="font-heading mt-2 text-3xl tracking-wide uppercase">
-              Add items
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="focus-visible:ring-ring grid size-9 place-items-center rounded-full border hover:bg-accent focus-visible:ring-3 focus-visible:outline-none"
-            aria-label="Close add item"
-          >
-            <XIcon aria-hidden="true" className="size-4" />
-          </button>
-        </div>
-        <form className="mt-6 grid gap-5" onSubmit={onSubmit}>
-          <label className="grid gap-2 text-sm font-semibold">
-            Clothing photos
-            <input
-              type="file"
-              multiple
-              accept="image/jpeg,image/png,image/webp"
-              onChange={onPhotoChange}
-              className="border-input bg-background file:bg-accent file:text-foreground h-11 cursor-pointer rounded-xl border px-2 text-sm font-normal file:mr-3 file:rounded-lg file:border-0 file:px-3 file:py-1.5 file:text-xs file:font-bold"
-            />
-          </label>
-          {items.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2">
-              {items.map((item) => (
-                <figure key={item.imageUrl} className="overflow-hidden rounded-xl border">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={item.imageUrl} alt={item.name} className="aspect-square w-full object-cover" />
-                  <figcaption className="truncate px-2 py-1.5 text-xs">{item.name}</figcaption>
-                </figure>
-              ))}
-            </div>
-          ) : null}
-          <p className="text-muted-foreground text-xs leading-relaxed">
-            Select one or more photos. AURA uses each file name to place it in
-            a wardrobe category, so use clear names such as “linen-shirt”.
-          </p>
-          {error ? <p className="text-destructive text-sm" role="alert">{error}</p> : null}
-          <button
-            type="submit"
-            className="bg-cta text-cta-foreground focus-visible:ring-ring inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 text-xs font-bold tracking-wide uppercase hover:brightness-105 focus-visible:ring-3 focus-visible:outline-none"
-          >
-            <PlusIcon aria-hidden="true" className="size-4" />
-            Add {items.length || "selected"} {items.length === 1 ? "item" : "items"}
-            {items.length > 0 ? " to wardrobe" : ""}
-          </button>
-        </form>
-      </section>
+    <div className="border-destructive/40 bg-destructive/5 min-h-52 rounded-2xl border p-6 text-center">
+      <p className="font-semibold">We couldn&apos;t load your wardrobe</p>
+      <p className="text-muted-foreground mt-2 text-sm">{message}</p>
     </div>
   );
 }

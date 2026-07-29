@@ -1,7 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import * as React from "react";
+
+import { Button } from "@/components/ui/button";
 
 import {
   wardrobeCategories,
@@ -118,6 +121,9 @@ export function WardrobeGallery() {
               Your confirmed pieces stay private and are available wherever you
               sign in to AURA.
             </p>
+            <Button render={<Link href="/wardrobe/import" />} className="mt-5">
+              Import pieces
+            </Button>
           </div>
         </div>
       </section>
@@ -217,6 +223,9 @@ function EmptyWardrobe() {
         <p className="text-muted-foreground mt-2 max-w-sm text-sm text-pretty">
           Saved pieces will appear here and in their matching categories.
         </p>
+        <Button render={<Link href="/wardrobe/import" />} className="mt-5">
+          Import your first pieces
+        </Button>
       </div>
     </div>
   );

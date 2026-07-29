@@ -33,6 +33,13 @@ mock.module("@/lib/wardrobe-media", () => ({
       expiresAt: new Date("2026-07-29T12:05:00Z"),
     };
   },
+  // `mock.module` patches the registry process-wide; surface the module's other
+  // export too so this file can't shadow `uploadWardrobeMedia` for the import
+  // route if they share a process.
+  uploadWardrobeMedia: async () => ({
+    original: { mediaId: "unused", format: "png" },
+    normalized: { mediaId: "unused", format: "webp" },
+  }),
 }));
 
 const { GET } = await import("./route");

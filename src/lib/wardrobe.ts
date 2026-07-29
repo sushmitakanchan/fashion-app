@@ -1,3 +1,5 @@
+import { WARDROBE_MAX_ACTIVE_ITEMS } from "@/lib/validations";
+
 export const wardrobeCategories = [
   "all",
   "tops",
@@ -9,3 +11,45 @@ export const wardrobeCategories = [
 
 export type WardrobeCategory = (typeof wardrobeCategories)[number];
 export type WardrobeItemCategory = Exclude<WardrobeCategory, "all">;
+
+/** Root Cloudinary folder for every participant's private wardrobe media. */
+export const WARDROBE_MEDIA_FOLDER = "fashion-app/wardrobe";
+
+/**
+ * The per-owner media folder. `ownerKey` is the participant's Clerk id, so the
+ * folder path itself encodes ownership — which is what lets a save re-validate
+ * that a client-echoed media id belongs to the caller. Pure and Cloudinary-free
+ * on purpose: it is the one place the "media id ⇒ owner" rule lives, and the
+ * write boundary must be able to import it without mocking image delivery.
+ */
+export function wardrobeMediaFolder(ownerKey: string): string {
+  return `${WARDROBE_MEDIA_FOLDER}/${ownerKey}`;
+}
+
+/**
+ * Whether a Cloudinary media id sits under a given owner's wardrobe folder. The
+ * batch-save boundary trusts nothing a client echoes back from import until this
+ * holds, so a caller can never attach another participant's — or an arbitrary —
+ * asset to their own Wardrobe Item.
+ */
+export function isOwnedWardrobeMediaId(mediaId: string, ownerKey: string): boolean {
+  return mediaId.startsWith(`${wardrobeMediaFolder(ownerKey)}/`);
+}
+
+/**
+ * Whether adding `addCount` items to an account already holding `activeCount`
+ * active ones would break the ceiling. The single rule shared by the import
+ * pre-check and the authoritative save boundary, so the two can't disagree.
+ */
+export function exceedsActiveItemLimit(activeCount: number, addCount: number): boolean {
+  return activeCount + addCount > WARDROBE_MAX_ACTIVE_ITEMS;
+}
+
+/** The 409 body both wardrobe write routes return when a batch won't fit. */
+export function wardrobeCapacityErrorBody(activeCount: number) {
+  return {
+    error: `Your wardrobe holds up to ${WARDROBE_MAX_ACTIVE_ITEMS} items. Delete some before adding more.`,
+    activeCount,
+    limit: WARDROBE_MAX_ACTIVE_ITEMS,
+  };
+}

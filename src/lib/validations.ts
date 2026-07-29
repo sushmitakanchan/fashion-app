@@ -95,7 +95,11 @@ function decodedByteLength(uri: string): number {
 // The browser already limits each `File`, but a request can be made without the
 // browser. Re-check the type (via the media type the URI declares) and the size
 // (via the decoded byte count) so a hand-rolled request is held to the same rule.
-const photoDataUri = z
+//
+// Exported so the wardrobe import route can validate each image *individually*
+// and report one bad image as a per-item failure, rather than rejecting the
+// whole batch the way an array-level `photoDataUri` element would.
+export const photoDataUri = z
   .string()
   .refine(isPhotoDataUri, PHOTO_WRONG_TYPE)
   .refine((uri) => decodedByteLength(uri) <= MAX_PHOTO_BYTES, PHOTO_TOO_LARGE);
@@ -217,3 +221,110 @@ export const styleBookSaveSchema = z.object({
 
 export type StyleBookSaveInput = z.infer<typeof styleBookSaveSchema>;
 export type SaveSourceInput = z.infer<typeof saveSourceInput>;
+
+/* -------------------------------------------------------------------------- */
+/*                    Wardrobe — importing & saving a batch                   */
+/* -------------------------------------------------------------------------- */
+
+/** How many images one import batch may carry. Enforced both in the import
+ *  experience and at the server write boundary, so the two can't drift. */
+export const WARDROBE_IMPORT_MAX_BATCH = 20;
+
+/** The account-wide ceiling on *active* (non-deleted) Wardrobe Items. Checked at
+ *  the server write boundary; a batch that would push past it is rejected. */
+export const WARDROBE_MAX_ACTIVE_ITEMS = 200;
+
+/** The persisted wardrobe categories — the browsing filter's concrete options
+ *  minus its UI-only "all". Matches the Prisma `WardrobeItemCategory` enum, so
+ *  every saved item lands in exactly one. */
+export const WARDROBE_ITEM_CATEGORIES = [
+  "tops",
+  "bottoms",
+  "bags",
+  "shoes",
+  "accessories",
+] as const;
+
+export const wardrobeItemCategorySchema = z.enum(WARDROBE_ITEM_CATEGORIES);
+
+export type WardrobeItemCategoryValue = z.infer<typeof wardrobeItemCategorySchema>;
+
+// One import image as it crosses the wire. The payload is a *loose* string, not
+// `photoDataUri`: the import route validates each image on its own so a single
+// unsupported or corrupt file surfaces as a per-item failure instead of a 400
+// that discards the whole batch. `clientId` correlates each outcome back to the
+// tile the browser is showing; it never reaches the database.
+const wardrobeImportImage = z.object({
+  clientId: z.string().trim().min(1).max(64),
+  dataUri: z.string().min(1),
+});
+
+/** What crosses the wire to `POST /api/wardrobe/import`. */
+export const wardrobeImportSchema = z.object({
+  images: z
+    .array(wardrobeImportImage)
+    .min(1, "Add at least one image")
+    .max(
+      WARDROBE_IMPORT_MAX_BATCH,
+      `Import up to ${WARDROBE_IMPORT_MAX_BATCH} images at a time`,
+    ),
+});
+
+export type WardrobeImportInput = z.infer<typeof wardrobeImportSchema>;
+export type WardrobeImportImageInput = z.infer<typeof wardrobeImportImage>;
+
+const wardrobeItemName = z
+  .string({ error: "Name this piece" })
+  .trim()
+  .min(1, "Name this piece")
+  .max(GARMENT_NAME_MAX_LENGTH, "That name is a little too long");
+
+const wardrobeItemColor = z
+  .string({ error: "Add a colour" })
+  .trim()
+  .min(1, "Add a colour")
+  .max(40, "That colour is a little too long");
+
+// Optional and empty-tolerant: an untouched brand field arrives as "" and is
+// normalised to `undefined` here so the route can persist `null` rather than an
+// empty string. Missing or unreliable brand never blocks a save.
+const wardrobeItemBrand = z
+  .string()
+  .trim()
+  .max(60, "That brand is a little too long")
+  .transform((value) => (value.length > 0 ? value : undefined))
+  .optional();
+
+// A Cloudinary public id / format echoed back from an earlier import. The route
+// additionally verifies the id sits under the caller's own wardrobe folder, so
+// this only bounds shape and length, not ownership.
+const wardrobeMediaId = z.string().min(1).max(256);
+const wardrobeMediaFormat = z.string().trim().min(1).max(12);
+
+// One owner-confirmed item ready to persist. Only confirmed attributes and the
+// two private media references cross the wire; failed imports are removed in the
+// review step and never reach this schema.
+const wardrobeSaveItem = z.object({
+  category: wardrobeItemCategorySchema,
+  name: wardrobeItemName,
+  color: wardrobeItemColor,
+  brand: wardrobeItemBrand,
+  originalMediaId: wardrobeMediaId,
+  originalMediaFormat: wardrobeMediaFormat,
+  normalizedMediaId: wardrobeMediaId,
+  normalizedMediaFormat: wardrobeMediaFormat,
+});
+
+/** What crosses the wire to `POST /api/wardrobe` (batch save). */
+export const wardrobeSaveSchema = z.object({
+  items: z
+    .array(wardrobeSaveItem)
+    .min(1, "Confirm at least one piece")
+    .max(
+      WARDROBE_IMPORT_MAX_BATCH,
+      `Save up to ${WARDROBE_IMPORT_MAX_BATCH} pieces at a time`,
+    ),
+});
+
+export type WardrobeSaveInput = z.infer<typeof wardrobeSaveSchema>;
+export type WardrobeSaveItemInput = z.infer<typeof wardrobeSaveItem>;

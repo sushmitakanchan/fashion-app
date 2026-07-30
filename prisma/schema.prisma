@@ -38,6 +38,9 @@ model User {
 enum WardrobeItemCategory {
   tops
   bottoms
+  dresses
+  activewear
+  outerwear
   bags
   shoes
   accessories

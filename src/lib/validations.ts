@@ -266,6 +266,9 @@ export const WARDROBE_MAX_ACTIVE_ITEMS = 200;
 export const WARDROBE_ITEM_CATEGORIES = [
   "tops",
   "bottoms",
+  "dresses",
+  "activewear",
+  "outerwear",
   "bags",
   "shoes",
   "accessories",

@@ -328,3 +328,44 @@ export const wardrobeSaveSchema = z.object({
 
 export type WardrobeSaveInput = z.infer<typeof wardrobeSaveSchema>;
 export type WardrobeSaveItemInput = z.infer<typeof wardrobeSaveItem>;
+
+/* -------------------------------------------------------------------------- */
+/*                 Wardrobe — optional AI analysis of a batch                 */
+/* -------------------------------------------------------------------------- */
+
+// One image submitted for optional AI categorisation. Only the *normalized*
+// rendition's id/format cross the wire — never the original, and never any
+// confirmed attribute or edit — so the analysis boundary can send strictly the
+// normalized clothing image and nothing else. The route re-checks the id is the
+// caller's own before signing it.
+const wardrobeAnalyzeItem = z.object({
+  clientId: z.string().trim().min(1).max(64),
+  normalizedMediaId: wardrobeMediaId,
+  normalizedMediaFormat: wardrobeMediaFormat,
+});
+
+/** What crosses the wire to `POST /api/wardrobe/analyze`. */
+export const wardrobeAnalyzeSchema = z.object({
+  items: z
+    .array(wardrobeAnalyzeItem)
+    .min(1, "Add at least one image to analyse")
+    .max(
+      WARDROBE_IMPORT_MAX_BATCH,
+      `Analyse up to ${WARDROBE_IMPORT_MAX_BATCH} images at a time`,
+    ),
+});
+
+export type WardrobeAnalyzeInput = z.infer<typeof wardrobeAnalyzeSchema>;
+export type WardrobeAnalyzeItemInput = z.infer<typeof wardrobeAnalyzeItem>;
+
+/**
+ * What crosses the wire to `POST /api/wardrobe/analyze/consent` (grant). The
+ * client echoes back the exact policy version it disclosed, so a stale
+ * disclosure can't record consent to a newer policy — the route rejects a
+ * mismatch against the server's current version.
+ */
+export const wardrobeConsentGrantSchema = z.object({
+  policyVersion: z.string().trim().min(1).max(64),
+});
+
+export type WardrobeConsentGrantInput = z.infer<typeof wardrobeConsentGrantSchema>;

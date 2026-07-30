@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  applySuggestion,
   canSave,
   confirmedItemsForSave,
   createReviewState,
@@ -210,6 +211,35 @@ describe("canSave", () => {
     state = removeItem(state, "b");
     state = editItem(state, "a", { category: "tops", name: "Shirt", color: "Ivory" });
     expect(canSave(state)).toBe(true);
+  });
+});
+
+describe("applySuggestion", () => {
+  it("pre-fills a pending item's category, colour, and brand, leaving it editable", () => {
+    let state = createReviewState([ready("a", "Suggested name")]);
+    state = applySuggestion(state, "a", { category: "tops", color: "Ivory", brand: "AURA" });
+
+    expect(state.items[0]).toMatchObject({
+      status: "pending",
+      // The suggested name from import is untouched; analysis never names a piece.
+      fields: { category: "tops", name: "Suggested name", color: "Ivory", brand: "AURA" },
+    });
+
+    // Still editable afterwards.
+    state = editItem(state, "a", { color: "Cream" });
+    expect(state.items[0]).toMatchObject({ fields: { color: "Cream" } });
+  });
+
+  it("maps null colour/brand to empty strings (never fabricated)", () => {
+    let state = createReviewState([ready("a")]);
+    state = applySuggestion(state, "a", { category: "shoes", color: null, brand: null });
+    expect(state.items[0]).toMatchObject({ fields: { category: "shoes", color: "", brand: "" } });
+  });
+
+  it("ignores a failed or unknown item", () => {
+    const state = createReviewState([failed("a")]);
+    expect(applySuggestion(state, "a", { category: "bags", color: null, brand: null })).toEqual(state);
+    expect(applySuggestion(state, "missing", { category: "bags", color: null, brand: null })).toEqual(state);
   });
 });
 

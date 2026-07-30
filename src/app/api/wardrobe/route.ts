@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 
 import {
   AURA_CONFIGURATION_UNAVAILABLE_MESSAGE,
@@ -11,6 +11,7 @@ import {
   isOwnedWardrobeMediaId,
   wardrobeCapacityErrorBody,
 } from "@/lib/wardrobe";
+import { getOrProvisionUserId } from "@/lib/wardrobe-user";
 import {
   wardrobeItemCategorySchema,
   wardrobeSaveSchema,
@@ -123,32 +124,15 @@ export async function POST(request: Request) {
   try {
     const prisma = getPrisma();
 
-    // Provision the owning `User` row on first use. Nothing but AURA submission
-    // creates one today, so a participant who imports before ever saving an AURA
-    // profile would otherwise upload media and then hit a dead end. Mirror the
-    // minimum from Clerk, and only require an email when actually creating.
-    let user = await prisma.user.findUnique({
-      where: { clerkId: userId },
-      select: { id: true },
-    });
-    if (!user) {
-      const clerkUser = await currentUser();
-      const email = clerkUser?.primaryEmailAddress?.emailAddress;
-      if (!email) {
-        console.error("Wardrobe save can't provision a user without an email", userId);
-        return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
-      }
-      user = await prisma.user.create({
-        data: {
-          clerkId: userId,
-          email,
-          name: clerkUser?.fullName ?? null,
-          imageUrl: clerkUser?.imageUrl ?? null,
-        },
-        select: { id: true },
-      });
+    // Provision the owning `User` row on first use — a participant can import and
+    // save before ever creating an AURA profile, which is the only other thing
+    // that mints a user today. Returns null only when a new user can't be created
+    // (Clerk exposes no email), which is not a reachable save path in practice.
+    const ownerId = await getOrProvisionUserId(prisma, userId);
+    if (!ownerId) {
+      console.error("Wardrobe save can't provision a user for", userId);
+      return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
     }
-    const ownerId = user.id;
 
     // The active-item ceiling is the authoritative write boundary, so the count
     // and the insert run in one transaction: two concurrent batch saves can't

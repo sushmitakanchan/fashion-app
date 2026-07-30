@@ -17,9 +17,16 @@ export function isDatabaseConfigured(): boolean {
   return Boolean(env.DATABASE_URL);
 }
 
+/** Whether the OpenAI credential is present. Shared by portrait generation and
+ *  the wardrobe vision-analysis boundary — both use the same `OPENAI_API_KEY`,
+ *  independent of the provider-neutral text-generation choice. */
+export function isOpenAIConfigured(): boolean {
+  return Boolean(env.OPENAI_API_KEY);
+}
+
 /** v1 portrait generation is OpenAI-only, independent of text-provider choice. */
 export function isOpenAIImageConfigured(): boolean {
-  return Boolean(env.OPENAI_API_KEY);
+  return isOpenAIConfigured();
 }
 
 /**

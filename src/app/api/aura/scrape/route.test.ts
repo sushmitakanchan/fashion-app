@@ -104,6 +104,8 @@ const GARMENT_DATA_URI = `data:image/jpeg;base64,${GARMENT.toString("base64")}`;
 const PIN_URL = "https://www.pinterest.com/pin/some-slug--1234567890/";
 const PIN_IMAGE = "https://i.pinimg.com/originals/aa/bb/cc/garment.jpg";
 const MYNTRA_URL = "https://www.myntra.com/roadster/roadster-men-shirt/1234567/buy";
+const MYNTRA_IMAGE =
+  "https://assets.myntassets.com/h_1440,q_100,w_1080/v1/assets/images/1234567/garment.jpg";
 
 function pinterestPage({
   image = PIN_IMAGE,
@@ -112,6 +114,26 @@ function pinterestPage({
   return `<!doctype html><html><head>
     ${title ? `<meta property="og:title" content="${title}">` : ""}
     ${image ? `<meta property="og:image" content="${image}">` : ""}
+  </head><body></body></html>`;
+}
+
+// A Myntra product page: the primary image lives in JSON-LD `Product.image`
+// (full-resolution), not `og:image` (Myntra's is a 200×200 thumbnail). `name`
+// is omittable so the og:title fallback can be exercised.
+function myntraPage({
+  image = MYNTRA_IMAGE,
+  name = "Roadster Men Shirt" as string | null,
+  ogTitle,
+}: { image?: string | null; name?: string | null; ogTitle?: string } = {}): string {
+  const product: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+  };
+  if (name) product.name = name;
+  if (image) product.image = image;
+  return `<!doctype html><html><head>
+    ${ogTitle ? `<meta property="og:title" content="${ogTitle}">` : ""}
+    <script type="application/ld+json">${JSON.stringify(product)}</script>
   </head><body></body></html>`;
 }
 
@@ -190,6 +212,9 @@ describe("POST /api/aura/scrape", () => {
       "a Pinterest ccTLD": "https://www.pinterest.co.uk/pin/1234567890/",
       "an http:// url": "http://www.pinterest.com/pin/1234567890/",
       "a bad Pinterest path shape": "https://www.pinterest.com/board/inspo/",
+      // Myntra host matches, but a non-product path (no `<styleId>/buy`) has no
+      // rule — it is unsupported, not coming-soon, and never hits the network.
+      "a Myntra non-product path": "https://www.myntra.com/roadster/shirt/reviews",
     };
 
     for (const [label, url] of Object.entries(cases)) {
@@ -209,14 +234,14 @@ describe("POST /api/aura/scrape", () => {
   });
 
   describe("coming soon (recognised, not yet scraped)", () => {
-    // Recognised shops answer with a named "coming soon" and never touch the
-    // network — matched on host, so an off-shape path on the domain still lands
-    // here rather than in unsupported-domain.
+    // COMING_SOON_SHOPS are matched on host alone, so any path on the domain —
+    // product page or not — answers with a named "coming soon" and never
+    // touches the network. (Myntra graduated to a live source; it no longer
+    // lands here.)
     const cases: Record<string, string> = {
-      "a Myntra product link": MYNTRA_URL,
-      "an off-shape Myntra link": "https://www.myntra.com/roadster/shirt/reviews",
       "an Ajio link": "https://www.ajio.com/p/12345",
       "a Zara link": "https://www.zara.com/in/en/product-p12345.html",
+      "an H&M link": "https://www2.hm.com/en_us/productpage.12345.html",
     };
 
     for (const [label, url] of Object.entries(cases)) {
@@ -232,10 +257,10 @@ describe("POST /api/aura/scrape", () => {
     }
 
     it("names the shop in the coming-soon message", async () => {
-      const body = (await (await post({ url: MYNTRA_URL })).json()) as {
+      const body = (await (await post({ url: "https://www.ajio.com/p/12345" })).json()) as {
         error: string;
       };
-      expect(body.error).toContain("Myntra");
+      expect(body.error).toContain("Ajio");
     });
   });
 
@@ -413,9 +438,41 @@ describe("POST /api/aura/scrape", () => {
       });
     });
 
+    it("returns a Myntra garment from JSON-LD Product.image", async () => {
+      route(hostContains("myntra.com"), () => html(myntraPage()));
+      route(hostContains("myntassets.com"), () => imageBytes(GARMENT));
+
+      const response = await post({ url: MYNTRA_URL });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        image: GARMENT_DATA_URI,
+        name: "Roadster Men Shirt",
+        source: "myntra",
+      });
+      // Two hops: the product page, then the full-res JSON-LD image on the CDN.
+      expect(fetchCalls).toHaveLength(2);
+      expect(fetchCalls[1].url).toBe(MYNTRA_IMAGE);
+    });
+
+    it("falls back to og:title when Myntra JSON-LD carries no name", async () => {
+      route(hostContains("myntra.com"), () =>
+        html(myntraPage({ name: null, ogTitle: "Roadster Men Shirt (og)" })),
+      );
+      route(hostContains("myntassets.com"), () => imageBytes(GARMENT));
+
+      const response = await post({ url: MYNTRA_URL });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        image: GARMENT_DATA_URI,
+        name: "Roadster Men Shirt (og)",
+        source: "myntra",
+      });
+    });
   });
 
-  it("sends an honest User-Agent on every outbound hop", async () => {
+  it("sends the browser User-Agent on every outbound hop", async () => {
     route(hostContains("pinterest.com"), () => html(pinterestPage({ title: "Pin" })));
     route(hostContains("pinimg.com"), () => imageBytes(GARMENT));
 

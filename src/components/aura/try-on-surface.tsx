@@ -59,7 +59,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The ephemeral AURA try-on surface: attach a garment image (or several worn
- * together) — from your device or a pasted Pinterest link — generate it
+ * together) — from your device or a pasted Pinterest/Myntra link — generate it
  * onto the fixed AURA portrait, and view the result. Everything is in-memory and
  * cleared on reload — nothing is uploaded to storage or written to the database
  * (the route returns the look inline as a data URL). The presentation for the
@@ -667,9 +667,9 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
           </div>
         )}
 
-        {/* Always-visible link row: paste a Pinterest link to scrape a garment.
-            Visible whether or not garments are attached — only the empty-state
-            drop-zone above collapses into the grid. */}
+        {/* Always-visible link row: paste a Pinterest or Myntra link to scrape a
+            garment. Visible whether or not garments are attached — only the
+            empty-state drop-zone above collapses into the grid. */}
         <div className="flex items-center gap-3" aria-hidden>
           <span className="bg-border h-px flex-1" />
           <span className="text-muted-foreground text-xs">or paste a link</span>
@@ -689,8 +689,8 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
               inputMode="url"
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="Pinterest link"
-              aria-label="Pinterest link"
+              placeholder="Pinterest or Myntra link"
+              aria-label="Pinterest or Myntra link"
               disabled={isGenerating}
               className="pl-8"
             />

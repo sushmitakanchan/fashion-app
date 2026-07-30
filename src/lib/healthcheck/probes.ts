@@ -174,10 +174,14 @@ async function probeAuraPortrait(env: EnvRecord): Promise<string> {
 }
 
 /**
- * The provider's read-only usage/account endpoint — proves the key is accepted
- * without spending a scrape credit (unlike issuing an actual scrape).
+ * A read-only key check per provider. ScraperAPI/ScrapingBee expose a free
+ * usage endpoint that spends no scrape credit; ScrapingAnt has none, so it gets
+ * the cheapest possible liveness scrape — a datacenter GET of example.com, one
+ * credit of its 10k/month free tier, only when the healthcheck actually runs.
  */
 const SCRAPE_PROXY_USAGE: Record<ScrapeProxyProvider, (key: string) => string> = {
+  scrapingant: (key) =>
+    `https://api.scrapingant.com/v2/general?url=${encodeURIComponent("https://example.com")}&x-api-key=${encodeURIComponent(key)}&browser=false`,
   scraperapi: (key) =>
     `https://api.scraperapi.com/account?api_key=${encodeURIComponent(key)}`,
   scrapingbee: (key) =>

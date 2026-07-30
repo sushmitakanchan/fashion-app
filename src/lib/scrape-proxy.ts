@@ -15,12 +15,20 @@ import { z } from "zod";
  * Kept free of `@/lib/env` and `server-only` imports so it stays a pure, testable
  * core: callers pass the environment in, exactly like `@/lib/ai/provider`.
  */
-export const SCRAPE_PROXY_PROVIDERS = ["scraperapi", "scrapingbee"] as const;
+export const SCRAPE_PROXY_PROVIDERS = [
+  "scrapingant",
+  "scraperapi",
+  "scrapingbee",
+] as const;
 
 export type ScrapeProxyProvider = (typeof SCRAPE_PROXY_PROVIDERS)[number];
 
-/** Selection is optional; a bare API key means this provider. */
-export const DEFAULT_SCRAPE_PROXY_PROVIDER: ScrapeProxyProvider = "scraperapi";
+/**
+ * Selection is optional; a bare API key means this provider. Defaults to
+ * ScrapingAnt for its ongoing free tier (10k credits/month, no card) — the
+ * cheapest way to give the fallback a residential egress.
+ */
+export const DEFAULT_SCRAPE_PROXY_PROVIDER: ScrapeProxyProvider = "scrapingant";
 
 /** Validates the `SCRAPE_PROXY_PROVIDER` env var. */
 export const scrapeProxyProviderSchema = z.enum(SCRAPE_PROXY_PROVIDERS);
@@ -60,29 +68,48 @@ export function readScrapeProxy(
  * a transparent proxy: GET this URL, read the body, and it is the page's HTML —
  * so the route's existing extractor consumes it with no special-casing.
  *
- * `render_js` is off: Myntra server-renders its JSON-LD, so we need the proxy's
- * IP, not a headless browser — which keeps the request on the cheap, fast tier
- * and well inside the function's time budget.
+ * Two knobs matter for beating Akamai (Myntra):
+ *   - residential proxies — the *whole point*. The provider default is
+ *     datacenter, which Akamai blocks exactly like Vercel's own IP, so every
+ *     provider is asked for its residential pool explicitly.
+ *   - no JS rendering — Myntra server-renders its JSON-LD, so we need the
+ *     proxy's IP, not a headless browser. That keeps each request on the cheap,
+ *     fast tier and well inside the function's time budget.
  */
 export function scrapeProxyRequestUrl(
   config: ScrapeProxyConfig,
   target: string,
   country = config.country,
 ): string {
-  if (config.provider === "scrapingbee") {
-    const url = new URL("https://app.scrapingbee.com/api/v1/");
-    url.searchParams.set("api_key", config.apiKey);
-    url.searchParams.set("url", target);
-    url.searchParams.set("render_js", "false");
-    if (country) url.searchParams.set("country_code", country);
-    return url.toString();
+  switch (config.provider) {
+    case "scrapingant": {
+      const url = new URL("https://api.scrapingant.com/v2/general");
+      url.searchParams.set("url", target);
+      url.searchParams.set("x-api-key", config.apiKey);
+      url.searchParams.set("proxy_type", "residential");
+      url.searchParams.set("browser", "false");
+      if (country) url.searchParams.set("proxy_country", country);
+      return url.toString();
+    }
+    case "scrapingbee": {
+      const url = new URL("https://app.scrapingbee.com/api/v1/");
+      url.searchParams.set("api_key", config.apiKey);
+      url.searchParams.set("url", target);
+      url.searchParams.set("render_js", "false");
+      url.searchParams.set("premium_proxy", "true");
+      if (country) url.searchParams.set("country_code", country);
+      return url.toString();
+    }
+    case "scraperapi":
+    default: {
+      const url = new URL("https://api.scraperapi.com/");
+      url.searchParams.set("api_key", config.apiKey);
+      url.searchParams.set("url", target);
+      url.searchParams.set("premium", "true");
+      if (country) url.searchParams.set("country_code", country);
+      return url.toString();
+    }
   }
-
-  const url = new URL("https://api.scraperapi.com/");
-  url.searchParams.set("api_key", config.apiKey);
-  url.searchParams.set("url", target);
-  if (country) url.searchParams.set("country_code", country);
-  return url.toString();
 }
 
 /**

@@ -480,7 +480,7 @@ describe("POST /api/aura/scrape", () => {
     // A datacenter-IP challenge page: HTTP 200, but no JSON-LD Product/og:image.
     const BLOCKED_PAGE =
       "<!doctype html><html><head><title>Access Denied</title></head><body>Reference #18.abcd</body></html>";
-    const isProxyCall = (url: string) => url.includes("api.scraperapi.com");
+    const isProxyCall = (url: string) => url.includes("api.scrapingant.com");
     const isDirectMyntra = (url: string) => url.startsWith("https://www.myntra.com");
 
     beforeEach(() => {
@@ -508,7 +508,7 @@ describe("POST /api/aura/scrape", () => {
       // The proxy was consulted, geo-targeted to India, carrying the target URL.
       const proxied = fetchCalls.find((call) => isProxyCall(call.url));
       expect(proxied).toBeDefined();
-      expect(proxied!.url).toContain("country_code=in");
+      expect(proxied!.url).toContain("proxy_country=in");
       expect(decodeURIComponent(proxied!.url)).toContain(MYNTRA_URL);
     });
 

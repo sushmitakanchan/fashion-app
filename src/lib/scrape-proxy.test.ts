@@ -15,9 +15,9 @@ describe("readScrapeProxy", () => {
     expect(readScrapeProxy({ SCRAPE_PROXY_PROVIDER: "scrapingbee" })).toBeNull();
   });
 
-  it("defaults the provider to scraperapi when only a key is set", () => {
+  it("defaults the provider to scrapingant when only a key is set", () => {
     expect(readScrapeProxy({ SCRAPE_PROXY_API_KEY: "k" })).toEqual({
-      provider: "scraperapi",
+      provider: "scrapingant",
       apiKey: "k",
       country: undefined,
     });
@@ -37,14 +37,32 @@ describe("readScrapeProxy", () => {
     expect(
       readScrapeProxy({ SCRAPE_PROXY_API_KEY: "k", SCRAPE_PROXY_PROVIDER: "nope" })
         ?.provider,
-    ).toBe("scraperapi");
+    ).toBe("scrapingant");
   });
 });
 
 describe("scrapeProxyRequestUrl", () => {
   const key = "secret-key";
 
-  it("builds a scraperapi request carrying the target and geo", () => {
+  it("builds a scrapingant residential request with the target and geo", () => {
+    const config: ScrapeProxyConfig = {
+      provider: "scrapingant",
+      apiKey: key,
+      country: "in",
+    };
+    const url = new URL(
+      scrapeProxyRequestUrl(config, "https://www.myntra.com/x/123/buy"),
+    );
+
+    expect(url.origin + url.pathname).toBe("https://api.scrapingant.com/v2/general");
+    expect(url.searchParams.get("x-api-key")).toBe(key);
+    expect(url.searchParams.get("url")).toBe("https://www.myntra.com/x/123/buy");
+    expect(url.searchParams.get("proxy_type")).toBe("residential");
+    expect(url.searchParams.get("browser")).toBe("false");
+    expect(url.searchParams.get("proxy_country")).toBe("in");
+  });
+
+  it("builds a scraperapi request on residential proxies with geo", () => {
     const config: ScrapeProxyConfig = { provider: "scraperapi", apiKey: key, country: "in" };
     const url = new URL(
       scrapeProxyRequestUrl(config, "https://www.myntra.com/x/123/buy"),
@@ -53,15 +71,17 @@ describe("scrapeProxyRequestUrl", () => {
     expect(url.origin + url.pathname).toBe("https://api.scraperapi.com/");
     expect(url.searchParams.get("api_key")).toBe(key);
     expect(url.searchParams.get("url")).toBe("https://www.myntra.com/x/123/buy");
+    expect(url.searchParams.get("premium")).toBe("true");
     expect(url.searchParams.get("country_code")).toBe("in");
   });
 
-  it("builds a scrapingbee request with JS rendering off", () => {
+  it("builds a scrapingbee request on residential proxies with JS off", () => {
     const config: ScrapeProxyConfig = { provider: "scrapingbee", apiKey: key };
     const url = new URL(scrapeProxyRequestUrl(config, "https://shop.example/p/1"));
 
     expect(url.origin + url.pathname).toBe("https://app.scrapingbee.com/api/v1/");
     expect(url.searchParams.get("render_js")).toBe("false");
+    expect(url.searchParams.get("premium_proxy")).toBe("true");
     expect(url.searchParams.get("url")).toBe("https://shop.example/p/1");
   });
 

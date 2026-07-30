@@ -48,6 +48,11 @@ const envSchema = z.object({
   SCRAPE_PROXY_PROVIDER: z.string().optional(),
   SCRAPE_PROXY_API_KEY: z.string().optional(),
   SCRAPE_PROXY_COUNTRY: z.string().optional(),
+
+  // Shared secret Vercel Cron sends as a Bearer token when invoking the
+  // wardrobe-expiry route. Blank disables the scheduled endpoint (it refuses
+  // every caller) rather than leaving it open.
+  CRON_SECRET: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

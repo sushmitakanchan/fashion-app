@@ -22,6 +22,7 @@ export const SERVICE_LABELS = {
   cloudinary: "Cloudinary",
   ai: "AI provider",
   auraPortrait: "AURA portrait generation",
+  scrapeProxy: "Scrape proxy",
 } as const;
 
 export type ServiceId = keyof typeof SERVICE_LABELS;
@@ -62,6 +63,9 @@ const CREDENTIALS: Record<Exclude<ServiceId, "ai">, Credential[]> = {
   // Portrait generation deliberately does not follow AI_PROVIDER: v1 AURA
   // portraits always use OpenAI's image API, including when text uses Anthropic.
   auraPortrait: [{ envVars: ["OPENAI_API_KEY"] }],
+  // Optional link-scrape proxy. The API key alone enables it; the provider is
+  // an optional override that defaults in @/lib/scrape-proxy.
+  scrapeProxy: [{ envVars: ["SCRAPE_PROXY_API_KEY"] }],
 };
 
 export type EnvRecord = Record<string, string | undefined>;

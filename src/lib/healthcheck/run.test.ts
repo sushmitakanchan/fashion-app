@@ -11,6 +11,7 @@ const configured: Record<string, string | undefined> = {
   CLOUDINARY_API_KEY: "key",
   CLOUDINARY_API_SECRET: "secret",
   OPENAI_API_KEY: "sk-x",
+  SCRAPE_PROXY_API_KEY: "sp-x",
 };
 
 /** Records which services were probed, so tests can assert on the calls made. */
@@ -29,6 +30,7 @@ function spyProbes(
     cloudinary: make("cloudinary"),
     ai: make("ai"),
     auraPortrait: make("auraPortrait"),
+    scrapeProxy: make("scrapeProxy"),
   };
 
   return { probes, probed };
@@ -64,6 +66,7 @@ describe("runHealthcheck", () => {
       "clerk",
       "cloudinary",
       "database",
+      "scrapeProxy",
     ]);
     expect(exitCodeFor(outcomes)).toBe(0);
   });
@@ -139,9 +142,10 @@ describe("runHealthcheck", () => {
       "clerk",
       "cloudinary",
       "database",
+      "scrapeProxy",
     ]);
     expect(outcomes.filter((outcome) => outcome.status === "ok")).toHaveLength(
-      4,
+      5,
     );
   });
 

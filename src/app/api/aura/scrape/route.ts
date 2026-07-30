@@ -3,7 +3,13 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { z } from "zod";
 
 import { admitGoogleAuraIdentity } from "@/lib/aura-identity";
+import { fetchViaProxy, readScrapeProxy } from "@/lib/scrape-proxy";
 import { ACCEPTED_PHOTO_TYPES, MAX_PHOTO_BYTES } from "@/lib/validations";
+
+// The proxy fallback (below) does a full extra page fetch through a third-party
+// egress, so give the handler headroom beyond the default function timeout. It
+// still returns the instant the work is done — this is only a ceiling.
+export const maxDuration = 60;
 
 type Failure = {
   code: string;
@@ -62,6 +68,10 @@ const IMAGE_HEADERS: Record<string, string> = {
 // Fail fast and retryably instead.
 const SCRAPE_TIMEOUT_MS = 12_000;
 
+// The proxy hop fetches the page on our behalf, so it is slower than a direct
+// request and gets a longer ceiling — kept well under `maxDuration` above.
+const PROXY_TIMEOUT_MS = 25_000;
+
 /** True for the `AbortSignal.timeout` rejection, so its copy can differ. */
 function isTimeout(error: unknown): boolean {
   return error instanceof DOMException && error.name === "TimeoutError";
@@ -83,6 +93,13 @@ type SourceRule = {
   // the second fetch hop — see the image-resolution guard in `POST`.
   imageHosts: readonly string[];
   extract: (html: string) => Extraction;
+  // When a direct fetch yields no usable image (e.g. a datacenter IP is served
+  // a challenge page), retry this source's URL through the configured scraping
+  // proxy. Sources that scrape fine directly (Pinterest) leave this off and
+  // never touch the proxy — so the fallback only spends credits where it must.
+  proxyFallback?: boolean;
+  // ISO country for the proxy egress IP when the fallback fires (Myntra → "in").
+  proxyCountry?: string;
   // Gates a recognised source: when true the route answers "coming soon"
   // instead of scraping, while its extractor stays wired for the day it goes
   // live. Unused now that Myntra is live (browser headers unblocked it), but
@@ -129,6 +146,11 @@ const SOURCE_RULES: SourceRule[] = [
         name: product.name ?? readMeta(html, "og:title"),
       };
     },
+    // Akamai serves Myntra's product HTML to residential IPs but a challenge
+    // page to datacenter IPs like Vercel's, so a direct fetch from production
+    // gets nothing usable — recover it through the proxy, geo-targeted to India.
+    proxyFallback: true,
+    proxyCountry: "in",
   },
 ];
 
@@ -241,60 +263,45 @@ export async function POST(req: Request) {
     });
   }
 
-  // Hop 1: the source page. A transport error or non-OK response is retryable.
-  let html: string;
-  try {
-    const pageResponse = await fetch(target.href, {
-      headers: PAGE_HEADERS,
-      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
-    });
-    if (!pageResponse.ok) {
-      return fetchFailed("We couldn't reach that link. Please try again.");
+  // Hop 1: the source page. A direct fetch first — Pinterest and a well-reputed
+  // IP get the real HTML this way. If that yields no usable garment image and
+  // the source opts in, retry the SAME allowlisted URL through the scraping
+  // proxy: some retailers (Myntra behind Akamai) serve a challenge page to
+  // datacenter IPs like Vercel's, and the proxy's residential egress gets the
+  // real product page. Only the pre-validated `target.href` is ever handed to
+  // the proxy, so the allowlist still bounds every outbound request.
+  const direct = await fetchPageDirect(target);
+  let pageHtml = direct.html;
+  let extracted: Extraction = pageHtml
+    ? rule.extract(pageHtml)
+    : { image: null, name: null };
+  let imageHref = resolveImageHref(extracted.image, rule, target);
+
+  if (!imageHref && rule.proxyFallback) {
+    const proxy = readScrapeProxy(process.env);
+    if (proxy) {
+      const proxied = await fetchViaProxy(target.href, proxy, {
+        country: rule.proxyCountry,
+        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
+      });
+      if (proxied) {
+        pageHtml = proxied;
+        extracted = rule.extract(proxied);
+        imageHref = resolveImageHref(extracted.image, rule, target);
+      }
     }
-    html = await pageResponse.text();
-  } catch (error) {
-    return fetchFailed(
-      isTimeout(error)
-        ? "That link took too long to respond. Please try again."
-        : "We couldn't reach that link. Please try again.",
-    );
   }
 
-  const extracted = rule.extract(html);
-  let imageHref: string | null = null;
-  if (extracted.image) {
-    try {
-      // Resolve against the page URL so protocol-relative (`//host/...`) and
-      // relative image references become absolute.
-      const resolved = new URL(extracted.image, target);
-      // The image reference is page-controlled markup (og:image / JSON-LD), so a
-      // crafted value could otherwise steer this second fetch at an arbitrary
-      // target. Two guards keep it on rails before any network call:
-      //   1. https-only — rejects file://, http:// metadata endpoints, gopher://
-      //      and every other non-https scheme outright.
-      //   2. a per-source CDN host allowlist — the image must live on the known
-      //      CDN for the matched source. This is the SSRF backstop: an https ref
-      //      aimed at a private, loopback, or link-local address
-      //      (https://169.254.169.254/, https://127.0.0.1, https://[::1], an
-      //      internal hostname, …) is never one of those public CDN hosts, so it
-      //      is refused here rather than fetched. Because the allowlisted hosts
-      //      sit on domains an attacker doesn't control, their DNS can't be
-      //      repointed at an internal IP — the check is DNS-rebinding-proof
-      //      without our resolving or pinning an address ourselves.
-      // `URL.hostname` strips any userinfo and port, so a masking trick like
-      // `https://i.pinimg.com@169.254.169.254/` resolves to the 169.254 host and
-      // is correctly rejected.
-      if (
-        resolved.protocol === "https:" &&
-        rule.imageHosts.includes(resolved.hostname)
-      ) {
-        imageHref = resolved.href;
-      }
-    } catch {
-      imageHref = null;
-    }
-  }
   if (!imageHref) {
+    // No HTML from either path is a reachability failure (retryable); HTML that
+    // simply carried no usable image is not.
+    if (pageHtml === null) {
+      return fetchFailed(
+        direct.timedOut
+          ? "That link took too long to respond. Please try again."
+          : "We couldn't reach that link. Please try again.",
+      );
+    }
     return noImageFound("We couldn't find an image on that page.");
   }
 
@@ -376,6 +383,69 @@ function imageTooLarge() {
     error: "That image is larger than 15 MiB.",
     retryable: false,
   });
+}
+
+// --- Page fetch + image resolution ------------------------------------------
+
+/**
+ * One direct GET of the source page. `html` is null on a non-OK response or a
+ * transport error — the caller decides whether to try the proxy or fail —
+ * while `timedOut` preserves the distinct timeout copy for a direct-only source.
+ */
+async function fetchPageDirect(
+  target: URL,
+): Promise<{ html: string | null; timedOut: boolean }> {
+  try {
+    const response = await fetch(target.href, {
+      headers: PAGE_HEADERS,
+      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
+    });
+    if (!response.ok) return { html: null, timedOut: false };
+    return { html: await response.text(), timedOut: false };
+  } catch (error) {
+    return { html: null, timedOut: isTimeout(error) };
+  }
+}
+
+/**
+ * Resolve a page-controlled image reference to a safe, fetchable URL, or null.
+ *
+ * Resolves against the page URL so protocol-relative (`//host/...`) and relative
+ * references become absolute. The reference is page-controlled markup (og:image
+ * / JSON-LD), so a crafted value could otherwise steer the image fetch at an
+ * arbitrary target. Two guards keep it on rails before any network call:
+ *   1. https-only — rejects file://, http:// metadata endpoints, gopher:// and
+ *      every other non-https scheme outright.
+ *   2. a per-source CDN host allowlist — the image must live on the known CDN
+ *      for the matched source. This is the SSRF backstop: an https ref aimed at
+ *      a private, loopback, or link-local address (https://169.254.169.254/,
+ *      https://127.0.0.1, https://[::1], an internal hostname, …) is never one
+ *      of those public CDN hosts, so it is refused here rather than fetched.
+ *      Because the allowlisted hosts sit on domains an attacker doesn't control,
+ *      their DNS can't be repointed at an internal IP — the check is
+ *      DNS-rebinding-proof without our resolving or pinning an address ourselves.
+ * `URL.hostname` strips any userinfo and port, so a masking trick like
+ * `https://i.pinimg.com@169.254.169.254/` resolves to the 169.254 host and is
+ * correctly rejected.
+ */
+function resolveImageHref(
+  image: string | null,
+  rule: SourceRule,
+  base: URL,
+): string | null {
+  if (!image) return null;
+  try {
+    const resolved = new URL(image, base);
+    if (
+      resolved.protocol === "https:" &&
+      rule.imageHosts.includes(resolved.hostname)
+    ) {
+      return resolved.href;
+    }
+  } catch {
+    // Malformed reference — treated as no image.
+  }
+  return null;
 }
 
 // --- Extraction helpers (exercised through the route, never mocked) ---------

@@ -40,6 +40,15 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
 
+  // Scrape proxy (optional). Routes a blocked page fetch — e.g. Myntra behind
+  // Akamai, which serves Vercel's datacenter IP a challenge page — through a
+  // residential/rotating egress. Blank SCRAPE_PROXY_API_KEY = disabled (direct
+  // fetch only). Provider is validated in @/lib/scrape-proxy, not here, so a
+  // typo degrades to direct-only rather than failing the whole app at boot.
+  SCRAPE_PROXY_PROVIDER: z.string().optional(),
+  SCRAPE_PROXY_API_KEY: z.string().optional(),
+  SCRAPE_PROXY_COUNTRY: z.string().optional(),
+
   // Shared secret Vercel Cron sends as a Bearer token when invoking the
   // wardrobe-expiry route. Blank disables the scheduled endpoint (it refuses
   // every caller) rather than leaving it open.

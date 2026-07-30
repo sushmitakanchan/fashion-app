@@ -1,5 +1,6 @@
 import { PROVIDER_API_KEY_ENV, type AiProvider } from "@/lib/ai/provider";
 import { resolveAuraPortraitModel } from "@/lib/aura-portrait-config";
+import { readScrapeProxy, type ScrapeProxyProvider } from "@/lib/scrape-proxy";
 
 import { selectAiProvider, type EnvRecord } from "./config";
 import type { Probes } from "./run";
@@ -172,6 +173,35 @@ async function probeAuraPortrait(env: EnvRecord): Promise<string> {
   );
 }
 
+/**
+ * A read-only key check per provider. ScraperAPI/ScrapingBee expose a free
+ * usage endpoint that spends no scrape credit; ScrapingAnt has none, so it gets
+ * the cheapest possible liveness scrape — a datacenter GET of example.com, one
+ * credit of its 10k/month free tier, only when the healthcheck actually runs.
+ */
+const SCRAPE_PROXY_USAGE: Record<ScrapeProxyProvider, (key: string) => string> = {
+  scrapingant: (key) =>
+    `https://api.scrapingant.com/v2/general?url=${encodeURIComponent("https://example.com")}&x-api-key=${encodeURIComponent(key)}&browser=false`,
+  scraperapi: (key) =>
+    `https://api.scraperapi.com/account?api_key=${encodeURIComponent(key)}`,
+  scrapingbee: (key) =>
+    `https://app.scrapingbee.com/api/v1/usage?api_key=${encodeURIComponent(key)}`,
+};
+
+async function probeScrapeProxy(env: EnvRecord): Promise<string> {
+  const config = readScrapeProxy(env);
+  if (!config) {
+    // Unreachable via `runHealthcheck`, which only probes configured services.
+    throw new Error("no scrape proxy is configured");
+  }
+
+  await probeFetch(SCRAPE_PROXY_USAGE[config.provider](config.apiKey), {
+    headers: {},
+  });
+
+  return `${config.provider} reachable`;
+}
+
 export function createProbes(env: EnvRecord): Probes {
   return {
     clerk: () => probeClerk(env),
@@ -179,5 +209,6 @@ export function createProbes(env: EnvRecord): Probes {
     cloudinary: () => probeCloudinary(),
     ai: () => probeAi(env),
     auraPortrait: () => probeAuraPortrait(env),
+    scrapeProxy: () => probeScrapeProxy(env),
   };
 }

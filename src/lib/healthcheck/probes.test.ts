@@ -71,3 +71,41 @@ describe("AURA portrait image-capability probe", () => {
     ).rejects.toThrow("does not list gpt-image-2 as available");
   });
 });
+
+describe("scrape-proxy probe", () => {
+  it("checks the default provider's key with the key", async () => {
+    const detail = await createProbes({
+      SCRAPE_PROXY_API_KEY: "sp-test",
+    }).scrapeProxy();
+
+    // Default provider is scrapingant; the probe reports it reachable.
+    expect(detail).toContain("scrapingant");
+    expect(fetchStub).toHaveBeenCalledWith(
+      "https://api.scrapingant.com/v2/general?url=https%3A%2F%2Fexample.com&x-api-key=sp-test&browser=false",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("targets the selected provider's usage endpoint", async () => {
+    await createProbes({
+      SCRAPE_PROXY_API_KEY: "sp-test",
+      SCRAPE_PROXY_PROVIDER: "scrapingbee",
+    }).scrapeProxy();
+
+    expect(fetchStub).toHaveBeenCalledWith(
+      "https://app.scrapingbee.com/api/v1/usage?api_key=sp-test",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("fails actionably when the key is rejected", async () => {
+    fetchStub = mock(
+      async () => new Response("nope", { status: 401, statusText: "Unauthorized" }),
+    );
+    globalThis.fetch = fetchStub as unknown as typeof fetch;
+
+    await expect(
+      createProbes({ SCRAPE_PROXY_API_KEY: "bad" }).scrapeProxy(),
+    ).rejects.toThrow("401");
+  });
+});

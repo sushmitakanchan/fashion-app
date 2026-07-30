@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "bun test",
     "healthcheck": "bun run scripts/healthcheck.ts",
+    "wardrobe:expire": "bun run scripts/expire-wardrobe-media.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",

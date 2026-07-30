@@ -47,6 +47,7 @@ export type ReviewFields = {
   name: string;
   color: string;
   brand: string;
+  occasion: string;
 };
 
 export type PendingReviewItem = {
@@ -94,6 +95,7 @@ function toReviewItem(outcome: ImportOutcome): ReviewItem {
       name: outcome.suggestedName ?? "",
       color: "",
       brand: "",
+      occasion: "",
     },
   };
 }
@@ -132,14 +134,15 @@ export type ReviewSuggestion = {
   category: WardrobeItemCategoryValue;
   color: string | null;
   brand: string | null;
+  occasion: string | null;
 };
 
 /**
  * Pre-fill a pending item's category, colour, and brand from an AI suggestion.
  * The values are only a starting point — the item stays fully editable, exactly
- * like a manual entry — and a null colour/brand becomes an empty field rather
- * than an invented value. The name is never touched; analysis doesn't name a
- * piece. Failed or unknown ids are no-ops.
+ * like a manual entry — and a null colour/brand/occasion becomes an empty field
+ * rather than an invented value. The name is never touched; analysis doesn't name
+ * a piece. Failed or unknown ids are no-ops.
  */
 export function applySuggestion(
   state: ReviewState,
@@ -150,6 +153,7 @@ export function applySuggestion(
     category: suggestion.category,
     color: suggestion.color ?? "",
     brand: suggestion.brand ?? "",
+    occasion: suggestion.occasion ?? "",
   });
 }
 
@@ -239,11 +243,13 @@ export function confirmedItemsForSave(state: ReviewState): WardrobeSaveItemInput
   for (const item of state.items) {
     if (!isItemComplete(item)) continue;
     const brand = item.fields.brand.trim();
+    const occasion = item.fields.occasion.trim();
     items.push({
       category: item.fields.category as WardrobeItemCategoryValue,
       name: item.fields.name.trim(),
       color: item.fields.color.trim(),
       ...(brand.length > 0 ? { brand } : {}),
+      ...(occasion.length > 0 ? { occasion } : {}),
       originalMediaId: item.media.originalMediaId,
       originalMediaFormat: item.media.originalMediaFormat,
       normalizedMediaId: item.media.normalizedMediaId,

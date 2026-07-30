@@ -59,6 +59,9 @@ model WardrobeItem {
   name     String
   color    String
   brand    String?
+  /// AI-suggested, owner-editable occasion to wear this piece (e.g. "casual",
+  /// "office", "dinner date"). Optional, like `brand`; never gates a save.
+  occasion String?
   /// Separate private media objects. The format is kept because Cloudinary's
   /// expiring private-download URL requires the stored asset format.
   originalMediaId         String

@@ -9,6 +9,7 @@ type Row = {
   name: string;
   color: string;
   brand: string | null;
+  occasion: string | null;
   originalMediaId: string;
   originalMediaFormat: string;
   normalizedMediaId: string;
@@ -114,6 +115,7 @@ beforeEach(() => {
       name: "Linen shirt",
       color: "Ivory",
       brand: "AURA",
+      occasion: "office",
       originalMediaId: "fashion-app/wardrobe/clerk_user_1/item_1/original",
       originalMediaFormat: "jpg",
       normalizedMediaId: "fashion-app/wardrobe/clerk_user_1/item_1/normalized",
@@ -129,6 +131,7 @@ beforeEach(() => {
       name: "Canvas tote",
       color: "Tan",
       brand: null,
+      occasion: null,
       originalMediaId: "fashion-app/wardrobe/clerk_user_2/other_item/original",
       originalMediaFormat: "jpg",
       normalizedMediaId: "fashion-app/wardrobe/clerk_user_2/other_item/normalized",
@@ -147,11 +150,12 @@ describe("Wardrobe Item management", () => {
       name: "Leather boots",
       color: "Brown",
       brand: "",
+      occasion: "casual",
     });
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      item: { id: "item_1", category: "shoes", name: "Leather boots", color: "Brown", brand: null },
+      item: { id: "item_1", category: "shoes", name: "Leather boots", color: "Brown", brand: null, occasion: "casual" },
     });
   });
 

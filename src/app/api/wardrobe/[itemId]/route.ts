@@ -13,6 +13,7 @@ const itemSelect = {
   name: true,
   color: true,
   brand: true,
+  occasion: true,
   deletedAt: true,
   recoveryExpiresAt: true,
 } as const;

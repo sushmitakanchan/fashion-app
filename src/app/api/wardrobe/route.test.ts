@@ -16,6 +16,7 @@ type Row = {
   category: "tops" | "bottoms" | "bags" | "shoes" | "accessories";
   color: string;
   brand: string | null;
+  occasion: string | null;
   originalMediaId: string;
   originalMediaFormat: string;
   normalizedMediaId: string;
@@ -84,6 +85,7 @@ const wardrobeItemStub = {
             category: row.category,
             color: row.color,
             brand: row.brand,
+            occasion: row.occasion,
             normalizedMediaId: row.normalizedMediaId,
             createdAt: row.createdAt,
           })),
@@ -112,6 +114,7 @@ const wardrobeItemStub = {
           category: row.category,
           color: row.color,
           brand: row.brand,
+          occasion: row.occasion,
           normalizedMediaId: row.normalizedMediaId,
           createdAt: row.createdAt,
         }));
@@ -188,6 +191,7 @@ beforeEach(() => {
       category: "tops",
       color: "Ivory",
       brand: "AURA",
+      occasion: "office",
       originalMediaId: "fashion-app/wardrobe/clerk_user_1/top_1/original",
       originalMediaFormat: "jpg",
       normalizedMediaId: "fashion-app/wardrobe/clerk_user_1/top_1/normalized",
@@ -202,6 +206,7 @@ beforeEach(() => {
       category: "bags",
       color: "Tan",
       brand: null,
+      occasion: null,
       originalMediaId: "fashion-app/wardrobe/clerk_user_2/bag_1/original",
       originalMediaFormat: "jpg",
       normalizedMediaId: "fashion-app/wardrobe/clerk_user_2/bag_1/normalized",
@@ -216,6 +221,7 @@ beforeEach(() => {
       category: "tops",
       color: "Black",
       brand: null,
+      occasion: null,
       originalMediaId: "fashion-app/wardrobe/clerk_user_1/deleted_1/original",
       originalMediaFormat: "jpg",
       normalizedMediaId: "fashion-app/wardrobe/clerk_user_1/deleted_1/normalized",
@@ -239,6 +245,7 @@ describe("GET /api/wardrobe", () => {
           category: "tops",
           color: "Ivory",
           brand: "AURA",
+          occasion: "office",
           normalizedMediaId: "fashion-app/wardrobe/clerk_user_1/top_1/normalized",
           createdAt: "2026-07-28T00:00:00.000Z",
         },
@@ -314,7 +321,7 @@ describe("POST /api/wardrobe", () => {
   it("persists only owner-confirmed attributes and lists them immediately", async () => {
     const response = await post({
       items: [
-        saveItem("new1", { name: "Wool coat", category: "tops", color: "Camel", brand: "AURA" }),
+        saveItem("new1", { name: "Wool coat", category: "tops", color: "Camel", brand: "AURA", occasion: "office" }),
         saveItem("new2", { name: "Leather boots", category: "shoes", color: "Brown" }),
       ],
     });
@@ -322,8 +329,9 @@ describe("POST /api/wardrobe", () => {
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.items).toHaveLength(2);
-    expect(body.items[0]).toMatchObject({ name: "Wool coat", category: "tops", brand: "AURA" });
-    expect(body.items[1]).toMatchObject({ name: "Leather boots", category: "shoes", brand: null });
+    expect(body.items[0]).toMatchObject({ name: "Wool coat", category: "tops", brand: "AURA", occasion: "office" });
+    // An unset occasion persists as null, exactly like brand.
+    expect(body.items[1]).toMatchObject({ name: "Leather boots", category: "shoes", brand: null, occasion: null });
 
     // Immediately available through the active wardrobe listing.
     const listed = await (await get()).json();

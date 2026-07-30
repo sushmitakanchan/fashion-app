@@ -315,6 +315,33 @@ const wardrobeSaveItem = z.object({
   normalizedMediaFormat: wardrobeMediaFormat,
 });
 
+/** Confirmed attributes an owner may change after an item has been saved. A
+ * PATCH may change one or more fields, but never accepts an empty update. */
+export const wardrobeUpdateSchema = z
+  .object({
+    category: wardrobeItemCategorySchema.optional(),
+    name: wardrobeItemName.optional(),
+    color: wardrobeItemColor.optional(),
+    // Unlike a save, an explicit blank update means "clear the saved brand";
+    // an omitted key means leave it unchanged.
+    brand: z
+      .string()
+      .trim()
+      .max(60, "That brand is a little too long")
+      .transform((value) => (value.length > 0 ? value : null))
+      .optional(),
+  })
+  .refine(
+    (value) =>
+      value.category !== undefined ||
+      value.name !== undefined ||
+      value.color !== undefined ||
+      value.brand !== undefined,
+    { message: "Change at least one attribute" },
+  );
+
+export type WardrobeUpdateInput = z.infer<typeof wardrobeUpdateSchema>;
+
 /** What crosses the wire to `POST /api/wardrobe` (batch save). */
 export const wardrobeSaveSchema = z.object({
   items: z

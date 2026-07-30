@@ -43,10 +43,27 @@ export type Link = {
   site: GarmentSite;
 };
 
-export type Attachment = Upload | Link;
+/** A source drawn from the participant's own private wardrobe. Unlike an upload
+ * or link it carries no local bytes — only the item's id (what the try-on
+ * request sends, so the server re-authorizes and resolves its normalized media),
+ * its saved name, and a short-lived signed URL used for the thumbnail and, if
+ * the resulting look is saved, re-encoded once at save time. */
+export type WardrobeSource = {
+  kind: "wardrobe";
+  id: string;
+  wardrobeItemId: string;
+  name: string;
+  previewUrl: string;
+};
 
-/** The provenance-blind shape a garment enters the try-on request as. */
-export type TryOnGarment = { image: string; name: string };
+export type Attachment = Upload | Link | WardrobeSource;
+
+/** The shape a source enters the try-on request as: a provenance-blind image
+ * garment, or a wardrobe item referenced by id (the server resolves its media
+ * and name). */
+export type TryOnGarment =
+  | { image: string; name: string }
+  | { wardrobeItemId: string };
 
 /** The per-source shape a garment is saved as. Provenance is carried but not as
  * an explicit discriminator — `url`/`site` are present only on the link arm and
@@ -62,7 +79,11 @@ export type SaveSource =
  * accepts, so a caller can downscale either arm without knowing the `kind`.
  */
 export function rawImageOf(source: Attachment): File | string {
-  return source.kind === "link" ? source.scrapedImage : source.file;
+  if (source.kind === "upload") return source.file;
+  // A link carries its scraped data URI; a wardrobe source carries a signed
+  // delivery URL. Both are strings {@link downscalePhoto} re-encodes by fetching,
+  // so a save re-derives the wardrobe item's bytes from its authorized rendition.
+  return source.kind === "link" ? source.scrapedImage : source.previewUrl;
 }
 
 /**
@@ -84,15 +105,18 @@ export function linkGarmentName(
 }
 
 /**
- * Project a garment down to the try-on request shape. `image` is the already
- * downscaled data URI; both arms collapse to `{ image, name }`, so no provenance
- * reaches the try-on route.
+ * Project a garment down to the try-on request shape. A wardrobe source sends
+ * only `{ wardrobeItemId }` — it carries no local bytes, so no `image` is passed
+ * or needed — and the server re-authorizes the item and resolves its own
+ * normalized media and saved name. An upload or link collapses to a
+ * provenance-free `{ image, name }`, where `image` is its already-downscaled
+ * data URI.
  */
-export function toTryOnGarment(
-  source: Attachment,
-  image: string,
-): TryOnGarment {
-  return { image, name: source.name };
+export function toTryOnGarment(source: WardrobeSource): TryOnGarment;
+export function toTryOnGarment(source: Upload | Link, image: string): TryOnGarment;
+export function toTryOnGarment(source: Attachment, image?: string): TryOnGarment {
+  if (source.kind === "wardrobe") return { wardrobeItemId: source.wardrobeItemId };
+  return { image: image ?? "", name: source.name };
 }
 
 /**
@@ -105,6 +129,8 @@ export function toSaveSource(source: Attachment, image: string): SaveSource {
   if (source.kind === "link") {
     return { image, name: source.name, url: source.sourceUrl, site: source.site };
   }
+  // A wardrobe source is saved as a plain image source: it is neither an
+  // external link nor does it retain a wardrobe reference in the Style Book.
   return { image, name: source.name };
 }
 

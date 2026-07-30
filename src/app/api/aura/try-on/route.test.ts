@@ -26,6 +26,26 @@ type GenerateStub = (request: {
 type UploadStub = (source: string, options: unknown) => Promise<{ secure_url: string }>;
 type UpdateStub = (args: unknown) => Promise<Profile>;
 
+type WardrobeRow = {
+  id: string;
+  ownerClerkId: string;
+  name: string;
+  normalizedMediaId: string;
+  normalizedMediaFormat: string;
+  deletedAt: Date | null;
+};
+type WardrobeFindManyArgs = {
+  where: {
+    id: { in: string[] };
+    user: { clerkId: string };
+    deletedAt: null;
+  };
+};
+type WardrobeGarmentStub = (
+  normalizedMediaId: string,
+  normalizedMediaFormat: string,
+) => Promise<string>;
+
 let live = true;
 let userId: string | null = "clerk_user_1";
 let clerkUser: {
@@ -46,6 +66,8 @@ let findUser: ReturnType<typeof mock<FindUserStub>>;
 let generate: ReturnType<typeof mock<GenerateStub>>;
 let upload: ReturnType<typeof mock<UploadStub>>;
 let update: ReturnType<typeof mock<UpdateStub>>;
+let wardrobeRows: WardrobeRow[] = [];
+let wardrobeGarment: ReturnType<typeof mock<WardrobeGarmentStub>>;
 
 mock.module("@/lib/aura-config", () => ({
   AURA_CONFIGURATION_UNAVAILABLE_MESSAGE:
@@ -78,10 +100,33 @@ mock.module("@/lib/cloudinary", () => ({
   },
 }));
 
+mock.module("@/lib/wardrobe-try-on", () => ({
+  wardrobeGarmentDataUri: (id: string, format: string) => wardrobeGarment(id, format),
+}));
+
 mock.module("@/lib/prisma", () => ({
   getPrisma: () => ({
     user: { findUnique: () => findUser() },
     auraProfile: { update: (args: unknown) => update(args) },
+    wardrobeItem: {
+      // A store-backed stub, so ownership + active-lifecycle admission is
+      // observable from the rows the query is allowed to return — the `in` set
+      // intersected with the caller's own active items.
+      findMany: async ({ where }: WardrobeFindManyArgs) =>
+        wardrobeRows
+          .filter(
+            (row) =>
+              where.id.in.includes(row.id) &&
+              row.ownerClerkId === where.user.clerkId &&
+              row.deletedAt === null,
+          )
+          .map((row) => ({
+            id: row.id,
+            name: row.name,
+            normalizedMediaId: row.normalizedMediaId,
+            normalizedMediaFormat: row.normalizedMediaFormat,
+          })),
+    },
   }),
 }));
 
@@ -123,6 +168,35 @@ beforeEach(() => {
   generate = mock(async () => "look-bytes");
   upload = mock(async () => ({ secure_url: "https://res.cloudinary.test/nope.jpg" }));
   update = mock(async () => profile!);
+  wardrobeRows = [
+    {
+      id: "top_1",
+      ownerClerkId: "clerk_user_1",
+      name: "Linen shirt",
+      normalizedMediaId: "media_top_1",
+      normalizedMediaFormat: "jpg",
+      deletedAt: null,
+    },
+    {
+      id: "deleted_1",
+      ownerClerkId: "clerk_user_1",
+      name: "Archived jacket",
+      normalizedMediaId: "media_deleted_1",
+      normalizedMediaFormat: "jpg",
+      deletedAt: new Date("2026-07-20T00:00:00Z"),
+    },
+    {
+      id: "foreign_1",
+      ownerClerkId: "clerk_user_2",
+      name: "Someone else's coat",
+      normalizedMediaId: "media_foreign_1",
+      normalizedMediaFormat: "jpg",
+      deletedAt: null,
+    },
+  ];
+  wardrobeGarment = mock(
+    async (id: string) => `data:image/jpeg;base64,wardrobe-${id}`,
+  );
 });
 
 describe("POST /api/aura/try-on", () => {
@@ -301,5 +375,106 @@ describe("POST /api/aura/try-on", () => {
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({ code: "try-on-temporarily-unavailable", retryable: true }),
     );
+  });
+
+  it("admits the caller's own active wardrobe item, resolving its media and saved name", async () => {
+    const response = await post({ garments: [{ wardrobeItemId: "top_1" }] });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      image: "data:image/jpeg;base64,look-bytes",
+      garments: ["Linen shirt"],
+    });
+    // The authorized normalized rendition — not the raw id — reaches generation.
+    expect(wardrobeGarment).toHaveBeenCalledWith(
+      "media_top_1",
+      "jpg",
+    );
+    expect(generate).toHaveBeenCalledWith({
+      clerkId: "clerk_user_1",
+      portraitUrl: "https://res.cloudinary.test/aura/portrait.jpg",
+      garments: ["data:image/jpeg;base64,wardrobe-media_top_1"],
+    });
+    // Ephemeral: selecting a wardrobe source still persists nothing.
+    expect(upload).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("composes wardrobe and image sources together in attach order", async () => {
+    const response = await post({
+      garments: [
+        { image: GARMENT_IMAGE, name: "Blue linen shirt" },
+        { wardrobeItemId: "top_1" },
+      ],
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      image: "data:image/jpeg;base64,look-bytes",
+      garments: ["Blue linen shirt", "Linen shirt"],
+    });
+    expect(generate).toHaveBeenCalledWith({
+      clerkId: "clerk_user_1",
+      portraitUrl: "https://res.cloudinary.test/aura/portrait.jpg",
+      garments: [GARMENT_IMAGE, "data:image/jpeg;base64,wardrobe-media_top_1"],
+    });
+  });
+
+  it("rejects an unknown wardrobe id before generating", async () => {
+    const response = await post({ garments: [{ wardrobeItemId: "missing_1" }] });
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: "wardrobe-source-invalid", retryable: false }),
+    );
+    expect(wardrobeGarment).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a recoverably deleted wardrobe item", async () => {
+    const response = await post({ garments: [{ wardrobeItemId: "deleted_1" }] });
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: "wardrobe-source-invalid", retryable: false }),
+    );
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("rejects another participant's wardrobe item", async () => {
+    const response = await post({ garments: [{ wardrobeItemId: "foreign_1" }] });
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: "wardrobe-source-invalid", retryable: false }),
+    );
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("rejects the whole batch when any wardrobe source is inadmissible", async () => {
+    const response = await post({
+      garments: [{ wardrobeItemId: "top_1" }, { wardrobeItemId: "foreign_1" }],
+    });
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: "wardrobe-source-invalid", retryable: false }),
+    );
+    expect(wardrobeGarment).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("reports a retryable failure when authorized wardrobe media can't be prepared", async () => {
+    wardrobeGarment = mock(async () => {
+      throw new Error("cloudinary unreachable");
+    });
+
+    const response = await post({ garments: [{ wardrobeItemId: "top_1" }] });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ code: "wardrobe-source-unavailable", retryable: true }),
+    );
+    expect(generate).not.toHaveBeenCalled();
   });
 });

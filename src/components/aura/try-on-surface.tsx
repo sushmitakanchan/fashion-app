@@ -10,6 +10,7 @@ import {
   PaletteIcon,
   PlusIcon,
   RotateCcwIcon,
+  ShirtIcon,
   SparklesIcon,
   UploadIcon,
   UserRoundIcon,
@@ -30,6 +31,7 @@ import {
   type Link,
   type SaveSource,
   type Upload,
+  type WardrobeSource,
 } from "@/lib/aura-provenance";
 import {
   tryOnPresentation,
@@ -47,6 +49,7 @@ import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/components/ui/cta-button";
 import { Input } from "@/components/ui/input";
 import { SaveBar } from "@/components/aura/save-bar";
+import { WardrobeSourcePicker } from "@/components/aura/wardrobe-source-picker";
 import {
   AuraPortraitLoading,
   TRY_ON_CAPTIONS,
@@ -179,6 +182,9 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
   // in-flight scrape ghosts. Links and uploads share one kind-agnostic cap.
   const [slots, setSlots] = React.useState<Slot[]>([]);
   const [linkUrl, setLinkUrl] = React.useState("");
+  // The wardrobe picker is collapsed until asked for, so its owner-scoped fetch
+  // only runs when a participant actually wants to browse their saved pieces.
+  const [showWardrobe, setShowWardrobe] = React.useState(false);
   const [result, setResult] = React.useState<Result | null>(null);
   const [phase, setPhase] = React.useState<
     "idle" | "generating" | "retryable-failure" | "refused"
@@ -197,6 +203,17 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
     [slots],
   );
   const scraping = slots.some((s) => s.kind === "ghost");
+  // Which wardrobe items are already in the composer, so the picker can mark
+  // them and refuse a duplicate before it occupies a second source slot.
+  const attachedWardrobeIds = React.useMemo(
+    () =>
+      new Set(
+        slots
+          .filter((s): s is WardrobeSource => s.kind === "wardrobe")
+          .map((s) => s.wardrobeItemId),
+      ),
+    [slots],
+  );
 
   // Revoke every live upload object URL when the surface unmounts (navigation
   // away) — both the staging composer and the retained result bundle. The refs
@@ -334,6 +351,20 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
     setSlots((prev) => prev.map((slot) => (slot.id === id ? link : slot)));
   }
 
+  /** Add a piece from the participant's own wardrobe. The cap is kind-agnostic —
+   * a wardrobe item occupies a slot like an upload or link — and a duplicate is
+   * refused so the same item can't fill two slots. The server re-authorizes the
+   * id at generation time regardless. */
+  function addWardrobeSource(source: WardrobeSource) {
+    if (isGenerating) return;
+    if (slots.length >= MAX_TRY_ON_GARMENTS) {
+      capReachedToast();
+      return;
+    }
+    if (attachedWardrobeIds.has(source.wardrobeItemId)) return;
+    setSlots((prev) => [...prev, source]);
+  }
+
   function removeAttachment(id: string) {
     setSlots((prev) => {
       const target = prev.find((item) => item.id === id);
@@ -362,8 +393,15 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
 
     let garments: AuraTryOnInput["garments"];
     try {
-      const images = await Promise.all(from.map(garmentImage));
-      garments = from.map((item, i) => toTryOnGarment(item, images[i]));
+      // A wardrobe source ships only its id — no local bytes to encode — so its
+      // image resolution is skipped entirely; upload/link arms still downscale.
+      garments = await Promise.all(
+        from.map(async (item) =>
+          item.kind === "wardrobe"
+            ? toTryOnGarment(item)
+            : toTryOnGarment(item, await garmentImage(item)),
+        ),
+      );
     } catch {
       setPhase("retryable-failure");
       toast.error("We couldn't read one of those garment images", {
@@ -670,6 +708,33 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
           Myntra, Ajio, Nykaa Fashion, Flipkart, Zara &amp; more — coming soon.
         </p>
 
+        {/* Or pull a piece from your own private wardrobe. The picker is
+            collapsed until asked for, so its owner-scoped fetch is opt-in. */}
+        <div className="flex items-center gap-3" aria-hidden>
+          <span className="bg-border h-px flex-1" />
+          <span className="text-muted-foreground text-xs">or from your wardrobe</span>
+          <span className="bg-border h-px flex-1" />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="justify-self-start"
+          aria-expanded={showWardrobe}
+          disabled={isGenerating}
+          onClick={() => setShowWardrobe((open) => !open)}
+        >
+          <ShirtIcon />
+          {showWardrobe ? "Hide your wardrobe" : "Add from your wardrobe"}
+        </Button>
+        {showWardrobe && (
+          <WardrobeSourcePicker
+            attachedIds={attachedWardrobeIds}
+            canAddMore={slots.length < MAX_TRY_ON_GARMENTS}
+            disabled={isGenerating}
+            onAdd={addWardrobeSource}
+          />
+        )}
+
         {attachments.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-muted-foreground text-xs">
@@ -705,6 +770,7 @@ function GarmentTile({
   onRemove: () => void;
 }) {
   const meta = garment.kind === "link" ? SITE_META[garment.site] : undefined;
+  const fromWardrobe = garment.kind === "wardrobe";
   return (
     <div className="relative">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -712,8 +778,8 @@ function GarmentTile({
         src={garment.previewUrl}
         alt={garment.name}
         className="border-border size-20 rounded-lg border object-cover"
-        // Inset so the ring never changes the tile's box — link and upload
-        // tiles stay the same size.
+        // Inset so the ring never changes the tile's box — link, wardrobe, and
+        // upload tiles stay the same size.
         style={meta ? { boxShadow: `inset 0 0 0 2px ${meta.hue}` } : undefined}
       />
       {meta && (
@@ -724,6 +790,15 @@ function GarmentTile({
           title={`From ${meta.label}`}
         >
           <Link2Icon className="size-2.5" />
+        </span>
+      )}
+      {fromWardrobe && (
+        <span
+          className="bg-background text-muted-foreground absolute bottom-1 left-1 grid size-4 place-items-center rounded-full border"
+          aria-label="From your wardrobe"
+          title="From your wardrobe"
+        >
+          <ShirtIcon className="size-2.5" />
         </span>
       )}
       <button

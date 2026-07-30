@@ -8,7 +8,8 @@ import {
 import { admitGoogleAuraIdentity } from "@/lib/aura-identity";
 import { AuraTryOnError, generateAuraTryOn } from "@/lib/aura-try-on";
 import { getPrisma } from "@/lib/prisma";
-import { auraTryOnSchema } from "@/lib/validations";
+import { wardrobeGarmentDataUri } from "@/lib/wardrobe-try-on";
+import { auraTryOnSchema, isTryOnWardrobeSource } from "@/lib/validations";
 
 type Failure = {
   code: string;
@@ -96,12 +97,93 @@ export async function POST(req: Request) {
     });
   }
 
+  // Wardrobe sources reference an item by id instead of carrying its bytes. Admit
+  // only the caller's own active items: the ownership + active-lifecycle filter is
+  // the whole admission story, so a forged, foreign, or deleted id resolves to no
+  // row and is refused before any generation.
+  const sources = parsed.data.garments;
+  const wardrobeIds = sources
+    .filter(isTryOnWardrobeSource)
+    .map((source) => source.wardrobeItemId);
+
+  const wardrobeById = new Map<
+    string,
+    { name: string; normalizedMediaId: string; normalizedMediaFormat: string }
+  >();
+  if (wardrobeIds.length > 0) {
+    try {
+      const rows = await prisma.wardrobeItem.findMany({
+        where: {
+          id: { in: wardrobeIds },
+          user: { clerkId: userId },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          name: true,
+          normalizedMediaId: true,
+          normalizedMediaFormat: true,
+        },
+      });
+      for (const row of rows) wardrobeById.set(row.id, row);
+    } catch (error) {
+      console.error("Wardrobe source lookup failed", error);
+      return failure(500, {
+        code: "wardrobe-lookup-failed",
+        error: "We couldn't check your wardrobe items. Please try again.",
+        retryable: true,
+      });
+    }
+
+    // Any requested id that isn't an active, owned item — unknown, deleted, or
+    // another participant's — leaves the batch unresolvable.
+    if (wardrobeIds.some((id) => !wardrobeById.has(id))) {
+      return failure(422, {
+        code: "wardrobe-source-invalid",
+        error:
+          "One of your selected wardrobe items is no longer available. Refresh your wardrobe and try again.",
+        retryable: false,
+      });
+    }
+  }
+
+  // Resolve every source, in order, to the provenance-free { image, name } the
+  // generator and response share. Wardrobe items resolve their authorized
+  // normalized rendition to a data URI and carry their saved name.
+  let garments: string[];
+  let garmentNames: string[];
+  try {
+    const resolved = await Promise.all(
+      sources.map(async (source) => {
+        if (isTryOnWardrobeSource(source)) {
+          const item = wardrobeById.get(source.wardrobeItemId)!;
+          const image = await wardrobeGarmentDataUri(
+            item.normalizedMediaId,
+            item.normalizedMediaFormat,
+          );
+          return { image, name: item.name };
+        }
+        return { image: source.image, name: source.name };
+      }),
+    );
+    garments = resolved.map((source) => source.image);
+    garmentNames = resolved.map((source) => source.name);
+  } catch (error) {
+    console.error("Wardrobe source media resolution failed", error);
+    return failure(503, {
+      code: "wardrobe-source-unavailable",
+      error:
+        "We couldn't prepare one of your wardrobe items. Please try again.",
+      retryable: true,
+    });
+  }
+
   let look: string;
   try {
     look = await generateAuraTryOn({
       clerkId: userId,
       portraitUrl: profile.portraitUrl,
-      garments: parsed.data.garments.map((garment) => garment.image),
+      garments,
     });
   } catch (error) {
     console.error("AURA try-on generation failed", error);
@@ -142,7 +224,7 @@ export async function POST(req: Request) {
   return NextResponse.json(
     {
       image: `data:image/jpeg;base64,${look}`,
-      garments: parsed.data.garments.map((garment) => garment.name),
+      garments: garmentNames,
     },
     { status: 200 },
   );

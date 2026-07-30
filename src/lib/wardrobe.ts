@@ -15,6 +15,15 @@ export type WardrobeItemCategory = Exclude<WardrobeCategory, "all">;
 /** Root Cloudinary folder for every participant's private wardrobe media. */
 export const WARDROBE_MEDIA_FOLDER = "fashion-app/wardrobe";
 
+/** A recoverably deleted item remains restorable for this many calendar days. */
+export const WARDROBE_RECOVERY_WINDOW_DAYS = 30;
+
+export function wardrobeRecoveryExpiry(deletedAt: Date): Date {
+  const expiry = new Date(deletedAt);
+  expiry.setDate(expiry.getDate() + WARDROBE_RECOVERY_WINDOW_DAYS);
+  return expiry;
+}
+
 /**
  * The per-owner media folder. `ownerKey` is the participant's Clerk id, so the
  * folder path itself encodes ownership — which is what lets a save re-validate

@@ -5,6 +5,7 @@ import Link from "next/link";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import {
   wardrobeCategories,
@@ -48,6 +49,9 @@ type WardrobeItem = {
 
 type WardrobeResponse = { items?: WardrobeItem[]; error?: string };
 type MediaResponse = { url?: string };
+type RecoverableItem = { id: string; name: string; recoveryExpiresAt: string };
+type RecoverableResponse = { items?: RecoverableItem[]; error?: string };
+type ItemResponse = { item?: WardrobeItem & { recoveryExpiresAt?: string | null }; error?: string };
 
 /**
  * The persisted, owner-scoped wardrobe browser. Item metadata comes from the
@@ -59,6 +63,9 @@ export function WardrobeGallery() {
   const [items, setItems] = React.useState<WardrobeItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
+  const [recoverable, setRecoverable] = React.useState<RecoverableItem[]>([]);
+  const [editing, setEditing] = React.useState<WardrobeItem | null>(null);
+  const [refresh, setRefresh] = React.useState(0);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -68,14 +75,19 @@ export function WardrobeGallery() {
       setLoading(true);
       setError("");
       try {
-        const response = await fetch(`/api/wardrobe${query}`, {
-          signal: controller.signal,
-        });
+        const [response, recoveryResponse] = await Promise.all([
+          fetch(`/api/wardrobe${query}`, { signal: controller.signal }),
+          fetch("/api/wardrobe/recoverable", { signal: controller.signal }),
+        ]);
         const body = (await response.json().catch(() => null)) as WardrobeResponse | null;
+        const recoveryBody = (await recoveryResponse.json().catch(() => null)) as RecoverableResponse | null;
         if (!response.ok || !body?.items) {
           throw new Error(body?.error ?? "We couldn't load your wardrobe.");
         }
-        if (!controller.signal.aborted) setItems(body.items);
+        if (!controller.signal.aborted) {
+          setItems(body.items);
+          if (recoveryResponse.ok && recoveryBody?.items) setRecoverable(recoveryBody.items);
+        }
       } catch (reason) {
         if (controller.signal.aborted) return;
         setItems([]);
@@ -89,7 +101,18 @@ export function WardrobeGallery() {
 
     void loadItems();
     return () => controller.abort();
-  }, [category]);
+  }, [category, refresh]);
+
+  async function restore(item: RecoverableItem) {
+    const response = await fetch(`/api/wardrobe/${item.id}/restore`, { method: "POST" });
+    const body = (await response.json().catch(() => null)) as ItemResponse | null;
+    if (!response.ok) {
+      setError(body?.error ?? "We couldn't restore that item.");
+      return;
+    }
+    setRecoverable((current) => current.filter((candidate) => candidate.id !== item.id));
+    setRefresh((current) => current + 1);
+  }
 
   return (
     <main className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-10">
@@ -167,15 +190,57 @@ export function WardrobeGallery() {
           <EmptyWardrobe />
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-            {items.map((item) => <WardrobeCard key={item.id} item={item} />)}
+            {items.map((item) => (
+              <WardrobeCard
+                key={item.id}
+                item={item}
+                onDeleted={(deleted) => {
+                  setItems((current) => current.filter((candidate) => candidate.id !== deleted.id));
+                  const recoveryExpiresAt = deleted.recoveryExpiresAt;
+                  if (recoveryExpiresAt) {
+                    setRecoverable((current) => [
+                      { id: deleted.id, name: deleted.name, recoveryExpiresAt },
+                      ...current,
+                    ]);
+                  }
+                }}
+                onEdit={setEditing}
+              />
+            ))}
           </div>
         )}
       </section>
+
+      {recoverable.length > 0 ? (
+        <section className="mt-10 rounded-2xl border border-dashed p-5" aria-label="Recently deleted items">
+          <h2 className="font-heading text-2xl tracking-wide uppercase">Recently deleted</h2>
+          <p className="text-muted-foreground mt-1 text-sm">Restore a piece within 30 days without re-entering its details.</p>
+          <ul className="mt-4 space-y-3">
+            {recoverable.map((item) => (
+              <li key={item.id} className="flex items-center justify-between gap-4">
+                <span className="text-sm font-medium">{item.name}</span>
+                <Button variant="outline" size="sm" onClick={() => void restore(item)}>Restore</Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {editing ? (
+        <EditWardrobeItem
+          item={editing}
+          onCancel={() => setEditing(null)}
+          onSaved={(updated) => {
+            setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
+            setEditing(null);
+          }}
+        />
+      ) : null}
     </main>
   );
 }
 
-function WardrobeCard({ item }: { item: WardrobeItem }) {
+function WardrobeCard({ item, onDeleted, onEdit }: { item: WardrobeItem; onDeleted: (item: WardrobeItem & { recoveryExpiresAt?: string | null }) => void; onEdit: (item: WardrobeItem) => void }) {
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -192,6 +257,12 @@ function WardrobeCard({ item }: { item: WardrobeItem }) {
     return () => controller.abort();
   }, [item.id, item.normalizedMediaId]);
 
+  async function remove() {
+    const response = await fetch(`/api/wardrobe/${item.id}`, { method: "DELETE" });
+    const body = (await response.json().catch(() => null)) as ItemResponse | null;
+    if (response.ok && body?.item) onDeleted(body.item);
+  }
+
   return (
     <article className="overflow-hidden rounded-2xl border bg-card">
       <div className="bg-muted aspect-[4/5]">
@@ -206,8 +277,53 @@ function WardrobeCard({ item }: { item: WardrobeItem }) {
         <p className="text-muted-foreground mt-1 text-xs">
           {item.color}{item.brand ? ` · ${item.brand}` : ""}
         </p>
+        <div className="mt-3 flex gap-3 text-xs font-bold uppercase">
+          <button type="button" onClick={() => onEdit(item)} className="text-brand-magenta underline underline-offset-4">Edit</button>
+          <button type="button" onClick={() => void remove()} className="text-destructive underline underline-offset-4">Delete</button>
+        </div>
       </div>
     </article>
+  );
+}
+
+function EditWardrobeItem({ item, onCancel, onSaved }: { item: WardrobeItem; onCancel: () => void; onSaved: (item: WardrobeItem) => void }) {
+  const [category, setCategory] = React.useState<WardrobeItemCategory>(item.category);
+  const [name, setName] = React.useState(item.name);
+  const [color, setColor] = React.useState(item.color);
+  const [brand, setBrand] = React.useState(item.brand ?? "");
+  const [error, setError] = React.useState("");
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const response = await fetch(`/api/wardrobe/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category, name, color, brand }),
+    });
+    const body = (await response.json().catch(() => null)) as ItemResponse | null;
+    if (!response.ok || !body?.item) {
+      setError(body?.error ?? "We couldn't save those changes.");
+      return;
+    }
+    onSaved({ ...item, ...body.item });
+  }
+
+  return (
+    <section className="mt-10 rounded-2xl border bg-card p-5" aria-label={`Edit ${item.name}`}>
+      <h2 className="font-heading text-2xl tracking-wide uppercase">Edit {item.name}</h2>
+      <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={(event) => void save(event)}>
+        <label className="grid gap-1.5 text-sm font-medium">Name<Input value={name} onChange={(event) => setName(event.target.value)} required /></label>
+        <label className="grid gap-1.5 text-sm font-medium">Colour<Input value={color} onChange={(event) => setColor(event.target.value)} required /></label>
+        <label className="grid gap-1.5 text-sm font-medium">Brand <span className="text-muted-foreground font-normal">(optional)</span><Input value={brand} onChange={(event) => setBrand(event.target.value)} /></label>
+        <label className="grid gap-1.5 text-sm font-medium">Category
+          <select value={category} onChange={(event) => setCategory(event.target.value as WardrobeItemCategory)} className="border-input bg-background h-9 rounded-md border px-3 text-sm">
+            {wardrobeCategories.filter((option): option is WardrobeItemCategory => option !== "all").map((option) => <option key={option} value={option}>{categoryLabels[option]}</option>)}
+          </select>
+        </label>
+        {error ? <p className="text-destructive text-sm sm:col-span-2">{error}</p> : null}
+        <div className="flex gap-3 sm:col-span-2"><Button type="submit">Save changes</Button><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button></div>
+      </form>
+    </section>
   );
 }
 

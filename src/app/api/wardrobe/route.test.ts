@@ -271,7 +271,7 @@ describe("GET /api/wardrobe", () => {
   });
 
   it("rejects an invalid category and unauthenticated requests", async () => {
-    const invalid = await get("dresses");
+    const invalid = await get("loungewear");
     expect(invalid.status).toBe(400);
 
     userId = null;

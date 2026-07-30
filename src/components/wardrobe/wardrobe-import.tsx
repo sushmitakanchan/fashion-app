@@ -44,6 +44,9 @@ import {
 const CATEGORY_LABELS: Record<WardrobeItemCategoryValue, string> = {
   tops: "Tops",
   bottoms: "Bottoms",
+  dresses: "Dresses",
+  activewear: "Activewear",
+  outerwear: "Outerwear",
   bags: "Bags",
   shoes: "Shoes",
   accessories: "Accessories",

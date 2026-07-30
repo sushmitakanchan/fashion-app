@@ -161,16 +161,42 @@ const tryOnGarment = z.object({
   name: garmentName,
 });
 
-/** What crosses the wire to `POST /api/aura/try-on`: one-or-more garments. */
+// A source drawn from the participant's own private wardrobe. Only the item's
+// opaque id crosses the wire — never its media or name. The server admits the id
+// solely if it belongs to an active item owned by the caller, then resolves the
+// authorized normalized rendition and saved name itself, so a forged, foreign,
+// or deleted id can never reach generation.
+const tryOnWardrobeSource = z.object({
+  wardrobeItemId: z.string().trim().min(1, "Select a wardrobe item"),
+});
+
+/** One try-on source: an attached/scraped garment image, or a wardrobe item id. */
+const tryOnSource = z.union([tryOnGarment, tryOnWardrobeSource]);
+
+/** What crosses the wire to `POST /api/aura/try-on`: one-or-more sources, each
+ * an image garment or a reference to one of the caller's own wardrobe items.
+ * Both kinds share the single garment cap — a wardrobe item occupies a source
+ * slot exactly like an upload. */
 export const auraTryOnSchema = z.object({
   garments: z
-    .array(tryOnGarment)
+    .array(tryOnSource)
     .min(1, "Attach at least one garment")
     .max(MAX_TRY_ON_GARMENTS, `Attach up to ${MAX_TRY_ON_GARMENTS} garments`),
 });
 
 export type AuraTryOnInput = z.infer<typeof auraTryOnSchema>;
 export type AuraTryOnGarment = z.infer<typeof tryOnGarment>;
+export type AuraTryOnSource = z.infer<typeof tryOnSource>;
+export type AuraTryOnWardrobeSource = z.infer<typeof tryOnWardrobeSource>;
+
+/** The inferred discriminator the try-on boundary applies: a source carrying a
+ * `wardrobeItemId` is a wardrobe reference; anything else is an image garment.
+ * No `kind` crosses the wire — this re-derives it. */
+export function isTryOnWardrobeSource(
+  source: AuraTryOnSource,
+): source is AuraTryOnWardrobeSource {
+  return "wardrobeItemId" in source;
+}
 
 /* -------------------------------------------------------------------------- */
 /*                         Style Book — saving a look                         */

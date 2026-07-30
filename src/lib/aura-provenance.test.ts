@@ -8,6 +8,7 @@ import {
   toTryOnGarment,
   type Link,
   type Upload,
+  type WardrobeSource,
 } from "./aura-provenance";
 
 const IMAGE = "data:image/jpeg;base64,AAAA";
@@ -32,6 +33,14 @@ const link: Link = {
   site: "pinterest",
 };
 
+const wardrobe: WardrobeSource = {
+  kind: "wardrobe",
+  id: "wi_abc",
+  wardrobeItemId: "wi_abc",
+  name: "Charcoal blazer",
+  previewUrl: "https://res.cloudinary.test/signed/wi_abc.jpg?token=xyz",
+};
+
 describe("toTryOnGarment", () => {
   it("projects an upload to a provenance-free { image, name }", () => {
     expect(toTryOnGarment(upload, IMAGE)).toEqual({
@@ -45,6 +54,12 @@ describe("toTryOnGarment", () => {
       image: IMAGE,
       name: "Ribbed tank",
     });
+  });
+
+  it("projects a wardrobe source to { wardrobeItemId }, ignoring the image", () => {
+    // No local bytes cross the wire for a wardrobe source: the server resolves
+    // its authorized media and saved name from the id alone.
+    expect(toTryOnGarment(wardrobe)).toEqual({ wardrobeItemId: "wi_abc" });
   });
 });
 
@@ -65,6 +80,12 @@ describe("toSaveSource", () => {
     });
     expect(inferKind(source)).toBe("link");
   });
+
+  it("projects a wardrobe source to a plain { image, name }, retaining no reference", () => {
+    const source = toSaveSource(wardrobe, IMAGE);
+    expect(source).toEqual({ image: IMAGE, name: "Charcoal blazer" });
+    expect(inferKind(source)).toBe("upload");
+  });
 });
 
 describe("rawImageOf", () => {
@@ -74,6 +95,12 @@ describe("rawImageOf", () => {
 
   it("returns the scraped data URI for a link", () => {
     expect(rawImageOf(link)).toBe(link.scrapedImage);
+  });
+
+  it("returns the signed delivery URL for a wardrobe source", () => {
+    // downscalePhoto re-encodes a string source by fetching it, so a save
+    // re-derives the wardrobe item's bytes from its authorized rendition.
+    expect(rawImageOf(wardrobe)).toBe(wardrobe.previewUrl);
   });
 });
 

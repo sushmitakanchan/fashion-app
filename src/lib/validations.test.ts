@@ -3,6 +3,8 @@ import { describe, expect, it } from "bun:test";
 import {
   auraFormSchema,
   auraSubmissionSchema,
+  auraTryOnSchema,
+  isTryOnWardrobeSource,
   MAX_PHOTO_BYTES,
   MAX_TRY_ON_GARMENTS,
   styleBookSaveSchema,
@@ -255,6 +257,73 @@ describe("the AURA wire submission contract", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/*                 Try-on sources — image garments and wardrobe               */
+/* -------------------------------------------------------------------------- */
+
+describe("the AURA try-on source contract", () => {
+  const imageGarment = () => ({ image: dataUri(), name: "Linen shirt" });
+  const wardrobeSource = () => ({ wardrobeItemId: "wi_abc123" });
+
+  it("accepts a single image garment", () => {
+    expect(auraTryOnSchema.safeParse({ garments: [imageGarment()] }).success).toBe(true);
+  });
+
+  it("accepts a wardrobe source referenced only by id", () => {
+    expect(auraTryOnSchema.safeParse({ garments: [wardrobeSource()] }).success).toBe(true);
+  });
+
+  it("accepts a batch mixing image garments and wardrobe sources", () => {
+    const result = auraTryOnSchema.safeParse({
+      garments: [imageGarment(), wardrobeSource()],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("requires at least one source", () => {
+    const result = auraTryOnSchema.safeParse({ garments: [] });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("garments");
+  });
+
+  it("caps sources at the shared garment limit, counting wardrobe items", () => {
+    const result = auraTryOnSchema.safeParse({
+      garments: Array.from({ length: MAX_TRY_ON_GARMENTS + 1 }, () => wardrobeSource()),
+    });
+
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("garments");
+  });
+
+  it("rejects a wardrobe source with a blank id", () => {
+    const result = auraTryOnSchema.safeParse({ garments: [{ wardrobeItemId: "  " }] });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("holds an image garment to the shared photo policy", () => {
+    const result = auraTryOnSchema.safeParse({
+      garments: [{ image: "data:image/gif;base64,AAAA", name: "Cap" }],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("infers the wardrobe discriminator from a parsed source", () => {
+    const result = auraTryOnSchema.safeParse({
+      garments: [imageGarment(), wardrobeSource()],
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const [garment, wardrobe] = result.data.garments;
+    expect(isTryOnWardrobeSource(garment)).toBe(false);
+    expect(isTryOnWardrobeSource(wardrobe)).toBe(true);
   });
 });
 

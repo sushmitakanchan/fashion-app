@@ -16,11 +16,44 @@ function failure(status: number, body: Failure) {
 }
 
 /**
- * An honest identifier on every outbound request. The endpoint performs a single
- * straightforward fetch per hop — no browser spoofing or anti-bot evasion.
+ * The User-Agent on every outbound request.
+ *
+ * This is a deliberate reversal of the route's original "honest bot identifier"
+ * stance. The retailers people actually paste (Myntra, and others behind Akamai
+ * / PerimeterX) drop or 403 any request whose UA isn't a mainstream browser —
+ * the old `AURA-TryOn/1.0` identifier had its connection killed mid-response, so
+ * a Myntra link could never resolve. Presenting as a current browser is the one
+ * change that makes those links ingestible.
+ *
+ * What this is *not*: the endpoint still performs a single straightforward GET
+ * per hop with no cookies, no JavaScript execution, no CAPTCHA-solving, no
+ * proxy/IP rotation and no retry-until-through. The UA (plus the `Accept`
+ * headers below) is the entire extent of it. Sites with an IP- or
+ * TLS-fingerprint-level block (H&M, Zara, …) still fail closed and stay behind
+ * the "coming soon" reply — those need the heavier tiers, not a spoofed UA.
  */
 export const SCRAPE_USER_AGENT =
-  "AURA-TryOn/1.0 (+https://github.com/sushmitakanchan/fashion-app; link ingestion)";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+// Sent on the page (HTML) hop. The `Accept`/`Accept-Language` pair rounds out
+// the browser presentation; without them some edges still short-circuit a
+// request that carries only a browser UA. `Accept-Encoding` is intentionally
+// omitted — `fetch` negotiates and transparently decodes gzip/br itself, and
+// setting it by hand risks receiving a body the runtime won't decode.
+const PAGE_HEADERS: Record<string, string> = {
+  "user-agent": SCRAPE_USER_AGENT,
+  accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "accept-language": "en-US,en;q=0.9",
+};
+
+// Sent on the image hop. Accepted-type formats are listed first, but these CDNs
+// (i.pinimg.com, assets.myntassets.com) encode the format in the URL and ignore
+// content negotiation, so the served bytes match the extension regardless — the
+// downstream `ACCEPTED_PHOTO_TYPES` check is still the real gate.
+const IMAGE_HEADERS: Record<string, string> = {
+  "user-agent": SCRAPE_USER_AGENT,
+  accept: "image/jpeg,image/png,image/webp,*/*;q=0.8",
+};
 
 // A hard per-hop ceiling on every outbound fetch. Without it a host that accepts
 // the connection but never sends a response (some sites stall a non-browser
@@ -50,10 +83,11 @@ type SourceRule = {
   // the second fetch hop — see the image-resolution guard in `POST`.
   imageHosts: readonly string[];
   extract: (html: string) => Extraction;
-  // Recognised but not yet ingested: the route answers "coming soon" instead of
-  // scraping. The rule's extractor is retained for the day it goes live —
-  // Myntra blocks non-browser fetches today, so a plain server-side scrape
-  // can't succeed yet, but the JSON-LD extraction stays wired and ready.
+  // Gates a recognised source: when true the route answers "coming soon"
+  // instead of scraping, while its extractor stays wired for the day it goes
+  // live. Unused now that Myntra is live (browser headers unblocked it), but
+  // retained as the extension point for a future source whose extractor is
+  // ready yet unverified from the production egress IP.
   comingSoon?: boolean;
 };
 
@@ -95,7 +129,6 @@ const SOURCE_RULES: SourceRule[] = [
         name: product.name ?? readMeta(html, "og:title"),
       };
     },
-    comingSoon: true,
   },
 ];
 
@@ -170,7 +203,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return failure(400, {
       code: "invalid-request",
-      error: "Provide a Pinterest link to scrape.",
+      error: "Provide a Pinterest or Myntra link to scrape.",
       retryable: false,
     });
   }
@@ -193,7 +226,7 @@ export async function POST(req: Request) {
   if (soon) {
     return failure(422, {
       code: "coming-soon",
-      error: `${soon} links are coming soon — paste a Pinterest pin for now.`,
+      error: `${soon} links are coming soon — paste a Pinterest or Myntra link for now.`,
       retryable: false,
     });
   }
@@ -202,7 +235,8 @@ export async function POST(req: Request) {
   if (!rule) {
     return failure(400, {
       code: "unsupported-domain",
-      error: "Only Pinterest pins are supported right now — more shops soon.",
+      error:
+        "Only Pinterest pins and Myntra product links are supported right now — more shops soon.",
       retryable: false,
     });
   }
@@ -211,7 +245,7 @@ export async function POST(req: Request) {
   let html: string;
   try {
     const pageResponse = await fetch(target.href, {
-      headers: { "user-agent": SCRAPE_USER_AGENT },
+      headers: PAGE_HEADERS,
       signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
     });
     if (!pageResponse.ok) {
@@ -268,7 +302,7 @@ export async function POST(req: Request) {
   let imageResponse: Response;
   try {
     imageResponse = await fetch(imageHref, {
-      headers: { "user-agent": SCRAPE_USER_AGENT },
+      headers: IMAGE_HEADERS,
       signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
     });
     if (!imageResponse.ok) {

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { ArrowUpRight, X } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -43,12 +44,24 @@ const HATCH = {
     "repeating-linear-gradient(70deg, rgb(20 17 15 / 0.12) 0 2px, transparent 2px 12px)",
 } as const;
 
-type WardrobeItem = {
+const savedDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+function formatSavedDate(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : savedDateFormatter.format(date);
+}
+
+export type WardrobeItem = {
   id: string;
   name: string;
   category: WardrobeItemCategory;
   color: string;
   brand: string | null;
+  occasion: string | null;
   normalizedMediaId: string;
   createdAt: string;
 };
@@ -195,7 +208,7 @@ export function WardrobeGallery() {
         ) : items.length === 0 ? (
           <EmptyWardrobe />
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
               <WardrobeCard
                 key={item.id}
@@ -270,41 +283,109 @@ function WardrobeCard({ item, onDeleted, onEdit }: { item: WardrobeItem; onDelet
   }
 
   return (
-    <article className="overflow-hidden rounded-2xl border bg-card">
-      <div className="bg-muted aspect-[4/5]">
+    <WardrobeCardView
+      item={item}
+      imageUrl={imageUrl}
+      onEdit={() => onEdit(item)}
+      onDelete={() => void remove()}
+    />
+  );
+}
+
+/**
+ * The presentational wardrobe tile, separated from data-fetching so it can be
+ * rendered from a mock harness. `imageUrl` is a short-lived, server-authorized
+ * URL (or null while it resolves).
+ */
+export function WardrobeCardView({
+  item,
+  imageUrl,
+  onEdit,
+  onDelete,
+}: {
+  item: WardrobeItem;
+  imageUrl: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const chips = [item.color, categoryLabels[item.category], item.occasion].filter(
+    (chip): chip is string => Boolean(chip),
+  );
+
+  return (
+    <article className="border-brand-magenta/15 flex flex-col overflow-hidden rounded-[1.75rem] border bg-card p-2.5 shadow-sm transition-shadow hover:shadow-md">
+      <div className="bg-muted relative aspect-[4/5] overflow-hidden rounded-[1.35rem]">
         {imageUrl ? (
           // The URL was freshly authorized by the server and expires quickly.
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt={item.name} className="size-full object-cover" />
         ) : null}
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label={`Delete ${item.name}`}
+          className="bg-brand-ink/85 text-brand-ink-foreground hover:bg-brand-ink focus-visible:ring-ring absolute right-3 top-3 grid size-8 place-items-center rounded-full backdrop-blur-sm transition-colors focus-visible:ring-3 focus-visible:outline-none"
+        >
+          <X className="size-4" />
+        </button>
       </div>
-      <div className="p-3.5 sm:p-4">
-        <h3 className="text-sm font-bold text-balance">{item.name}</h3>
-        <p className="text-muted-foreground mt-1 text-xs">
-          {item.color}{item.brand ? ` · ${item.brand}` : ""}
-        </p>
-        <div className="mt-3 flex gap-3 text-xs font-bold uppercase">
-          <button type="button" onClick={() => onEdit(item)} className="text-brand-magenta underline underline-offset-4">Edit</button>
-          <button type="button" onClick={() => void remove()} className="text-destructive underline underline-offset-4">Delete</button>
+      <div className="flex flex-1 flex-col px-2.5 pb-2 pt-4">
+        {formatSavedDate(item.createdAt) ? (
+          <p className="text-muted-foreground text-xs">Saved {formatSavedDate(item.createdAt)}</p>
+        ) : null}
+        <div className="mt-2 flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-heading text-lg leading-tight tracking-wide uppercase text-balance">{item.name}</h3>
+            {item.brand ? (
+              <p className="text-muted-foreground mt-1 truncate text-sm">{item.brand}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="bg-accent text-accent-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold tracking-wide uppercase transition-[filter] hover:brightness-95 focus-visible:ring-3 focus-visible:outline-none"
+          >
+            Edit
+            <ArrowUpRight className="size-3.5" />
+          </button>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {chips.map((chip, index) => (
+            <span
+              key={`${chip}-${index}`}
+              className="bg-muted text-muted-foreground rounded-full px-3 py-1 text-xs font-medium"
+            >
+              {chip}
+            </span>
+          ))}
         </div>
       </div>
     </article>
   );
 }
 
-function EditWardrobeItem({ item, onCancel, onSaved }: { item: WardrobeItem; onCancel: () => void; onSaved: (item: WardrobeItem) => void }) {
+export function EditWardrobeItem({ item, onCancel, onSaved }: { item: WardrobeItem; onCancel: () => void; onSaved: (item: WardrobeItem) => void }) {
   const [category, setCategory] = React.useState<WardrobeItemCategory>(item.category);
   const [name, setName] = React.useState(item.name);
   const [color, setColor] = React.useState(item.color);
   const [brand, setBrand] = React.useState(item.brand ?? "");
+  const [occasion, setOccasion] = React.useState(item.occasion ?? "");
   const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onCancel();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const response = await fetch(`/api/wardrobe/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category, name, color, brand }),
+      body: JSON.stringify({ category, name, color, brand, occasion }),
     });
     const body = (await response.json().catch(() => null)) as ItemResponse | null;
     if (!response.ok || !body?.item) {
@@ -314,22 +395,46 @@ function EditWardrobeItem({ item, onCancel, onSaved }: { item: WardrobeItem; onC
     onSaved({ ...item, ...body.item });
   }
 
+  // Taller, rounded field styling with a pink focus, shared by the inputs and
+  // the category select. Surface colours come from the theme tokens so the popup
+  // reads correctly in both light and dark mode.
+  const fieldClass =
+    "focus-visible:border-brand-magenta focus-visible:ring-brand-magenta/30 h-11 rounded-xl px-4";
+  const selectClass = cn(
+    fieldClass,
+    "border-input bg-transparent dark:bg-input/30 border focus-visible:ring-3 focus-visible:outline-none",
+  );
+
   return (
-    <section className="mt-10 rounded-2xl border bg-card p-5" aria-label={`Edit ${item.name}`}>
-      <h2 className="font-heading text-2xl tracking-wide uppercase">Edit {item.name}</h2>
-      <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={(event) => void save(event)}>
-        <label className="grid gap-1.5 text-sm font-medium">Name<Input value={name} onChange={(event) => setName(event.target.value)} required /></label>
-        <label className="grid gap-1.5 text-sm font-medium">Colour<Input value={color} onChange={(event) => setColor(event.target.value)} required /></label>
-        <label className="grid gap-1.5 text-sm font-medium">Brand <span className="text-muted-foreground font-normal">(optional)</span><Input value={brand} onChange={(event) => setBrand(event.target.value)} /></label>
-        <label className="grid gap-1.5 text-sm font-medium">Category
-          <select value={category} onChange={(event) => setCategory(event.target.value as WardrobeItemCategory)} className="border-input bg-background h-9 rounded-md border px-3 text-sm">
-            {wardrobeCategories.filter((option): option is WardrobeItemCategory => option !== "all").map((option) => <option key={option} value={option}>{categoryLabels[option]}</option>)}
-          </select>
-        </label>
-        {error ? <p className="text-destructive text-sm sm:col-span-2">{error}</p> : null}
-        <div className="flex gap-3 sm:col-span-2"><Button type="submit">Save changes</Button><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button></div>
-      </form>
-    </section>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Edit ${item.name}`}
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-brand-ink/60 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <section className="bg-card text-card-foreground my-auto w-full max-w-xl rounded-3xl border p-6 shadow-2xl sm:p-8">
+        <h2 className="font-heading text-brand-magenta text-2xl tracking-wide uppercase sm:text-3xl">Edit {item.name}</h2>
+        <form className="mt-6 grid gap-5 sm:grid-cols-2" onSubmit={(event) => void save(event)}>
+          <label className="grid gap-2 text-sm font-medium">Name<Input className={fieldClass} value={name} onChange={(event) => setName(event.target.value)} required /></label>
+          <label className="grid gap-2 text-sm font-medium">Colour<Input className={fieldClass} value={color} onChange={(event) => setColor(event.target.value)} required /></label>
+          <label className="grid gap-2 text-sm font-medium">Brand <span className="text-muted-foreground font-normal">(optional)</span><Input className={fieldClass} value={brand} onChange={(event) => setBrand(event.target.value)} /></label>
+          <label className="grid gap-2 text-sm font-medium">Category
+            <select value={category} onChange={(event) => setCategory(event.target.value as WardrobeItemCategory)} className={selectClass}>
+              {wardrobeCategories.filter((option): option is WardrobeItemCategory => option !== "all").map((option) => <option key={option} value={option}>{categoryLabels[option]}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-medium sm:col-span-2">Occasion <span className="text-muted-foreground font-normal">(optional)</span><Input className={fieldClass} value={occasion} placeholder="e.g. casual, office, dinner date" onChange={(event) => setOccasion(event.target.value)} /></label>
+          {error ? <p className="text-destructive text-sm sm:col-span-2">{error}</p> : null}
+          <div className="mt-1 flex gap-3 sm:col-span-2">
+            <Button type="submit" className="bg-brand-magenta text-brand-magenta-foreground rounded-full px-6 hover:brightness-105">Save changes</Button>
+            <Button type="button" variant="outline" onClick={onCancel} className="rounded-full px-6">Cancel</Button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 

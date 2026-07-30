@@ -429,7 +429,7 @@ function AiSuggestBar({
       <div className="min-w-0">
         <p className="text-sm font-bold">Speed this up with AI</p>
         <p className="text-muted-foreground text-xs text-pretty">
-          Optional. Suggests a category, colour, and brand — you confirm every one.
+          Optional. Suggests a category, colour, brand, and occasion — you confirm every one.
         </p>
       </div>
       <div className="flex items-center gap-2">
@@ -590,6 +590,7 @@ function ReviewPanel({
               name={item.fields.name}
               color={item.fields.color}
               brand={item.fields.brand}
+              occasion={item.fields.occasion}
               complete={isItemComplete(item)}
               busy={busy}
               onEdit={onEdit}
@@ -724,6 +725,7 @@ function PendingItemFields({
   name,
   color,
   brand,
+  occasion,
   complete,
   busy,
   onEdit,
@@ -734,6 +736,7 @@ function PendingItemFields({
   name: string;
   color: string;
   brand: string;
+  occasion: string;
   complete: boolean;
   busy: boolean;
   onEdit: (id: string, patch: Partial<ReviewFields>) => void;
@@ -801,6 +804,19 @@ function PendingItemFields({
             onChange={(event) => onEdit(id, { brand: event.target.value })}
           />
         </div>
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor={`occasion-${id}`}>
+          Occasion <span className="text-muted-foreground font-normal">(optional)</span>
+        </Label>
+        <Input
+          id={`occasion-${id}`}
+          value={occasion}
+          disabled={busy}
+          placeholder="e.g. casual, office, dinner date"
+          onChange={(event) => onEdit(id, { occasion: event.target.value })}
+        />
       </div>
 
       <div className="flex items-center justify-between">

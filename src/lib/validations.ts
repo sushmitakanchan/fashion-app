@@ -324,6 +324,16 @@ const wardrobeItemBrand = z
   .transform((value) => (value.length > 0 ? value : undefined))
   .optional();
 
+// Same shape as brand: an AI-suggested, owner-editable occasion to wear the
+// piece. Optional and empty-tolerant; a blank field is normalised to
+// `undefined` so the route persists `null`, and it never blocks a save.
+const wardrobeItemOccasion = z
+  .string()
+  .trim()
+  .max(40, "That occasion is a little too long")
+  .transform((value) => (value.length > 0 ? value : undefined))
+  .optional();
+
 // A Cloudinary public id / format echoed back from an earlier import. The route
 // additionally verifies the id sits under the caller's own wardrobe folder, so
 // this only bounds shape and length, not ownership.
@@ -338,6 +348,7 @@ const wardrobeSaveItem = z.object({
   name: wardrobeItemName,
   color: wardrobeItemColor,
   brand: wardrobeItemBrand,
+  occasion: wardrobeItemOccasion,
   originalMediaId: wardrobeMediaId,
   originalMediaFormat: wardrobeMediaFormat,
   normalizedMediaId: wardrobeMediaId,
@@ -359,13 +370,21 @@ export const wardrobeUpdateSchema = z
       .max(60, "That brand is a little too long")
       .transform((value) => (value.length > 0 ? value : null))
       .optional(),
+    // Same "blank clears, omitted leaves unchanged" contract as brand.
+    occasion: z
+      .string()
+      .trim()
+      .max(40, "That occasion is a little too long")
+      .transform((value) => (value.length > 0 ? value : null))
+      .optional(),
   })
   .refine(
     (value) =>
       value.category !== undefined ||
       value.name !== undefined ||
       value.color !== undefined ||
-      value.brand !== undefined,
+      value.brand !== undefined ||
+      value.occasion !== undefined,
     { message: "Change at least one attribute" },
   );
 

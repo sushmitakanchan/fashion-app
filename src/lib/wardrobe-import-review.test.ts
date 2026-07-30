@@ -215,14 +215,14 @@ describe("canSave", () => {
 });
 
 describe("applySuggestion", () => {
-  it("pre-fills a pending item's category, colour, and brand, leaving it editable", () => {
+  it("pre-fills a pending item's category, colour, brand, and occasion, leaving it editable", () => {
     let state = createReviewState([ready("a", "Suggested name")]);
-    state = applySuggestion(state, "a", { category: "tops", color: "Ivory", brand: "AURA" });
+    state = applySuggestion(state, "a", { category: "tops", color: "Ivory", brand: "AURA", occasion: "office" });
 
     expect(state.items[0]).toMatchObject({
       status: "pending",
       // The suggested name from import is untouched; analysis never names a piece.
-      fields: { category: "tops", name: "Suggested name", color: "Ivory", brand: "AURA" },
+      fields: { category: "tops", name: "Suggested name", color: "Ivory", brand: "AURA", occasion: "office" },
     });
 
     // Still editable afterwards.
@@ -230,16 +230,16 @@ describe("applySuggestion", () => {
     expect(state.items[0]).toMatchObject({ fields: { color: "Cream" } });
   });
 
-  it("maps null colour/brand to empty strings (never fabricated)", () => {
+  it("maps null colour/brand/occasion to empty strings (never fabricated)", () => {
     let state = createReviewState([ready("a")]);
-    state = applySuggestion(state, "a", { category: "shoes", color: null, brand: null });
-    expect(state.items[0]).toMatchObject({ fields: { category: "shoes", color: "", brand: "" } });
+    state = applySuggestion(state, "a", { category: "shoes", color: null, brand: null, occasion: null });
+    expect(state.items[0]).toMatchObject({ fields: { category: "shoes", color: "", brand: "", occasion: "" } });
   });
 
   it("ignores a failed or unknown item", () => {
     const state = createReviewState([failed("a")]);
-    expect(applySuggestion(state, "a", { category: "bags", color: null, brand: null })).toEqual(state);
-    expect(applySuggestion(state, "missing", { category: "bags", color: null, brand: null })).toEqual(state);
+    expect(applySuggestion(state, "a", { category: "bags", color: null, brand: null, occasion: null })).toEqual(state);
+    expect(applySuggestion(state, "missing", { category: "bags", color: null, brand: null, occasion: null })).toEqual(state);
   });
 });
 
@@ -266,5 +266,14 @@ describe("confirmedItemsForSave", () => {
     const state = confirmed("a");
     const [item] = confirmedItemsForSave(state);
     expect(item.brand).toBeUndefined();
+  });
+
+  it("includes a trimmed occasion when set, and omits it when empty", () => {
+    let withOccasion = confirmed("a");
+    withOccasion = editItem(withOccasion, "a", { occasion: "  dinner date  " });
+    expect(confirmedItemsForSave(withOccasion)[0].occasion).toBe("dinner date");
+
+    const noOccasion = confirmed("b");
+    expect(confirmedItemsForSave(noOccasion)[0].occasion).toBeUndefined();
   });
 });

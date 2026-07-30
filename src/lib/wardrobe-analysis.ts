@@ -43,7 +43,9 @@ const ANALYSIS_PROMPT =
   "clear item is present, 'multiple_garments' when more than one item is shown, " +
   "and 'unclear' when you cannot confidently tell. Choose the best category only " +
   "when confident, otherwise use null. Give a short colour and a brand only when " +
-  "clearly visible; use null when unsure. Never guess.";
+  "clearly visible; use null when unsure. Suggest a single short occasion to wear " +
+  "the piece (e.g. 'casual', 'office', 'dinner date', 'workout') based on its " +
+  "style; use null if you cannot tell. Never guess.";
 
 // Sent to the Responses API as the strict structured-output schema.
 const RESPONSE_JSON_SCHEMA = {
@@ -60,8 +62,9 @@ const RESPONSE_JSON_SCHEMA = {
     },
     color: { type: ["string", "null"] },
     brand: { type: ["string", "null"] },
+    occasion: { type: ["string", "null"] },
   },
-  required: ["assessment", "category", "color", "brand"],
+  required: ["assessment", "category", "color", "brand", "occasion"],
 } as const;
 
 // Re-validated on the way back in — structured outputs are reliable, but a
@@ -71,6 +74,7 @@ const modelOutputSchema = z.object({
   category: z.enum(WARDROBE_ITEM_CATEGORIES).nullable(),
   color: z.string().nullable(),
   brand: z.string().nullable(),
+  occasion: z.string().nullable(),
 });
 
 function needsReview(reason: WardrobeAnalysisReason): WardrobeAnalysisOutcome {
@@ -171,12 +175,17 @@ export async function analyzeWardrobeImage(
   const parsed = modelOutputSchema.safeParse(parsedJson);
   if (!parsed.success) return needsReview("invalid-response");
 
-  const { assessment, category, color, brand } = parsed.data;
+  const { assessment, category, color, brand, occasion } = parsed.data;
   if (assessment === "multiple_garments") return needsReview("multiple-garments");
   if (assessment === "unclear" || category === null) return needsReview("uncertain");
 
   return {
     status: "suggested",
-    suggestion: { category, color: nonEmpty(color), brand: nonEmpty(brand) },
+    suggestion: {
+      category,
+      color: nonEmpty(color),
+      brand: nonEmpty(brand),
+      occasion: nonEmpty(occasion),
+    },
   };
 }

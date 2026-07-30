@@ -472,6 +472,85 @@ describe("POST /api/aura/scrape", () => {
     });
   });
 
+  // Myntra's product HTML reaches a residential IP but not a datacenter one
+  // (Vercel), where Akamai serves a 200 challenge page instead. The route
+  // detects "direct fetch returned no usable image" and retries the same
+  // allowlisted URL through the configured scraping proxy.
+  describe("proxy fallback", () => {
+    // A datacenter-IP challenge page: HTTP 200, but no JSON-LD Product/og:image.
+    const BLOCKED_PAGE =
+      "<!doctype html><html><head><title>Access Denied</title></head><body>Reference #18.abcd</body></html>";
+    const isProxyCall = (url: string) => url.includes("api.scraperapi.com");
+    const isDirectMyntra = (url: string) => url.startsWith("https://www.myntra.com");
+
+    beforeEach(() => {
+      // The route reads proxy config from process.env at request time.
+      process.env.SCRAPE_PROXY_API_KEY = "test-proxy-key";
+    });
+    afterEach(() => {
+      delete process.env.SCRAPE_PROXY_API_KEY;
+      delete process.env.SCRAPE_PROXY_PROVIDER;
+    });
+
+    it("recovers a Myntra garment through the proxy when the direct fetch is blocked", async () => {
+      route(isProxyCall, () => html(myntraPage()));
+      route(isDirectMyntra, () => html(BLOCKED_PAGE));
+      route(hostContains("myntassets.com"), () => imageBytes(GARMENT));
+
+      const response = await post({ url: MYNTRA_URL });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        image: GARMENT_DATA_URI,
+        name: "Roadster Men Shirt",
+        source: "myntra",
+      });
+      // The proxy was consulted, geo-targeted to India, carrying the target URL.
+      const proxied = fetchCalls.find((call) => isProxyCall(call.url));
+      expect(proxied).toBeDefined();
+      expect(proxied!.url).toContain("country_code=in");
+      expect(decodeURIComponent(proxied!.url)).toContain(MYNTRA_URL);
+    });
+
+    it("skips the proxy when the direct fetch already yields an image", async () => {
+      route(isDirectMyntra, () => html(myntraPage()));
+      route(hostContains("myntassets.com"), () => imageBytes(GARMENT));
+
+      const response = await post({ url: MYNTRA_URL });
+
+      expect(response.status).toBe(200);
+      expect(fetchCalls.some((call) => isProxyCall(call.url))).toBe(false);
+    });
+
+    it("returns no-image-found when the proxy also can't recover a product", async () => {
+      route(isProxyCall, () => html(BLOCKED_PAGE));
+      route(isDirectMyntra, () => html(BLOCKED_PAGE));
+
+      const response = await post({ url: MYNTRA_URL });
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual(
+        expect.objectContaining({ code: "no-image-found", retryable: false }),
+      );
+      // Both paths were tried; the image hop was never reached.
+      expect(fetchCalls.some((call) => isProxyCall(call.url))).toBe(true);
+    });
+
+    it("never routes Pinterest through the proxy (not proxy-eligible)", async () => {
+      route(hostContains("pinterest.com"), () =>
+        html(pinterestPage({ image: null, title: "A pin" })),
+      );
+
+      const response = await post({ url: PIN_URL });
+
+      expect(response.status).toBe(422);
+      await expect(response.json()).resolves.toEqual(
+        expect.objectContaining({ code: "no-image-found" }),
+      );
+      expect(fetchCalls.some((call) => isProxyCall(call.url))).toBe(false);
+    });
+  });
+
   it("sends the browser User-Agent on every outbound hop", async () => {
     route(hostContains("pinterest.com"), () => html(pinterestPage({ title: "Pin" })));
     route(hostContains("pinimg.com"), () => imageBytes(GARMENT));

@@ -13,6 +13,7 @@ const fullyConfigured: Record<string, string | undefined> = {
   CLOUDINARY_API_KEY: "key",
   CLOUDINARY_API_SECRET: "secret",
   OPENAI_API_KEY: "sk-x",
+  SCRAPE_PROXY_API_KEY: "sp-x",
 };
 
 function statusOf(

@@ -61,6 +61,27 @@ export async function uploadWardrobeMedia(
   };
 }
 
+/**
+ * Permanently destroy one private wardrobe media object. Used only by the
+ * recovery-window expiry lifecycle, so it is deliberately idempotent: an object
+ * that is already gone reports `not found`, which for permanent removal is
+ * success — the object no longer exists. Any other result is a genuine failure
+ * the caller should surface and retry on the next run, so it throws.
+ *
+ * Matches the ingest parameters in {@link uploadWardrobeMedia} — a private image
+ * — and invalidates cached copies so no delivery survives the record.
+ */
+export async function destroyWardrobeMedia(publicId: string): Promise<void> {
+  const { result } = await cloudinary.uploader.destroy(publicId, {
+    resource_type: "image",
+    type: "private",
+    invalidate: true,
+  });
+  if (result !== "ok" && result !== "not found") {
+    throw new Error(`Cloudinary destroy returned "${result}" for ${publicId}`);
+  }
+}
+
 export type SignedWardrobeMedia = {
   url: string;
   expiresAt: Date;

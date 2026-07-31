@@ -41,7 +41,11 @@ const ANALYSIS_PROMPT =
   "the single image and identify the one garment or accessory it shows. Respond " +
   "only in the required JSON. Set assessment to 'single_garment' when exactly one " +
   "clear item is present, 'multiple_garments' when more than one item is shown, " +
-  "and 'unclear' when you cannot confidently tell. Choose the best category only " +
+  "and 'unclear' when you cannot confidently tell. Give the piece a short, " +
+  "specific name for what it is — 2 to 5 words describing the garment itself " +
+  "(e.g. 'Flared bottoms', 'Beige linen shirt', 'White leather sneakers'); base " +
+  "it only on the image, never on any file name, and use null only if you truly " +
+  "cannot tell what the item is. Choose the best category only " +
   "when confident, otherwise use null. Give a short colour and a brand only when " +
   "clearly visible; use null when unsure. Suggest a single short occasion to wear " +
   "the piece (e.g. 'casual', 'office', 'dinner date', 'workout') based on its " +
@@ -56,6 +60,7 @@ const RESPONSE_JSON_SCHEMA = {
       type: "string",
       enum: ["single_garment", "multiple_garments", "unclear"],
     },
+    name: { type: ["string", "null"] },
     category: {
       type: ["string", "null"],
       enum: [...WARDROBE_ITEM_CATEGORIES, null],
@@ -64,13 +69,14 @@ const RESPONSE_JSON_SCHEMA = {
     brand: { type: ["string", "null"] },
     occasion: { type: ["string", "null"] },
   },
-  required: ["assessment", "category", "color", "brand", "occasion"],
+  required: ["assessment", "name", "category", "color", "brand", "occasion"],
 } as const;
 
 // Re-validated on the way back in — structured outputs are reliable, but a
 // schema drift or an unexpected shape must degrade to needs-review, not throw.
 const modelOutputSchema = z.object({
   assessment: z.enum(["single_garment", "multiple_garments", "unclear"]),
+  name: z.string().nullable(),
   category: z.enum(WARDROBE_ITEM_CATEGORIES).nullable(),
   color: z.string().nullable(),
   brand: z.string().nullable(),
@@ -175,13 +181,14 @@ export async function analyzeWardrobeImage(
   const parsed = modelOutputSchema.safeParse(parsedJson);
   if (!parsed.success) return needsReview("invalid-response");
 
-  const { assessment, category, color, brand, occasion } = parsed.data;
+  const { assessment, name, category, color, brand, occasion } = parsed.data;
   if (assessment === "multiple_garments") return needsReview("multiple-garments");
   if (assessment === "unclear" || category === null) return needsReview("uncertain");
 
   return {
     status: "suggested",
     suggestion: {
+      name: nonEmpty(name),
       category,
       color: nonEmpty(color),
       brand: nonEmpty(brand),

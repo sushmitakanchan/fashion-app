@@ -66,6 +66,7 @@ describe("analyzeWardrobeImage — success", () => {
   it("returns an editable suggestion for a confident single garment", async () => {
     nextResponse = jsonResponse({
       assessment: "single_garment",
+      name: "Ivory linen shirt",
       category: "tops",
       color: "Ivory",
       brand: "AURA",
@@ -76,13 +77,20 @@ describe("analyzeWardrobeImage — success", () => {
 
     expect(outcome).toEqual({
       status: "suggested",
-      suggestion: { category: "tops", color: "Ivory", brand: "AURA", occasion: "office" },
+      suggestion: {
+        name: "Ivory linen shirt",
+        category: "tops",
+        color: "Ivory",
+        brand: "AURA",
+        occasion: "office",
+      },
     });
   });
 
-  it("keeps a nullable colour, brand, and occasion null rather than inventing them", async () => {
+  it("keeps a nullable name, colour, brand, and occasion null rather than inventing them", async () => {
     nextResponse = jsonResponse({
       assessment: "single_garment",
+      name: null,
       category: "shoes",
       color: null,
       brand: null,
@@ -92,12 +100,40 @@ describe("analyzeWardrobeImage — success", () => {
     const outcome = await analyzeWardrobeImage(IMG, "clerk_user_1");
     expect(outcome).toEqual({
       status: "suggested",
-      suggestion: { category: "shoes", color: null, brand: null, occasion: null },
+      suggestion: { name: null, category: "shoes", color: null, brand: null, occasion: null },
+    });
+  });
+
+  it("trims a suggested name and collapses a blank one to null", async () => {
+    nextResponse = jsonResponse({
+      assessment: "single_garment",
+      name: "  Flared bottoms  ",
+      category: "bottoms",
+      color: "Grey",
+      brand: null,
+      occasion: null,
+    });
+    expect(await analyzeWardrobeImage(IMG, "u")).toEqual({
+      status: "suggested",
+      suggestion: { name: "Flared bottoms", category: "bottoms", color: "Grey", brand: null, occasion: null },
+    });
+
+    nextResponse = jsonResponse({
+      assessment: "single_garment",
+      name: "   ",
+      category: "bottoms",
+      color: "Grey",
+      brand: null,
+      occasion: null,
+    });
+    expect(await analyzeWardrobeImage(IMG, "u")).toMatchObject({
+      status: "suggested",
+      suggestion: { name: null },
     });
   });
 
   it("sends only the normalized image + prompt, with store:false and low detail", async () => {
-    nextResponse = jsonResponse({ assessment: "single_garment", category: "bags", color: "Tan", brand: null, occasion: null });
+    nextResponse = jsonResponse({ assessment: "single_garment", name: "Tan tote", category: "bags", color: "Tan", brand: null, occasion: null });
 
     await analyzeWardrobeImage(IMG, "clerk_user_1");
 
@@ -117,17 +153,17 @@ describe("analyzeWardrobeImage — success", () => {
 
 describe("analyzeWardrobeImage — needs-review fallbacks (never fabricates)", () => {
   it("multiple garments → needs-review", async () => {
-    nextResponse = jsonResponse({ assessment: "multiple_garments", category: "tops", color: "Blue", brand: null, occasion: null });
+    nextResponse = jsonResponse({ assessment: "multiple_garments", name: "Blue top", category: "tops", color: "Blue", brand: null, occasion: null });
     expect(await analyzeWardrobeImage(IMG, "u")).toEqual({ status: "needs-review", reason: "multiple-garments" });
   });
 
   it("unclear image → needs-review (uncertain)", async () => {
-    nextResponse = jsonResponse({ assessment: "unclear", category: null, color: null, brand: null, occasion: null });
+    nextResponse = jsonResponse({ assessment: "unclear", name: null, category: null, color: null, brand: null, occasion: null });
     expect(await analyzeWardrobeImage(IMG, "u")).toEqual({ status: "needs-review", reason: "uncertain" });
   });
 
   it("confident but no category → needs-review (uncertain)", async () => {
-    nextResponse = jsonResponse({ assessment: "single_garment", category: null, color: "Red", brand: null, occasion: null });
+    nextResponse = jsonResponse({ assessment: "single_garment", name: "Red thing", category: null, color: "Red", brand: null, occasion: null });
     expect(await analyzeWardrobeImage(IMG, "u")).toEqual({ status: "needs-review", reason: "uncertain" });
   });
 
@@ -145,7 +181,7 @@ describe("analyzeWardrobeImage — needs-review fallbacks (never fabricates)", (
   });
 
   it("output that fails the schema → needs-review (invalid-response)", async () => {
-    nextResponse = jsonResponse({ assessment: "single_garment", category: "hats", color: null, brand: null, occasion: null });
+    nextResponse = jsonResponse({ assessment: "single_garment", name: "Hat", category: "hats", color: null, brand: null, occasion: null });
     expect(await analyzeWardrobeImage(IMG, "u")).toEqual({ status: "needs-review", reason: "invalid-response" });
   });
 

@@ -215,31 +215,54 @@ describe("canSave", () => {
 });
 
 describe("applySuggestion", () => {
-  it("pre-fills a pending item's category, colour, brand, and occasion, leaving it editable", () => {
-    let state = createReviewState([ready("a", "Suggested name")]);
-    state = applySuggestion(state, "a", { category: "tops", color: "Ivory", brand: "AURA", occasion: "office" });
+  it("replaces the file-derived starter name with the AI name and pre-fills the rest, leaving it editable", () => {
+    // The starter name comes from the file; the AI names the piece from the image.
+    let state = createReviewState([ready("a", "IMG_2043")]);
+    state = applySuggestion(state, "a", {
+      name: "Flared bottoms",
+      category: "bottoms",
+      color: "Grey",
+      brand: "AURA",
+      occasion: "casual",
+    });
 
     expect(state.items[0]).toMatchObject({
       status: "pending",
-      // The suggested name from import is untouched; analysis never names a piece.
-      fields: { category: "tops", name: "Suggested name", color: "Ivory", brand: "AURA", occasion: "office" },
+      fields: { category: "bottoms", name: "Flared bottoms", color: "Grey", brand: "AURA", occasion: "casual" },
     });
 
     // Still editable afterwards.
-    state = editItem(state, "a", { color: "Cream" });
-    expect(state.items[0]).toMatchObject({ fields: { color: "Cream" } });
+    state = editItem(state, "a", { name: "Charcoal flared trousers" });
+    expect(state.items[0]).toMatchObject({ fields: { name: "Charcoal flared trousers" } });
+  });
+
+  it("leaves the existing name untouched when the model returns no name", () => {
+    let state = createReviewState([ready("a", "Suggested name")]);
+    state = applySuggestion(state, "a", { name: null, category: "tops", color: "Ivory", brand: "AURA", occasion: "office" });
+    expect(state.items[0]).toMatchObject({ fields: { name: "Suggested name", category: "tops" } });
+  });
+
+  it("gives every piece a distinct name when the model names look-alikes the same", () => {
+    let state = createReviewState([ready("a"), ready("b"), ready("c")]);
+    state = applySuggestion(state, "a", { name: "Flared bottoms", category: "bottoms", color: "Grey", brand: null, occasion: null });
+    state = applySuggestion(state, "b", { name: "Flared bottoms", category: "bottoms", color: "Black", brand: null, occasion: null });
+    // Case-insensitive collision — still gets its own suffix.
+    state = applySuggestion(state, "c", { name: "flared bottoms", category: "bottoms", color: "Blue", brand: null, occasion: null });
+
+    const names = state.items.map((item) => (item.status === "pending" ? item.fields.name : null));
+    expect(names).toEqual(["Flared bottoms", "Flared bottoms 2", "flared bottoms 3"]);
   });
 
   it("maps null colour/brand/occasion to empty strings (never fabricated)", () => {
     let state = createReviewState([ready("a")]);
-    state = applySuggestion(state, "a", { category: "shoes", color: null, brand: null, occasion: null });
+    state = applySuggestion(state, "a", { name: null, category: "shoes", color: null, brand: null, occasion: null });
     expect(state.items[0]).toMatchObject({ fields: { category: "shoes", color: "", brand: "", occasion: "" } });
   });
 
   it("ignores a failed or unknown item", () => {
     const state = createReviewState([failed("a")]);
-    expect(applySuggestion(state, "a", { category: "bags", color: null, brand: null, occasion: null })).toEqual(state);
-    expect(applySuggestion(state, "missing", { category: "bags", color: null, brand: null, occasion: null })).toEqual(state);
+    expect(applySuggestion(state, "a", { name: "x", category: "bags", color: null, brand: null, occasion: null })).toEqual(state);
+    expect(applySuggestion(state, "missing", { name: "x", category: "bags", color: null, brand: null, occasion: null })).toEqual(state);
   });
 });
 

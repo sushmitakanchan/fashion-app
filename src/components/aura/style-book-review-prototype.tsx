@@ -58,7 +58,7 @@ const PROTOTYPE_REVIEW: AuraStyleBookReview = {
   description:
     "A refined off-duty look that balances tailored structure with relaxed denim proportions.",
   outfitReview:
-    "It’s giving brunch-to-date energy: tailored layers keep it polished on you, while the deep neutrals make the whole look feel effortlessly put together.",
+    "Brunch-to-date ready: tailored layers read polished on you, while the deep neutrals keep the whole palette calm and cohesive.",
   categories: [
     {
       key: "fit",
@@ -531,7 +531,7 @@ function ReviewSourceLinks({ sources }: { sources: SavedLookSource[] }) {
           href={source.url}
           target="_blank"
           rel="noreferrer"
-          className="flex w-full min-w-0 items-center gap-1.5 text-primary transition-colors hover:text-primary/75 focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none"
+          className="flex w-full min-w-0 items-center gap-1.5 text-brand-magenta transition-colors hover:text-brand-magenta/75 focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none dark:text-primary dark:hover:text-primary/75"
         >
           <LinkIcon className="size-3 shrink-0" />
           <span className="min-w-0 truncate">Source: {source.url}</span>

@@ -39,14 +39,21 @@ describe("the AURA Style Book review contract", () => {
     expect(auraStyleBookReviewSchema.safeParse(review()).success).toBe(true);
   });
 
-  it("accepts a rich ~220-char outfitReview the vision model actually returns", () => {
-    // Regression: the 180-char cap rejected real model output (~200–220 chars),
-    // failing the whole review. The cap now clears that band with margin.
-    const rich = review();
-    rich.outfitReview =
+  it("accepts a two-line outfitReview and rejects one that would overflow the card", () => {
+    // The compact card renders `line-clamp-2`, so the verdict must be a single
+    // complete sentence that fits two lines. A tidy ~130-char sentence lands
+    // whole; an over-long one (which used to truncate mid-word) is now rejected.
+    const twoLine = review();
+    twoLine.outfitReview =
+      "Dinner-date ready: the tailored charcoal layers read elongated on you, while the cool neutrals stay harmonious and flatter the face.";
+    expect(twoLine.outfitReview.length).toBeLessThanOrEqual(150);
+    expect(auraStyleBookReviewSchema.safeParse(twoLine).success).toBe(true);
+
+    const overflowing = review();
+    overflowing.outfitReview =
       "This is peak dinner-date energy: the tailored charcoal layers read elongated and intentional on you, while the cool-toned neutrals stay harmonious and flatter the face without ever tipping into flat or washed-out.";
-    expect(rich.outfitReview.length).toBeGreaterThan(180);
-    expect(auraStyleBookReviewSchema.safeParse(rich).success).toBe(true);
+    expect(overflowing.outfitReview.length).toBeGreaterThan(150);
+    expect(auraStyleBookReviewSchema.safeParse(overflowing).success).toBe(false);
   });
 
   it("rejects an invalid score and a reordered category payload", () => {

@@ -75,7 +75,7 @@ Return only valid JSON. It must match this shape exactly:
 {
   "overallScore": number from 1 through 5,
   "description": "one concise outfit description",
-  "outfitReview": "one natural, contemporary Gen Z editorial sentence of at most 240 characters, concise enough to display in two lines. It must name a plausible occasion where the look works (such as brunch, a casual date, dinner, or the office) and synthesize this outfit's style, how the outfit reads on the person, and specific visible colour-science observations. Keep it warm and specific, never try-hard or overly slangy.",
+  "outfitReview": "one natural, contemporary Gen Z editorial line — a single complete sentence of at most 130 characters that fits comfortably in two short lines. Name a plausible occasion where the look works (such as brunch, a casual date, dinner, or the office) and fold in how the outfit reads on the person plus one visible colour observation. Keep it warm, specific, and finished — never trail off, and never try-hard or overly slangy.",
   "categories": [
     {"key":"fit","score":number,"verdict":"short verdict","evidence":"visible evidence","nextStep":"one practical suggestion"},
     {"key":"colour","score":number,"verdict":"short verdict","evidence":"visible evidence","nextStep":"one practical suggestion"},

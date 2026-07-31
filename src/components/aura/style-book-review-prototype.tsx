@@ -318,19 +318,20 @@ function LookImage({ look, className }: { look: StyleBookReviewLook; className?:
   return (
     <figure
       className={cn(
-        "bg-card overflow-hidden rounded-[1.4rem] border-2 border-foreground/10 p-2 shadow-[5px_5px_0_var(--color-border)]",
+        "bg-card mx-auto w-fit overflow-hidden rounded-[1.4rem] border-2 border-foreground/10 p-2 shadow-[5px_5px_0_var(--color-border)]",
         className,
       )}
     >
-      {/* The saved AURA look is the visual evidence for every prototype. Shown
-          full (object-contain) at its natural aspect so the whole outfit stays
-          visible — object-cover here center-cropped tall portraits, chopping the
-          head and feet. */}
+      {/* The saved AURA look is the visual evidence for every prototype. The
+          frame hugs the image (figure w-fit) and the image keeps its natural
+          aspect, so the whole outfit shows — no head/feet crop (the old
+          object-cover) and no letterbox gaps around it (a full-width
+          object-contain box on a narrower portrait). */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={look.lookImageUrl}
         alt={look.caption}
-        className="max-h-[72vh] w-full rounded-[1rem] object-contain"
+        className="mx-auto block max-h-[72vh] w-auto max-w-full rounded-[1rem]"
       />
     </figure>
   );

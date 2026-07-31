@@ -30,6 +30,7 @@ import {
   type GarmentSite,
   type Link,
   type SaveSource,
+  type Slot,
   type Upload,
   type WardrobeSource,
 } from "@/lib/aura-provenance";
@@ -44,12 +45,16 @@ import {
   PHOTO_MAX_EDGE,
   type AuraTryOnInput,
 } from "@/lib/validations";
+import {
+  mergeWardrobeSources,
+  parseWardrobeIds,
+} from "@/lib/wardrobe-selection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CtaButton } from "@/components/ui/cta-button";
 import { Input } from "@/components/ui/input";
 import { SaveBar } from "@/components/aura/save-bar";
-import { WardrobeSourcePicker } from "@/components/aura/wardrobe-source-picker";
+import { useTryOnComposer } from "@/components/providers/try-on-composer-provider";
 import {
   AuraPortraitLoading,
   TRY_ON_CAPTIONS,
@@ -69,15 +74,6 @@ import { cn } from "@/lib/utils";
  * is generated onto — doubles as the forming subject in the darkroom loading
  * state (see {@link AuraPortraitLoading}).
  */
-
-/** A transient placeholder reserving a garment's slot in the grid while its link
- * is scraped, so a mixed grid never reflows when the settled tile lands. It is
- * replaced *in place* (by `id`) with the settled {@link Link} on success, or
- * dropped on error. */
-type Ghost = { kind: "ghost"; id: string };
-
-/** One cell of the composer grid: a settled garment or an in-flight scrape. */
-type Slot = Attachment | Ghost;
 
 /** Per-source presentation for a settled link tile: the brand `hue` (its ring +
  * corner chip) and the display `label`. Uploads carry neither — their tile is
@@ -110,6 +106,56 @@ type ScrapeResponse = { image?: string; name?: string; source?: GarmentSite };
 
 /** A scrape failure envelope, carrying the route's own user-facing message. */
 type ScrapeFailure = { error?: string };
+
+/** The owner-scoped wardrobe list, read when seeding the composer from a
+ * `?wardrobe=` handoff to resolve each picked id's saved name. */
+type WardrobeListResponse = {
+  items?: { id: string; name: string }[];
+  error?: string;
+};
+
+/** One seeded piece's freshly signed thumbnail URL. */
+type WardrobeMediaResponse = { url?: string };
+
+/**
+ * Resolve the wardrobe item ids handed off from the gallery's select mode
+ * (`?wardrobe=`) into composer sources. Names come from the owner-scoped wardrobe
+ * list and each thumbnail from the owner-only media endpoint — the same
+ * short-lived signed URL the wardrobe browser uses, so seeding never receives a
+ * durable asset URL. An id that is no longer active/owned (absent from the list),
+ * or whose thumbnail can't be signed, is dropped; the rest keep the picked order.
+ * The server re-authorizes every id again at generation time.
+ */
+async function resolveWardrobeSources(ids: string[]): Promise<WardrobeSource[]> {
+  const response = await fetch("/api/wardrobe");
+  const body = (await response.json().catch(() => null)) as
+    | WardrobeListResponse
+    | null;
+  if (!response.ok || !body?.items) return [];
+  const names = new Map(body.items.map((item) => [item.id, item.name]));
+
+  const resolved = await Promise.all(
+    ids.map(async (id): Promise<WardrobeSource | null> => {
+      const name = names.get(id);
+      if (!name) return null;
+      const mediaResponse = await fetch(
+        `/api/wardrobe/${id}/media?variant=normalized`,
+      );
+      const mediaBody = (await mediaResponse.json().catch(() => null)) as
+        | WardrobeMediaResponse
+        | null;
+      if (!mediaResponse.ok || !mediaBody?.url) return null;
+      return {
+        kind: "wardrobe",
+        id,
+        wardrobeItemId: id,
+        name,
+        previewUrl: mediaBody.url,
+      };
+    }),
+  );
+  return resolved.filter((source): source is WardrobeSource => source !== null);
+}
 
 /** Release an upload's thumbnail object URL. Links carry a data-URI `previewUrl`
  * (nothing to revoke) and ghosts carry no image at all, so revocation is scoped
@@ -179,12 +225,11 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
   const lastAttempt = React.useRef<Attachment[]>([]);
 
   // The composer grid, in attach order: settled garments interleaved with any
-  // in-flight scrape ghosts. Links and uploads share one kind-agnostic cap.
-  const [slots, setSlots] = React.useState<Slot[]>([]);
+  // in-flight scrape ghosts. Links and uploads share one kind-agnostic cap. It
+  // lives in the shared composer store — above the route — so the attachments
+  // survive the hop to the wardrobe gallery and back when picking pieces.
+  const { slots, setSlots } = useTryOnComposer();
   const [linkUrl, setLinkUrl] = React.useState("");
-  // The wardrobe picker is collapsed until asked for, so its owner-scoped fetch
-  // only runs when a participant actually wants to browse their saved pieces.
-  const [showWardrobe, setShowWardrobe] = React.useState(false);
   const [result, setResult] = React.useState<Result | null>(null);
   const [phase, setPhase] = React.useState<
     "idle" | "generating" | "retryable-failure" | "refused"
@@ -203,41 +248,62 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
     [slots],
   );
   const scraping = slots.some((s) => s.kind === "ghost");
-  // Which wardrobe items are already in the composer, so the picker can mark
-  // them and refuse a duplicate before it occupies a second source slot.
-  const attachedWardrobeIds = React.useMemo(
-    () =>
-      new Set(
-        slots
-          .filter((s): s is WardrobeSource => s.kind === "wardrobe")
-          .map((s) => s.wardrobeItemId),
-      ),
-    [slots],
-  );
 
-  // Revoke every live upload object URL when the surface unmounts (navigation
-  // away) — both the staging composer and the retained result bundle. The refs
-  // are synced in an effect (never during render) so the unmount cleanup sees
-  // the latest values without re-subscribing on every change.
-  const slotsRef = React.useRef(slots);
+  // The retained result is surface-local, so its object URLs are read from a ref
+  // synced in an effect (never during render) and released on teardown.
   const resultRef = React.useRef(result);
-  React.useEffect(() => {
-    slotsRef.current = slots;
-  }, [slots]);
   React.useEffect(() => {
     resultRef.current = result;
   }, [result]);
+  // Surface teardown (navigating away). The composer's settled attachments are
+  // deliberately *not* released here — they live in the shared store so a hop to
+  // the wardrobe gallery and back keeps them intact. Only surface-owned state is
+  // cleaned up: the generated result's sources are released, in-flight scrapes
+  // are aborted, and their ghost placeholders are dropped from the store, since
+  // no surface remains to settle them.
   React.useEffect(
     () => () => {
-      for (const item of slotsRef.current) releasePreview(item);
       for (const item of resultRef.current?.sources ?? []) releasePreview(item);
-      // Abort any scrape still in flight so it can't call setState after unmount.
       for (const controller of scrapeControllers.current.values()) {
         controller.abort();
       }
+      setSlots((prev) => prev.filter((slot) => slot.kind !== "ghost"));
     },
-    [],
+    [setSlots],
   );
+
+  // Seed the composer from a `?wardrobe=` handoff: the wardrobe gallery's select
+  // mode sends the picked ids here, and they arrive as composer sources merged in
+  // beside anything already attached (deduped, never past the cap). The param is
+  // consumed once and stripped so a refresh can't re-seed. Read from
+  // `window.location` rather than `useSearchParams` so this otherwise dynamic,
+  // auth-gated surface needs no Suspense boundary.
+  React.useEffect(() => {
+    const ids = parseWardrobeIds(
+      new URLSearchParams(window.location.search).get("wardrobe"),
+    );
+    if (ids.length === 0) return;
+    let active = true;
+    void (async () => {
+      const sources = await resolveWardrobeSources(ids);
+      if (!active) return;
+      if (sources.length > 0) {
+        setSlots((prev) => {
+          const { slots: merged, overflowed } = mergeWardrobeSources(
+            prev,
+            sources,
+          );
+          if (overflowed) capReachedToast();
+          return merged;
+        });
+      }
+      // Drop the consumed param, keeping the participant on the try-on surface.
+      router.replace("/aura/try-on", { scroll: false });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [router, setSlots]);
 
   const request: TryOnRequest =
     phase === "generating"
@@ -349,20 +415,6 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
     };
     // Replace the ghost *in place* so the settled tile keeps the reserved slot.
     setSlots((prev) => prev.map((slot) => (slot.id === id ? link : slot)));
-  }
-
-  /** Add a piece from the participant's own wardrobe. The cap is kind-agnostic —
-   * a wardrobe item occupies a slot like an upload or link — and a duplicate is
-   * refused so the same item can't fill two slots. The server re-authorizes the
-   * id at generation time regardless. */
-  function addWardrobeSource(source: WardrobeSource) {
-    if (isGenerating) return;
-    if (slots.length >= MAX_TRY_ON_GARMENTS) {
-      capReachedToast();
-      return;
-    }
-    if (attachedWardrobeIds.has(source.wardrobeItemId)) return;
-    setSlots((prev) => [...prev, source]);
   }
 
   function removeAttachment(id: string) {
@@ -708,8 +760,9 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
           Myntra, Ajio, Nykaa Fashion, Flipkart, Zara &amp; more — coming soon.
         </p>
 
-        {/* Or pull a piece from your own private wardrobe. The picker is
-            collapsed until asked for, so its owner-scoped fetch is opt-in. */}
+        {/* Or pull pieces from your own private wardrobe. This hands off to the
+            wardrobe gallery's select mode; the pieces picked there return here
+            attached, beside anything already in the composer. */}
         <div className="flex items-center gap-3" aria-hidden>
           <span className="bg-border h-px flex-1" />
           <span className="text-muted-foreground text-xs">or from your wardrobe</span>
@@ -719,21 +772,12 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
           type="button"
           variant="outline"
           className="justify-self-start"
-          aria-expanded={showWardrobe}
           disabled={isGenerating}
-          onClick={() => setShowWardrobe((open) => !open)}
+          onClick={() => router.push("/wardrobe?select=1")}
         >
           <ShirtIcon />
-          {showWardrobe ? "Hide your wardrobe" : "Add from your wardrobe"}
+          Pick from your wardrobe
         </Button>
-        {showWardrobe && (
-          <WardrobeSourcePicker
-            attachedIds={attachedWardrobeIds}
-            canAddMore={slots.length < MAX_TRY_ON_GARMENTS}
-            disabled={isGenerating}
-            onAdd={addWardrobeSource}
-          />
-        )}
 
         {attachments.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3">

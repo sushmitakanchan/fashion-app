@@ -58,6 +58,16 @@ export type WardrobeSource = {
 
 export type Attachment = Upload | Link | WardrobeSource;
 
+/** A transient placeholder reserving a garment's slot in the composer grid while
+ * a pasted link is scraped, so a mixed grid never reflows when the settled tile
+ * lands. It is replaced *in place* (by `id`) with the settled {@link Link} on
+ * success, or dropped on error. Purely a UI/composer concern — it never enters a
+ * try-on request or a save. */
+export type Ghost = { kind: "ghost"; id: string };
+
+/** One cell of the composer grid: a settled garment or an in-flight scrape. */
+export type Slot = Attachment | Ghost;
+
 /** The shape a source enters the try-on request as: a provenance-blind image
  * garment, or a wardrobe item referenced by id (the server resolves its media
  * and name). */

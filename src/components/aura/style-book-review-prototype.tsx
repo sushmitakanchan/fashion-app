@@ -322,12 +322,15 @@ function LookImage({ look, className }: { look: StyleBookReviewLook; className?:
         className,
       )}
     >
-      {/* The saved AURA look is the visual evidence for every prototype. */}
+      {/* The saved AURA look is the visual evidence for every prototype. Shown
+          full (object-contain) at its natural aspect so the whole outfit stays
+          visible — object-cover here center-cropped tall portraits, chopping the
+          head and feet. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={look.lookImageUrl}
         alt={look.caption}
-        className="h-full max-h-[72vh] w-full rounded-[1rem] object-cover"
+        className="max-h-[72vh] w-full rounded-[1rem] object-contain"
       />
     </figure>
   );

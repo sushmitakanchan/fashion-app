@@ -520,17 +520,17 @@ function ReviewSourceLinks({ sources }: { sources: SavedLookSource[] }) {
   const linkSources = sources.filter(isLinkSource);
   if (linkSources.length === 0) return null;
   return (
-    <div className="grid gap-1.5 text-xs">
+    <div className="grid min-w-0 gap-1.5 text-xs">
       {linkSources.map((source) => (
         <a
           key={source.url}
           href={source.url}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex w-fit max-w-full items-center gap-1.5 text-primary transition-colors hover:text-primary/75 focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none"
+          className="flex w-full min-w-0 items-center gap-1.5 text-primary transition-colors hover:text-primary/75 focus-visible:ring-ring focus-visible:ring-3 focus-visible:outline-none"
         >
           <LinkIcon className="size-3 shrink-0" />
-          <span className="truncate">Source: {source.url}</span>
+          <span className="min-w-0 truncate">Source: {source.url}</span>
         </a>
       ))}
     </div>
@@ -551,7 +551,7 @@ function CompactOutfitReview({
 
   return (
     <section
-      className="grid gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--color-border)]"
+      className="grid min-w-0 gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--color-border)]"
       aria-label="AURA outfit review"
     >
       <p className="font-heading text-2xl tracking-wide uppercase">AURA outfit review</p>
@@ -667,20 +667,17 @@ function AuraVerdict({
   onBack,
 }: LayoutProps) {
   return (
-    <div className="grid gap-7">
+    <div className="grid gap-5 pt-3 sm:pt-5">
       {onBack ? <BackButton onBack={onBack} /> : null}
-      <div className="grid items-start gap-6 sm:grid-cols-[minmax(0,.85fr)_minmax(0,1.15fr)] lg:gap-8">
-        <div className="grid gap-4 lg:sticky lg:top-6">
-          <div className="grid gap-1">
-            <p className="font-heading text-3xl tracking-wide uppercase">FIT CHECK</p>
-          </div>
+      <div className="grid items-start gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-8">
+        <div className="lg:sticky lg:top-6">
           <LookImage look={look} />
         </div>
-        <aside className="grid content-start gap-5">
+        <aside className="grid min-w-0 grid-cols-1 content-start gap-4">
           <header>
-            <p className="font-heading text-sm tracking-[0.18em] uppercase text-brand-magenta">AURA verdict</p>
-            <h2 className="mt-2 font-heading text-4xl leading-[.9] tracking-wide uppercase text-balance sm:text-5xl">{look.caption}</h2>
-            <p className="mt-3 text-sm text-muted-foreground">Saved {formatDate(look.createdAt)}</p>
+            <p className="font-heading text-xs tracking-[0.18em] uppercase text-brand-magenta">AURA verdict</p>
+            <h2 className="mt-1.5 font-heading text-2xl leading-[1.05] tracking-wide uppercase text-balance sm:text-3xl">{look.caption}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Saved {formatDate(look.createdAt)}</p>
           </header>
           <section className="grid gap-3 rounded-[1.25rem] border-2 border-foreground bg-card p-5 shadow-[4px_4px_0_var(--foreground)]">
             {review ? (

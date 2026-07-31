@@ -57,7 +57,7 @@ export function StyleBookGallery({ looks }: { looks: StyleBookLook[] }) {
   const open = looks.find((look) => look.id === openId) ?? null;
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-10">
+    <main className={`mx-auto w-full px-6 py-10 ${open ? "max-w-5xl" : "max-w-4xl"}`}>
       {looks.length === 0 ? (
         <>
           <StyleBookHeader />

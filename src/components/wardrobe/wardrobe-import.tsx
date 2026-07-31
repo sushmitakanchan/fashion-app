@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -328,7 +330,19 @@ export function WardrobeImport() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-5 py-7 sm:px-6 sm:py-10">
+    <>
+      {/* Aligned to the site header's max-w-6xl grid (not the narrower page
+          body) so it sits directly under the AURA wordmark. */}
+      <div className="mx-auto w-full max-w-6xl px-4 pt-7 sm:px-6 sm:pt-9">
+        <Link
+          href="/wardrobe"
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex w-fit items-center gap-1.5 px-1 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:outline-none"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Back to Wardrobe
+        </Link>
+      </div>
+      <main className="mx-auto w-full max-w-3xl px-5 py-7 sm:px-6 sm:py-10">
       <header className="mb-6">
         <p className="text-brand-magenta text-xs font-bold tracking-[0.18em] uppercase">
           Build your wardrobe
@@ -411,7 +425,8 @@ export function WardrobeImport() {
           onCancel={() => setShowDisclosure(false)}
         />
       ) : null}
-    </main>
+      </main>
+    </>
   );
 }
 

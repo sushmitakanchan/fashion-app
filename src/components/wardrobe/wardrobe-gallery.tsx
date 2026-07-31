@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowUpRight, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, X } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,7 @@ export type WardrobeItem = {
 
 type WardrobeResponse = { items?: WardrobeItem[]; error?: string };
 type MediaResponse = { url?: string };
-type RecoverableItem = { id: string; name: string; recoveryExpiresAt: string };
+type RecoverableItem = { id: string; name: string; recoveryExpiresAt: string; imageUrl?: string | null };
 type RecoverableResponse = { items?: RecoverableItem[]; error?: string };
 type ItemResponse = { item?: WardrobeItem & { recoveryExpiresAt?: string | null }; error?: string };
 
@@ -83,6 +83,7 @@ export function WardrobeGallery() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [recoverable, setRecoverable] = React.useState<RecoverableItem[]>([]);
+  const [showRecent, setShowRecent] = React.useState(false);
   const [editing, setEditing] = React.useState<WardrobeItem | null>(null);
   const [refresh, setRefresh] = React.useState(0);
 
@@ -131,6 +132,22 @@ export function WardrobeGallery() {
     }
     setRecoverable((current) => current.filter((candidate) => candidate.id !== item.id));
     setRefresh((current) => current + 1);
+  }
+
+  if (showRecent && recoverable.length > 0) {
+    return (
+      <main className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-6 sm:py-10">
+        <button
+          type="button"
+          onClick={() => setShowRecent(false)}
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring mb-6 inline-flex w-fit items-center gap-1.5 text-sm font-medium transition-colors focus-visible:ring-3 focus-visible:outline-none"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Back to Wardrobe
+        </button>
+        <RecentlyDeleted items={recoverable} onRestore={(item) => void restore(item)} />
+      </main>
+    );
   }
 
   return (
@@ -193,13 +210,26 @@ export function WardrobeGallery() {
       </div>
 
       <section id="wardrobe-items" className="scroll-mt-24 pt-8" aria-live="polite">
-        <div className="mb-5 flex items-baseline gap-3">
-          <h2 className="font-heading text-3xl tracking-wide uppercase">
-            {categoryHeadings[category]}
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            {loading ? "Loading…" : `${items.length} ${items.length === 1 ? "piece" : "pieces"}`}
-          </p>
+        <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+          <div className="flex items-baseline gap-3">
+            <h2 className="font-heading text-3xl tracking-wide uppercase">
+              {categoryHeadings[category]}
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              {loading ? "Loading…" : `${items.length} ${items.length === 1 ? "piece" : "pieces"}`}
+            </p>
+          </div>
+          {recoverable.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowRecent(true)}
+              aria-controls="recently-deleted"
+              className="text-foreground hover:text-brand-magenta focus-visible:ring-ring inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase transition-colors focus-visible:ring-3 focus-visible:outline-none"
+            >
+              Recently deleted
+              <ArrowRight className="size-3.5" />
+            </button>
+          ) : null}
         </div>
         {error ? (
           <LoadError message={error} />
@@ -213,12 +243,12 @@ export function WardrobeGallery() {
               <WardrobeCard
                 key={item.id}
                 item={item}
-                onDeleted={(deleted) => {
+                onDeleted={(deleted, imageUrl) => {
                   setItems((current) => current.filter((candidate) => candidate.id !== deleted.id));
                   const recoveryExpiresAt = deleted.recoveryExpiresAt;
                   if (recoveryExpiresAt) {
                     setRecoverable((current) => [
-                      { id: deleted.id, name: deleted.name, recoveryExpiresAt },
+                      { id: deleted.id, name: deleted.name, recoveryExpiresAt, imageUrl },
                       ...current,
                     ]);
                   }
@@ -229,21 +259,6 @@ export function WardrobeGallery() {
           </div>
         )}
       </section>
-
-      {recoverable.length > 0 ? (
-        <section className="mt-10 rounded-2xl border border-dashed p-5" aria-label="Recently deleted items">
-          <h2 className="font-heading text-2xl tracking-wide uppercase">Recently deleted</h2>
-          <p className="text-muted-foreground mt-1 text-sm">Restore a piece within 30 days without re-entering its details.</p>
-          <ul className="mt-4 space-y-3">
-            {recoverable.map((item) => (
-              <li key={item.id} className="flex items-center justify-between gap-4">
-                <span className="text-sm font-medium">{item.name}</span>
-                <Button variant="outline" size="sm" onClick={() => void restore(item)}>Restore</Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       {editing ? (
         <EditWardrobeItem
@@ -259,7 +274,7 @@ export function WardrobeGallery() {
   );
 }
 
-function WardrobeCard({ item, onDeleted, onEdit }: { item: WardrobeItem; onDeleted: (item: WardrobeItem & { recoveryExpiresAt?: string | null }) => void; onEdit: (item: WardrobeItem) => void }) {
+function WardrobeCard({ item, onDeleted, onEdit }: { item: WardrobeItem; onDeleted: (item: WardrobeItem & { recoveryExpiresAt?: string | null }, imageUrl: string | null) => void; onEdit: (item: WardrobeItem) => void }) {
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -279,7 +294,7 @@ function WardrobeCard({ item, onDeleted, onEdit }: { item: WardrobeItem; onDelet
   async function remove() {
     const response = await fetch(`/api/wardrobe/${item.id}`, { method: "DELETE" });
     const body = (await response.json().catch(() => null)) as ItemResponse | null;
-    if (response.ok && body?.item) onDeleted(body.item);
+    if (response.ok && body?.item) onDeleted(body.item, imageUrl);
   }
 
   return (
@@ -435,6 +450,48 @@ export function EditWardrobeItem({ item, onCancel, onSaved }: { item: WardrobeIt
         </form>
       </section>
     </div>
+  );
+}
+
+/**
+ * The disclosed "Recently deleted" panel: a piece's thumbnail beside its name,
+ * with the restore action. Shown when the header toggle is opened.
+ */
+export function RecentlyDeleted({
+  items,
+  onRestore,
+}: {
+  items: RecoverableItem[];
+  onRestore: (item: RecoverableItem) => void;
+}) {
+  return (
+    <section
+      id="recently-deleted"
+      className="rounded-2xl border border-dashed p-5"
+      aria-label="Recently deleted items"
+    >
+      <h3 className="font-heading text-2xl tracking-wide uppercase">Recently deleted</h3>
+      <p className="text-muted-foreground mt-1 text-sm">
+        Restore a piece within 30 days without re-entering its details.
+      </p>
+      <ul className="mt-4 space-y-3">
+        {items.map((item) => (
+          <li key={item.id} className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="bg-muted size-10 shrink-0 overflow-hidden rounded-lg">
+                {item.imageUrl ? (
+                  // The URL was freshly authorized by the server and expires quickly.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.imageUrl} alt={item.name} className="size-full object-cover" />
+                ) : null}
+              </div>
+              <span className="truncate text-sm font-medium">{item.name}</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => onRestore(item)}>Restore</Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

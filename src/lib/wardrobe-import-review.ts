@@ -131,25 +131,48 @@ export function editItem(
  *  optional-analysis output, redeclared here so this client-safe module never
  *  imports the server-only analysis boundary. */
 export type ReviewSuggestion = {
+  name: string | null;
   category: WardrobeItemCategoryValue;
   color: string | null;
   brand: string | null;
   occasion: string | null;
 };
 
+/** Make `desired` distinct from every other pending item's current name by
+ *  appending " 2", " 3"… — so two look-alike garments the model names the same
+ *  ("Flared bottoms", "Flared bottoms") don't collide. Comparison is
+ *  case-insensitive on the trimmed name. */
+function uniqueName(state: ReviewState, id: string, desired: string): string {
+  const taken = new Set<string>();
+  for (const item of state.items) {
+    if (item.id === id || item.status !== "pending") continue;
+    const existing = item.fields.name.trim().toLowerCase();
+    if (existing.length > 0) taken.add(existing);
+  }
+  if (!taken.has(desired.toLowerCase())) return desired;
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${desired} ${suffix}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
 /**
- * Pre-fill a pending item's category, colour, and brand from an AI suggestion.
- * The values are only a starting point — the item stays fully editable, exactly
- * like a manual entry — and a null colour/brand/occasion becomes an empty field
- * rather than an invented value. The name is never touched; analysis doesn't name
- * a piece. Failed or unknown ids are no-ops.
+ * Pre-fill a pending item's name, category, colour, brand, and occasion from an
+ * AI suggestion. The values are only a starting point — the item stays fully
+ * editable, exactly like a manual entry — and a null colour/brand/occasion
+ * becomes an empty field rather than an invented value. The model's name replaces
+ * the file-derived starter (that's the point: the piece is named from the image,
+ * not its file name), disambiguated so no two pieces in the batch share a name; a
+ * null name leaves the existing name untouched. Failed or unknown ids are no-ops.
  */
 export function applySuggestion(
   state: ReviewState,
   id: string,
   suggestion: ReviewSuggestion,
 ): ReviewState {
+  const name = suggestion.name?.trim();
   return editItem(state, id, {
+    ...(name ? { name: uniqueName(state, id, name) } : {}),
     category: suggestion.category,
     color: suggestion.color ?? "",
     brand: suggestion.brand ?? "",

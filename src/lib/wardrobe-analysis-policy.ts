@@ -11,18 +11,21 @@ import type { WardrobeItemCategoryValue } from "@/lib/validations";
 /** The consent policy the disclosure describes. Bump when the disclosure's
  *  material terms change — that forces a fresh opt-in, since consent recorded
  *  under an older version is no longer active. */
-export const WARDROBE_ANALYSIS_POLICY_VERSION = "2026-07-30.1";
+export const WARDROBE_ANALYSIS_POLICY_VERSION = "2026-07-31.1";
 
 /** The opt-in disclosure shown before any image is analysed. */
 export const WARDROBE_ANALYSIS_DISCLOSURE =
   "AI suggestions are optional. If you turn them on, the normalized version of " +
   "each clothing image in this batch is sent to OpenAI — a third-party service — " +
-  "to suggest a category, colour, brand, and occasion to wear it. Every suggestion is editable, and " +
+  "to suggest a name, category, colour, brand, and occasion to wear it. Every suggestion is editable, and " +
   "none of your confirmed details or edits are ever sent. OpenAI may retain the " +
   "images for up to 30 days for abuse monitoring before deleting them.";
 
-/** An editable AI categorisation suggestion for one image. */
+/** An editable AI categorisation suggestion for one image. `name` is a short,
+ *  image-derived product name (e.g. "Flared bottoms"); null when the model can't
+ *  tell what the piece is. */
 export type WardrobeSuggestion = {
+  name: string | null;
   category: WardrobeItemCategoryValue;
   color: string | null;
   brand: string | null;

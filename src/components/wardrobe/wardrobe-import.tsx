@@ -444,7 +444,7 @@ function AiSuggestBar({
       <div className="min-w-0">
         <p className="text-sm font-bold">Speed this up with AI</p>
         <p className="text-muted-foreground text-xs text-pretty">
-          Optional. Suggests a category, colour, brand, and occasion — you confirm every one.
+          Optional. Suggests a name, category, colour, brand, and occasion — you confirm every one.
         </p>
       </div>
       <div className="flex items-center gap-2">

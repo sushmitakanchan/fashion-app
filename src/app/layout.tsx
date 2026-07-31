@@ -5,6 +5,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { TryOnComposerProvider } from "@/components/providers/try-on-composer-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 // v5's three faces, self-hosted through next/font rather than the mockup's
@@ -71,17 +72,22 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <QueryProvider>
-              <SiteHeader />
-              {/* The skip-link target. `tabIndex={-1}` makes it focusable
-                  programmatically so the jump actually moves the caret, not
-                  just the scroll position. */}
-              <div
-                id="main-content"
-                tabIndex={-1}
-                className="flex flex-1 flex-col scroll-mt-20 outline-none"
-              >
-                {children}
-              </div>
+              {/* The try-on composer lives above the route so a participant can
+                  hop to the wardrobe to pick pieces and return with their
+                  attachments intact. */}
+              <TryOnComposerProvider>
+                <SiteHeader />
+                {/* The skip-link target. `tabIndex={-1}` makes it focusable
+                    programmatically so the jump actually moves the caret, not
+                    just the scroll position. */}
+                <div
+                  id="main-content"
+                  tabIndex={-1}
+                  className="flex flex-1 flex-col scroll-mt-20 outline-none"
+                >
+                  {children}
+                </div>
+              </TryOnComposerProvider>
             </QueryProvider>
             <Toaster />
           </ThemeProvider>

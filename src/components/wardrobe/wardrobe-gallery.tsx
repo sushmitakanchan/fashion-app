@@ -2,8 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, ArrowUpRight, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Check, X } from "lucide-react";
 import * as React from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +15,8 @@ import {
   type WardrobeCategory,
   type WardrobeItemCategory,
 } from "@/lib/wardrobe";
+import { MAX_TRY_ON_GARMENTS } from "@/lib/validations";
+import { serializeWardrobeIds, toggleSelected } from "@/lib/wardrobe-selection";
 import { cn } from "@/lib/utils";
 
 const categoryLabels: Record<WardrobeCategory, string> = {
@@ -86,6 +90,28 @@ export function WardrobeGallery() {
   const [showRecent, setShowRecent] = React.useState(false);
   const [editing, setEditing] = React.useState<WardrobeItem | null>(null);
   const [refresh, setRefresh] = React.useState(0);
+  const router = useRouter();
+  // Select mode: checkboxes appear on the tiles and the per-tile edit/delete
+  // controls give way to picking pieces for a try-on. The selection is tracked by
+  // id, so it persists as the category filter changes and the visible items
+  // refetch, and it is capped at the number of garments one look can wear.
+  const [selectMode, setSelectMode] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  // Arriving from the try-on surface's "Pick from your wardrobe" opens select
+  // mode directly. The flag is read from `window` post-mount (not during render,
+  // which would mismatch the server HTML) and consumed once — the param is
+  // stripped so a refresh doesn't silently re-enter selection. This one-time read
+  // of the URL runs a single time (deps are stable), so it can't cascade.
+  React.useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("select") === "1") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a client-only URL flag on mount
+      setSelectMode(true);
+      router.replace("/wardrobe", { scroll: false });
+    }
+  }, [router]);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -132,6 +158,32 @@ export function WardrobeGallery() {
     }
     setRecoverable((current) => current.filter((candidate) => candidate.id !== item.id));
     setRefresh((current) => current + 1);
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((current) => {
+      const { selected, atCap } = toggleSelected(
+        current,
+        id,
+        MAX_TRY_ON_GARMENTS,
+      );
+      if (atCap) {
+        toast.error(`You can try on up to ${MAX_TRY_ON_GARMENTS} pieces at once`, {
+          description: "Deselect a piece before choosing another.",
+        });
+      }
+      return selected;
+    });
+  }
+
+  function tryOnSelected() {
+    if (selectedIds.size === 0) return;
+    router.push(`/aura/try-on?wardrobe=${serializeWardrobeIds(selectedIds)}`);
   }
 
   if (showRecent && recoverable.length > 0) {
@@ -219,17 +271,40 @@ export function WardrobeGallery() {
               {loading ? "Loading…" : `${items.length} ${items.length === 1 ? "piece" : "pieces"}`}
             </p>
           </div>
-          {recoverable.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setShowRecent(true)}
-              aria-controls="recently-deleted"
-              className="text-foreground hover:text-brand-magenta focus-visible:ring-ring inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase transition-colors focus-visible:ring-3 focus-visible:outline-none"
-            >
-              Recently deleted
-              <ArrowRight className="size-3.5" />
-            </button>
-          ) : null}
+          <div className="flex items-center gap-4">
+            {selectMode ? (
+              <button
+                type="button"
+                onClick={exitSelectMode}
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase transition-colors focus-visible:ring-3 focus-visible:outline-none"
+              >
+                Cancel
+              </button>
+            ) : (
+              <>
+                {items.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectMode(true)}
+                    className="text-foreground hover:text-brand-magenta focus-visible:ring-ring inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase transition-colors focus-visible:ring-3 focus-visible:outline-none"
+                  >
+                    Select
+                  </button>
+                ) : null}
+                {recoverable.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowRecent(true)}
+                    aria-controls="recently-deleted"
+                    className="text-foreground hover:text-brand-magenta focus-visible:ring-ring inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase transition-colors focus-visible:ring-3 focus-visible:outline-none"
+                  >
+                    Recently deleted
+                    <ArrowRight className="size-3.5" />
+                  </button>
+                ) : null}
+              </>
+            )}
+          </div>
         </div>
         {error ? (
           <LoadError message={error} />
@@ -243,6 +318,9 @@ export function WardrobeGallery() {
               <WardrobeCard
                 key={item.id}
                 item={item}
+                selectable={selectMode}
+                selected={selectedIds.has(item.id)}
+                onToggleSelect={() => toggleSelect(item.id)}
                 onDeleted={(deleted, imageUrl) => {
                   setItems((current) => current.filter((candidate) => candidate.id !== deleted.id));
                   const recoveryExpiresAt = deleted.recoveryExpiresAt;
@@ -260,6 +338,37 @@ export function WardrobeGallery() {
         )}
       </section>
 
+      {selectMode ? (
+        <div className="sticky bottom-4 z-20 mt-8 flex items-center justify-between gap-4 rounded-full border bg-card/95 px-5 py-3 shadow-lg backdrop-blur-sm">
+          <p className="text-sm font-medium" aria-live="polite">
+            {selectedIds.size === 0
+              ? "Select pieces to try on"
+              : `${selectedIds.size} selected`}
+          </p>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedIds(new Set())}
+                className="rounded-full"
+              >
+                Clear
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              onClick={tryOnSelected}
+              disabled={selectedIds.size === 0}
+              className="bg-brand-magenta text-brand-magenta-foreground rounded-full px-6 hover:brightness-105"
+            >
+              Try on{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {editing ? (
         <EditWardrobeItem
           item={editing}
@@ -274,7 +383,21 @@ export function WardrobeGallery() {
   );
 }
 
-function WardrobeCard({ item, onDeleted, onEdit }: { item: WardrobeItem; onDeleted: (item: WardrobeItem & { recoveryExpiresAt?: string | null }, imageUrl: string | null) => void; onEdit: (item: WardrobeItem) => void }) {
+function WardrobeCard({
+  item,
+  onDeleted,
+  onEdit,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+}: {
+  item: WardrobeItem;
+  onDeleted: (item: WardrobeItem & { recoveryExpiresAt?: string | null }, imageUrl: string | null) => void;
+  onEdit: (item: WardrobeItem) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -303,6 +426,9 @@ function WardrobeCard({ item, onDeleted, onEdit }: { item: WardrobeItem; onDelet
       imageUrl={imageUrl}
       onEdit={() => onEdit(item)}
       onDelete={() => void remove()}
+      selectable={selectable}
+      selected={selected}
+      onToggleSelect={onToggleSelect}
     />
   );
 }
@@ -317,15 +443,85 @@ export function WardrobeCardView({
   imageUrl,
   onEdit,
   onDelete,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: {
   item: WardrobeItem;
   imageUrl: string | null;
   onEdit: () => void;
   onDelete: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const chips = [item.color, categoryLabels[item.category], item.occasion].filter(
     (chip): chip is string => Boolean(chip),
   );
+
+  // The name + chips block, shared by both modes. In select mode the per-tile
+  // edit control is dropped, so the name simply spans the row.
+  const details = (
+    <div className="flex flex-1 flex-col px-2.5 pb-2 pt-4">
+      {formatSavedDate(item.createdAt) ? (
+        <p className="text-muted-foreground text-xs">Saved {formatSavedDate(item.createdAt)}</p>
+      ) : null}
+      <div className="mt-2 min-w-0">
+        <h3 className="font-heading text-lg leading-tight tracking-wide uppercase text-balance">{item.name}</h3>
+        {item.brand ? (
+          <p className="text-muted-foreground mt-1 truncate text-sm">{item.brand}</p>
+        ) : null}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {chips.map((chip, index) => (
+          <span
+            key={`${chip}-${index}`}
+            className="bg-muted text-muted-foreground rounded-full px-3 py-1 text-xs font-medium"
+          >
+            {chip}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+
+  // In select mode the whole tile is one toggle: edit and delete give way to a
+  // checkbox, and clicking anywhere on the tile selects or deselects the piece.
+  if (selectable) {
+    return (
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        aria-pressed={selected}
+        aria-label={`${selected ? "Deselect" : "Select"} ${item.name}`}
+        className={cn(
+          "focus-visible:ring-ring flex flex-col overflow-hidden rounded-[1.75rem] border bg-card p-2.5 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:ring-3 focus-visible:outline-none",
+          selected
+            ? "border-brand-magenta ring-brand-magenta ring-2"
+            : "border-brand-magenta/15",
+        )}
+      >
+        <div className="bg-muted relative aspect-[4/5] overflow-hidden rounded-[1.35rem]">
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl} alt={item.name} className="size-full object-cover" />
+          ) : null}
+          <span
+            aria-hidden="true"
+            className={cn(
+              "absolute right-3 top-3 grid size-8 place-items-center rounded-full border-2 backdrop-blur-sm transition-colors",
+              selected
+                ? "border-brand-magenta bg-brand-magenta text-brand-magenta-foreground"
+                : "border-white/90 bg-brand-ink/25 text-transparent",
+            )}
+          >
+            <Check className="size-4" />
+          </span>
+        </div>
+        {details}
+      </button>
+    );
+  }
 
   return (
     <article className="border-brand-magenta/15 flex flex-col overflow-hidden rounded-[1.75rem] border bg-card p-2.5 shadow-sm transition-shadow hover:shadow-md">

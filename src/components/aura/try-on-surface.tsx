@@ -757,7 +757,7 @@ export function TryOnSurface({ portraitUrl }: { portraitUrl: string }) {
           </Button>
         </form>
         <p className="text-muted-foreground text-xs">
-          Myntra, Ajio, Nykaa Fashion, Flipkart, Zara &amp; more — coming soon.
+          Ajio, Nykaa Fashion, Flipkart, Zara &amp; more — coming soon.
         </p>
 
         {/* Or pull pieces from your own private wardrobe. This hands off to the

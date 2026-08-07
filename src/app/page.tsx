@@ -6,6 +6,7 @@ import { SparklesIcon } from "lucide-react";
 import { CtaButton } from "@/components/ui/cta-button";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 import { BrandMarquee } from "@/components/landing/brand-marquee";
+import { BoardTile } from "@/components/landing/board-tile";
 
 // The v5 placeholder texture: a fine diagonal hatch over a flat fill, standing
 // in for photography that doesn't exist yet. Decorative, so every element that
@@ -265,9 +266,9 @@ export default function Home() {
 
             <ul className="mt-16 grid grid-cols-2 gap-5 md:grid-cols-3">
               {board.map((item, i) => (
-                <li
+                <BoardTile
                   key={`${item.tag ?? item.kind}-${i}`}
-                  className={`relative aspect-4/5 overflow-hidden rounded-2xl ${item.kind === "photo" && item.surface ? item.surface : "bg-muted"}`}
+                  className={`group relative aspect-4/5 overflow-hidden rounded-2xl ${item.kind === "photo" && item.surface ? item.surface : "bg-muted"}`}
                 >
                   {item.kind === "photo" ? (
                     <Image
@@ -275,11 +276,11 @@ export default function Home() {
                       alt={item.alt}
                       fill
                       sizes="(min-width: 768px) 33vw, 50vw"
-                      className={
+                      className={`transition-transform duration-[600ms] ease-out group-hover:scale-[1.12] motion-reduce:transform-none motion-reduce:transition-none ${
                         item.fit === "contain"
                           ? "object-contain"
                           : "object-cover"
-                      }
+                      }`}
                     />
                   ) : (
                     <div
@@ -325,7 +326,7 @@ export default function Home() {
                       {item.tag}
                     </span>
                   )}
-                </li>
+                </BoardTile>
               ))}
             </ul>
           </div>

@@ -17,6 +17,7 @@ const NAV = [
   { href: "/aura", label: "Profile" },
   { href: "/wardrobe", label: "Wardrobe" },
   { href: "/aura/style-book", label: "Style Book" },
+  { href: "/aura/calendar", label: "Calendar" },
   { href: "/colors", label: "Colours" },
 ] as const;
 

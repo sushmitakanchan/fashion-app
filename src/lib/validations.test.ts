@@ -4,9 +4,13 @@ import {
   auraFormSchema,
   auraSubmissionSchema,
   auraTryOnSchema,
+  DEFAULT_PLANNED_OCCASION,
   isTryOnWardrobeSource,
   MAX_PHOTO_BYTES,
   MAX_TRY_ON_GARMENTS,
+  PLANNED_EVENT_TITLE_MAX_LENGTH,
+  plannedEventCreateSchema,
+  plannedEventFormSchema,
   styleBookSaveSchema,
 } from "@/lib/validations";
 
@@ -428,5 +432,117 @@ describe("the Style Book save contract", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/*                   Outfit Calendar — manual planned events                  */
+/* -------------------------------------------------------------------------- */
+
+describe("plannedEventFormSchema (browser form)", () => {
+  const validForm = () => ({
+    title: "Dinner with Sam",
+    occasion: "dinner date",
+    allDay: false,
+    startsAtLocal: "2026-08-12T19:00",
+    endsAtLocal: "",
+    placeText: "Bandra",
+  });
+
+  it("accepts a well-formed timed event and trims the title", () => {
+    const result = plannedEventFormSchema.safeParse({
+      ...validForm(),
+      title: "  Dinner with Sam  ",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.title).toBe("Dinner with Sam");
+  });
+
+  it("requires a title and a start", () => {
+    expect(failedPaths(plannedEventFormSchema.safeParse({ ...validForm(), title: "  " }))).toContain(
+      "title",
+    );
+    expect(
+      failedPaths(plannedEventFormSchema.safeParse({ ...validForm(), startsAtLocal: "" })),
+    ).toContain("startsAtLocal");
+  });
+
+  it("rejects an end that is before the start, blaming the end field", () => {
+    const result = plannedEventFormSchema.safeParse({
+      ...validForm(),
+      startsAtLocal: "2026-08-12T19:00",
+      endsAtLocal: "2026-08-12T18:00",
+    });
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("endsAtLocal");
+  });
+
+  it("allows an empty end (optional)", () => {
+    expect(plannedEventFormSchema.safeParse({ ...validForm(), endsAtLocal: "" }).success).toBe(true);
+  });
+});
+
+describe("plannedEventCreateSchema (wire)", () => {
+  const validWire = () => ({
+    title: "Dinner with Sam",
+    occasion: "dinner date",
+    allDay: false,
+    startsAt: "2026-08-12T13:30:00.000Z",
+    placeText: "Bandra",
+  });
+
+  it("accepts an absolute ISO instant and a bare-Z timestamp", () => {
+    expect(plannedEventCreateSchema.safeParse(validWire()).success).toBe(true);
+  });
+
+  it("rejects a local datetime that is not an absolute instant", () => {
+    const result = plannedEventCreateSchema.safeParse({
+      ...validWire(),
+      startsAt: "2026-08-12T19:00",
+    });
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("startsAt");
+  });
+
+  it("normalises a blank occasion and place to undefined (route defaults them)", () => {
+    const result = plannedEventCreateSchema.safeParse({
+      ...validWire(),
+      occasion: "   ",
+      placeText: "",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.occasion).toBeUndefined();
+      expect(result.data.placeText).toBeUndefined();
+    }
+    // The default itself is applied at the route, not the schema.
+    expect(DEFAULT_PLANNED_OCCASION.length).toBeGreaterThan(0);
+  });
+
+  it("defaults allDay to false when omitted", () => {
+    const withoutAllDay: Record<string, unknown> = { ...validWire() };
+    delete withoutAllDay.allDay;
+    const result = plannedEventCreateSchema.safeParse(withoutAllDay);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.allDay).toBe(false);
+  });
+
+  it("rejects an end instant before the start instant", () => {
+    const result = plannedEventCreateSchema.safeParse({
+      ...validWire(),
+      startsAt: "2026-08-12T13:30:00.000Z",
+      endsAt: "2026-08-12T12:00:00.000Z",
+    });
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("endsAt");
+  });
+
+  it("rejects a title past the length cap", () => {
+    const result = plannedEventCreateSchema.safeParse({
+      ...validWire(),
+      title: "x".repeat(PLANNED_EVENT_TITLE_MAX_LENGTH + 1),
+    });
+    expect(result.success).toBe(false);
+    expect(failedPaths(result)).toContain("title");
   });
 });

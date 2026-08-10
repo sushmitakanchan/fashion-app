@@ -444,3 +444,105 @@ export const wardrobeConsentGrantSchema = z.object({
 });
 
 export type WardrobeConsentGrantInput = z.infer<typeof wardrobeConsentGrantSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*                   Outfit Calendar — manual planned events                  */
+/* -------------------------------------------------------------------------- */
+
+/** Bounds on the manual-event fields. The `title` is the owner's own label and
+ *  is generous; `occasion` shares the free-text vocabulary of
+ *  `WardrobeItem.occasion`; `placeText` is captured raw (never geocoded here). */
+export const PLANNED_EVENT_TITLE_MAX_LENGTH = 120;
+export const PLANNED_EVENT_OCCASION_MAX_LENGTH = 60;
+export const PLANNED_EVENT_PLACE_MAX_LENGTH = 200;
+
+/** What an event's `occasion` becomes when the owner leaves it blank. The
+ *  occasion is owner-entered/defaulted — never AI-suggested from the title. */
+export const DEFAULT_PLANNED_OCCASION = "Everyday";
+
+const PLANNED_EVENT_TITLE_TOO_LONG = "That title is a little too long";
+const PLANNED_EVENT_OCCASION_TOO_LONG = "That occasion is a little too long";
+const PLANNED_EVENT_PLACE_TOO_LONG = "That place is a little too long";
+const PLANNED_EVENT_END_BEFORE_START = "End must be at or after the start";
+
+const plannedEventTitle = z
+  .string({ error: "Give this event a title" })
+  .trim()
+  .min(1, "Give this event a title")
+  .max(PLANNED_EVENT_TITLE_MAX_LENGTH, PLANNED_EVENT_TITLE_TOO_LONG);
+
+// Empty-tolerant on the wire: a blank occasion/place normalises to `undefined`
+// so the route persists a default occasion / a null place rather than "".
+const plannedEventOccasionWire = z
+  .string()
+  .trim()
+  .max(PLANNED_EVENT_OCCASION_MAX_LENGTH, PLANNED_EVENT_OCCASION_TOO_LONG)
+  .transform((value) => (value.length > 0 ? value : undefined))
+  .optional();
+
+const plannedEventPlaceWire = z
+  .string()
+  .trim()
+  .max(PLANNED_EVENT_PLACE_MAX_LENGTH, PLANNED_EVENT_PLACE_TOO_LONG)
+  .transform((value) => (value.length > 0 ? value : undefined))
+  .optional();
+
+/**
+ * The browser form for adding a manual event. Fields mirror the `PlannedEvent`
+ * shape, but `when` is captured as local `datetime-local` / `date` strings the
+ * viewer's browser interprets in their own timezone; the component converts them
+ * to absolute ISO instants before submitting. This is the client analogue of
+ * `plannedEventCreateSchema`, exactly as `auraFormSchema` (Files) pairs with
+ * `auraSubmissionSchema` (data URIs).
+ */
+export const plannedEventFormSchema = z
+  .object({
+    title: plannedEventTitle,
+    occasion: z
+      .string()
+      .trim()
+      .max(PLANNED_EVENT_OCCASION_MAX_LENGTH, PLANNED_EVENT_OCCASION_TOO_LONG),
+    allDay: z.boolean(),
+    // A `date` value (YYYY-MM-DD) when all-day, else a `datetime-local` value
+    // (YYYY-MM-DDTHH:mm). Both sort lexically within their own mode, which is
+    // all the end-after-start check below needs.
+    startsAtLocal: z.string().min(1, "Pick when this happens"),
+    endsAtLocal: z.string(),
+    placeText: z
+      .string()
+      .trim()
+      .max(PLANNED_EVENT_PLACE_MAX_LENGTH, PLANNED_EVENT_PLACE_TOO_LONG),
+  })
+  .refine(
+    (value) =>
+      value.endsAtLocal.length === 0 ||
+      value.endsAtLocal >= value.startsAtLocal,
+    { message: PLANNED_EVENT_END_BEFORE_START, path: ["endsAtLocal"] },
+  );
+
+export type PlannedEventFormInput = z.input<typeof plannedEventFormSchema>;
+
+/**
+ * What crosses the wire to `POST /api/aura/calendar/events`. `startsAt`/`endsAt`
+ * are absolute ISO-8601 instants (UTC); the server is the authority and never
+ * takes the client's word for the shape. Adding a manual event is a pure
+ * write — no geocoding, no weather, no AI — so `placeText` is stored raw and the
+ * geocoded fields stay null until a later, consent-gated step fills them.
+ */
+export const plannedEventCreateSchema = z
+  .object({
+    title: plannedEventTitle,
+    occasion: plannedEventOccasionWire,
+    allDay: z.boolean().default(false),
+    startsAt: z.iso.datetime({ offset: true }),
+    endsAt: z.iso.datetime({ offset: true }).optional(),
+    placeText: plannedEventPlaceWire,
+  })
+  .refine(
+    (value) =>
+      value.endsAt === undefined ||
+      new Date(value.endsAt).getTime() >= new Date(value.startsAt).getTime(),
+    { message: PLANNED_EVENT_END_BEFORE_START, path: ["endsAt"] },
+  );
+
+export type PlannedEventCreateInput = z.infer<typeof plannedEventCreateSchema>;

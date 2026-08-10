@@ -445,6 +445,19 @@ export const wardrobeConsentGrantSchema = z.object({
 
 export type WardrobeConsentGrantInput = z.infer<typeof wardrobeConsentGrantSchema>;
 
+/**
+ * What crosses the wire to `POST /api/aura/calendar/consent` (grant Smart
+ * Planning consent). The client echoes back the exact policy version it
+ * disclosed; the route rejects a mismatch against the server's current version
+ * so a stale disclosure can't record consent to newer terms. `PlanningConsent`
+ * versions this as an Int (unlike the wardrobe policy's string scheme).
+ */
+export const planningConsentGrantSchema = z.object({
+  policyVersion: z.number().int(),
+});
+
+export type PlanningConsentGrantInput = z.infer<typeof planningConsentGrantSchema>;
+
 /* -------------------------------------------------------------------------- */
 /*                   Outfit Calendar — manual planned events                  */
 /* -------------------------------------------------------------------------- */

@@ -458,6 +458,20 @@ export const planningConsentGrantSchema = z.object({
 
 export type PlanningConsentGrantInput = z.infer<typeof planningConsentGrantSchema>;
 
+/**
+ * What the client echoes on every Smart Planning *egress* call (live weather
+ * now; AI planning in a later ticket): the exact `policyVersion` it disclosed.
+ * The egress boundary (`isPlanningEgressAllowed`) refuses a stale echo, so a
+ * wording change re-prompts before the next outside contact. Same one-field
+ * shape as the consent grant — one version scheme, re-declared here so the
+ * egress routes read against an intent-named schema.
+ */
+export const planningEgressSchema = z.object({
+  policyVersion: z.number().int(),
+});
+
+export type PlanningEgressInput = z.infer<typeof planningEgressSchema>;
+
 /* -------------------------------------------------------------------------- */
 /*                   Outfit Calendar — manual planned events                  */
 /* -------------------------------------------------------------------------- */

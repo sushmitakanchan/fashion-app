@@ -91,3 +91,25 @@ There is one per user, editable at any time and replaced on each edit. It is a
 soft signal fed verbatim to the planner and never gates planning; when absent, the
 planner simply omits it. It is plain content, not a consent record — its egress to
 the AI planner is governed by the planning-consent gate.
+
+## Smart Planning
+
+The consent-gated pipeline behind everything on the calendar that contacts an
+outside service — geocoding, live weather, and (in a later step) AI outfit
+planning. One `PlanningConsent` per participant governs it, disclosed once in a
+versioned, just-in-time notice before the first outside contact and re-checked at
+the egress boundary immediately before every call: egress is allowed only while
+consent is not withdrawn and still at the current policy version, and the client
+must echo back the version it was shown. The event **title never egresses** —
+geocoding sees only the place text, weather only coordinates. Withdrawal is
+forward-only: it bars future contact but leaves existing events untouched.
+
+## Live weather
+
+The forecast shown beside a placed event once Smart Planning is on: a day high/low
+in the day header and a compact conditions line per event. It is resolved through
+**Open-Meteo** — the same keyless provider geocodes the event's place text to
+coordinates (cached on the event, disambiguated by region or population and
+coarsened to a broader place when a venue can't be pinpointed) and returns the
+day's forecast (never persisted, fetched live and cached briefly). An Open-Meteo
+attribution line is shown wherever weather is displayed.

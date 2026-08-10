@@ -3,13 +3,23 @@
 import * as React from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Cloud,
+  CloudDrizzle,
+  CloudFog,
+  CloudLightning,
+  CloudRain,
+  CloudSnow,
+  CloudSun,
   MapPin,
   Plus,
+  Sun,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +28,12 @@ import {
   plannedEventFormSchema,
   type PlannedEventFormInput,
 } from "@/lib/validations";
+import {
+  PLANNING_POLICY_VERSION,
+  SMART_PLANNING_DISCLOSURE,
+} from "@/lib/planning-policy";
+import type { WeatherGroup } from "@/lib/weather-code";
+import type { WeatherStatus } from "@/lib/weather";
 import {
   civilDateInTimeZone,
   civilToUtcNoon,
@@ -103,6 +119,156 @@ function toInstant(local: string, allDay: boolean): string {
   return date.toISOString();
 }
 
+/* -------------------------------------------------------------------------- */
+/*                    Live weather (Smart Planning egress)                    */
+/* -------------------------------------------------------------------------- */
+
+// The weather route's shape. Weather is a live read the client caches briefly —
+// it is never persisted server-side; only the geocoded coordinates are.
+type EventWeatherResponse = {
+  placed: boolean;
+  unresolved?: boolean;
+  approximate?: boolean;
+  place?: {
+    latitude: number;
+    longitude: number;
+    timezone: string;
+    placeLabel: string | null;
+  } | null;
+  weather?: {
+    date: string;
+    weatherCode: number;
+    description: { label: string; group: WeatherGroup };
+    temperatureMax: number;
+    temperatureMin: number;
+    precipitationProbabilityMax: number | null;
+  } | null;
+  weatherStatus?: WeatherStatus;
+};
+
+const WEATHER_ICON: Record<WeatherGroup, typeof Cloud> = {
+  clear: Sun,
+  "partly-cloudy": CloudSun,
+  cloudy: Cloud,
+  fog: CloudFog,
+  drizzle: CloudDrizzle,
+  rain: CloudRain,
+  showers: CloudRain,
+  snow: CloudSnow,
+  thunderstorm: CloudLightning,
+  unknown: Cloud,
+};
+
+// ~2h stale window: weather isn't stored, so this is the "cached briefly per
+// (place, day)" TTL the spec calls for. Keyed per event (place + day are fixed
+// per event), so both the day header and the event card share one fetch.
+const WEATHER_STALE_MS = 2 * 60 * 60 * 1000;
+
+function fmtTemp(value: number): string {
+  return `${Math.round(value)}°`;
+}
+
+async function fetchEventWeather(eventId: string): Promise<EventWeatherResponse> {
+  const response = await fetch(`/api/aura/calendar/events/${eventId}/weather`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    // Echo the disclosed policy version — the egress boundary refuses a stale one.
+    body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION }),
+  });
+  if (!response.ok) {
+    throw new Error(`weather request failed (${response.status})`);
+  }
+  return (await response.json()) as EventWeatherResponse;
+}
+
+/** Live weather for one placed event, gated on active Smart Planning consent.
+ *  Keyed by event id so the day header and the event card dedupe to one fetch. */
+function useEventWeather(eventId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["calendar-weather", eventId, PLANNING_POLICY_VERSION],
+    queryFn: () => fetchEventWeather(eventId),
+    enabled,
+    staleTime: WEATHER_STALE_MS,
+    gcTime: WEATHER_STALE_MS,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Compact per-event weather line: icon · conditions · high/low, with honest
+ *  fallbacks for an unlocatable place or a date past the forecast horizon. */
+function EventWeather({ eventId, enabled }: { eventId: string; enabled: boolean }) {
+  const { data, isLoading, isError } = useEventWeather(eventId, enabled);
+
+  if (!enabled) return null;
+  if (isLoading) {
+    return <div className="bg-muted mt-2 h-4 w-32 animate-pulse rounded" aria-hidden="true" />;
+  }
+  if (isError || !data || data.placed === false) return null;
+
+  if (data.unresolved) {
+    return (
+      <p className="text-muted-foreground mt-1.5 text-xs">
+        Couldn&apos;t locate that place — no weather.
+      </p>
+    );
+  }
+
+  const weather = data.weather;
+  if (!weather) {
+    const note =
+      data.weatherStatus === "beyond-horizon"
+        ? "Forecast not available yet."
+        : "Weather unavailable right now.";
+    return <p className="text-muted-foreground mt-1.5 text-xs">{note}</p>;
+  }
+
+  const Icon = WEATHER_ICON[weather.description.group] ?? Cloud;
+  const precip = weather.precipitationProbabilityMax;
+  // Always name the place the forecast is actually for — a coarsened match reads
+  // as "nearest match" so the calendar never silently attaches a broader place's
+  // weather to a venue it couldn't pinpoint.
+  const placeLabel = data.place?.placeLabel;
+
+  return (
+    <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+      <span className="text-foreground inline-flex items-center gap-1.5 font-medium">
+        <Icon className="size-3.5" aria-hidden="true" />
+        {weather.description.label}
+      </span>
+      <span>
+        {fmtTemp(weather.temperatureMax)} / {fmtTemp(weather.temperatureMin)}
+      </span>
+      {typeof precip === "number" && precip >= 40 ? (
+        <span>{precip}% rain</span>
+      ) : null}
+      {placeLabel ? (
+        <span className="italic">
+          {data.approximate ? `nearest match: ${placeLabel}` : placeLabel}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The day high/low shown in a day header, sourced from that day's first placed
+ *  event. Shares the event's weather query, so it adds no extra fetch. */
+function DayHighLow({ eventId, enabled }: { eventId: string; enabled: boolean }) {
+  const { data } = useEventWeather(eventId, enabled);
+  const weather = enabled && data?.weather ? data.weather : null;
+  if (!weather) return null;
+  const Icon = WEATHER_ICON[weather.description.group] ?? Cloud;
+  return (
+    <span
+      className="text-muted-foreground inline-flex items-center gap-1.5 text-sm font-medium"
+      title={weather.description.label}
+    >
+      <Icon className="size-4" aria-hidden="true" />
+      {fmtTemp(weather.temperatureMax)} / {fmtTemp(weather.temperatureMin)}
+    </span>
+  );
+}
+
 /**
  * The Outfit Calendar's always-works base: a Monday-start **agenda week** of the
  * signed-in user's manually-added events, with forward/back navigation. Opening
@@ -130,6 +296,14 @@ export function CalendarSurface() {
   const [refresh, setRefresh] = React.useState(0);
   const [addFor, setAddFor] = React.useState<CivilDate | null>(null);
   const [adding, setAdding] = React.useState(false);
+
+  // Smart Planning consent gates all outside contact (geocoding + weather).
+  // `null` while we resolve it; `true`/`false` once known. Weather only ever
+  // fires when it is active — opting in permits egress, viewing a placed event
+  // is what triggers it.
+  const [consentActive, setConsentActive] = React.useState<boolean | null>(null);
+  const [showDisclosure, setShowDisclosure] = React.useState(false);
+  const queryClient = useQueryClient();
 
   // Resolve the viewer's zone and today's civil date once, after mount. Done
   // client-side (not during SSR) because the whole week structure depends on the
@@ -175,6 +349,72 @@ export function CalendarSurface() {
     return () => controller.abort();
   }, [monday, refresh]);
 
+  // Resolve current Smart Planning consent once after mount. This is an internal
+  // read (our own DB) — no third-party contact — so it doesn't break the calendar
+  // being egress-free until consent is active and a placed event is viewed.
+  React.useEffect(() => {
+    const controller = new AbortController();
+    async function loadConsent() {
+      try {
+        const response = await fetch("/api/aura/calendar/consent", {
+          signal: controller.signal,
+        });
+        const body = (await response.json().catch(() => null)) as
+          | { active?: boolean }
+          | null;
+        if (!controller.signal.aborted) {
+          setConsentActive(Boolean(response.ok && body?.active));
+        }
+      } catch {
+        if (!controller.signal.aborted) setConsentActive(false);
+      }
+    }
+    void loadConsent();
+    return () => controller.abort();
+  }, []);
+
+  /** Record consent for the disclosed policy version, then let weather fire. */
+  async function enableSmartPlanning() {
+    try {
+      const response = await fetch("/api/aura/calendar/consent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { active?: boolean; error?: string }
+        | null;
+      if (!response.ok || !body?.active) {
+        toast.error("We couldn't turn on Smart Planning", {
+          description: body?.error ?? "Please try again.",
+        });
+        return;
+      }
+      setShowDisclosure(false);
+      setConsentActive(true);
+    } catch {
+      toast.error("We couldn't turn on Smart Planning", {
+        description: "Please try again.",
+      });
+    }
+  }
+
+  /** Withdraw consent: future geocoding/weather is barred and any shown weather
+   *  is dropped. Events and outfits are untouched (withdrawal is forward-only). */
+  async function disableSmartPlanning() {
+    try {
+      const response = await fetch("/api/aura/calendar/consent", { method: "DELETE" });
+      if (!response.ok) throw new Error("withdraw failed");
+      setConsentActive(false);
+      queryClient.removeQueries({ queryKey: ["calendar-weather"] });
+      toast.success("Smart Planning turned off", {
+        description: "Weather won't be fetched. Your events are untouched.",
+      });
+    } catch {
+      toast.error("We couldn't update that choice", { description: "Please try again." });
+    }
+  }
+
   async function deleteEvent(event: PlannedEventDto) {
     // Optimistic: drop it locally, restore on failure.
     setEvents((current) => current.filter((candidate) => candidate.id !== event.id));
@@ -218,6 +458,13 @@ export function CalendarSurface() {
         civilToUtcNoon(days[6]),
       )}`
     : "";
+
+  // Weather is an outside contact — fetch only once consent is active. Placed
+  // events in the viewed week are what the disclosure/attribution key off.
+  const weatherEnabled = consentActive === true;
+  const hasPlacedInView = days.some((day) =>
+    (eventsByDay.get(day) ?? []).some((event) => Boolean(event.placeText)),
+  );
 
   return (
     <main className="mx-auto w-full max-w-3xl px-5 py-7 sm:px-6 sm:py-10">
@@ -282,6 +529,12 @@ export function CalendarSurface() {
         </Button>
       </div>
 
+      {/* Smart Planning invite — shown inline before the first outside contact,
+          only when there is a placed event whose weather we could fetch. */}
+      {hasPlacedInView && consentActive === false ? (
+        <SmartPlanningBanner onTurnOn={() => setShowDisclosure(true)} />
+      ) : null}
+
       {error ? (
         <div className="border-destructive/40 bg-destructive/5 mt-8 rounded-2xl border p-6 text-center">
           <p className="font-semibold">We couldn&apos;t load your calendar</p>
@@ -299,6 +552,7 @@ export function CalendarSurface() {
                 today={today}
                 events={eventsByDay.get(day) ?? []}
                 loading={loading}
+                weatherEnabled={weatherEnabled}
                 onAdd={() => openAdd(day)}
                 onDelete={deleteEvent}
               />
@@ -306,6 +560,31 @@ export function CalendarSurface() {
           )}
         </div>
       )}
+
+      {/* Open-Meteo attribution (required) + forward-only withdrawal, shown once
+          weather is actually being displayed. */}
+      {hasPlacedInView && weatherEnabled ? (
+        <div className="text-muted-foreground mt-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t pt-4 text-xs">
+          <p>
+            Weather &amp; location data by{" "}
+            <a
+              href="https://open-meteo.com/"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="hover:text-foreground underline underline-offset-2"
+            >
+              Open-Meteo.com
+            </a>
+          </p>
+          <button
+            type="button"
+            onClick={() => void disableSmartPlanning()}
+            className="hover:text-foreground underline underline-offset-2"
+          >
+            Turn off Smart Planning
+          </button>
+        </div>
+      ) : null}
 
       {adding ? (
         <AddEventDialog
@@ -320,6 +599,13 @@ export function CalendarSurface() {
           }}
         />
       ) : null}
+
+      {showDisclosure ? (
+        <SmartPlanningDisclosure
+          onAgree={() => void enableSmartPlanning()}
+          onCancel={() => setShowDisclosure(false)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -329,6 +615,7 @@ function DaySection({
   today,
   events,
   loading,
+  weatherEnabled,
   onAdd,
   onDelete,
 }: {
@@ -336,12 +623,16 @@ function DaySection({
   today: CivilDate;
   events: PlannedEventDto[];
   loading: boolean;
+  weatherEnabled: boolean;
   onAdd: () => void;
   onDelete: (event: PlannedEventDto) => void;
 }) {
   const past = isPastDate(date, today);
   const isToday = date === today;
   const anchor = civilToUtcNoon(date);
+  // The day header's high/low comes from the day's first placed event (past days
+  // are the read-only archive — no live weather there).
+  const primaryPlaced = past ? undefined : events.find((event) => event.placeText);
 
   return (
     <section className={cn("py-4", past && "opacity-60")}>
@@ -357,13 +648,22 @@ function DaySection({
             Today
           </span>
         ) : null}
+        {weatherEnabled && primaryPlaced ? (
+          <span className="ml-auto self-center">
+            <DayHighLow eventId={primaryPlaced.id} enabled={weatherEnabled} />
+          </span>
+        ) : null}
       </div>
 
       {events.length > 0 ? (
         <ul className="space-y-2">
           {events.map((event) => (
             <li key={event.id}>
-              <EventCard event={event} onDelete={() => onDelete(event)} />
+              <EventCard
+                event={event}
+                weatherEnabled={weatherEnabled && !past}
+                onDelete={() => onDelete(event)}
+              />
             </li>
           ))}
           {!past ? <AddToDay onAdd={onAdd} inline /> : null}
@@ -399,9 +699,11 @@ function AddToDay({ onAdd, inline = false }: { onAdd: () => void; inline?: boole
 
 function EventCard({
   event,
+  weatherEnabled,
   onDelete,
 }: {
   event: PlannedEventDto;
+  weatherEnabled: boolean;
   onDelete: () => void;
 }) {
   return (
@@ -429,6 +731,9 @@ function EventCard({
             </span>
           ) : null}
         </div>
+        {event.placeText ? (
+          <EventWeather eventId={event.id} enabled={weatherEnabled} />
+        ) : null}
         {event.occasion ? (
           <span className="bg-muted text-muted-foreground mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium">
             {event.occasion}
@@ -465,6 +770,86 @@ function AgendaSkeleton() {
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
   return <p className="text-destructive text-sm">{message}</p>;
+}
+
+/** Inline invitation to turn on Smart Planning, shown before any outside contact
+ *  when the viewed week has a placed event whose weather we could fetch. */
+function SmartPlanningBanner({ onTurnOn }: { onTurnOn: () => void }) {
+  return (
+    <div className="border-border bg-muted/40 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4">
+      <div className="flex items-start gap-3">
+        <Sparkles className="text-brand-magenta mt-0.5 size-5 shrink-0" aria-hidden="true" />
+        <div>
+          <p className="text-sm font-semibold">See live weather for your events</p>
+          <p className="text-muted-foreground mt-0.5 text-sm text-pretty">
+            Turn on Smart Planning to fetch each placed event&apos;s forecast. Your
+            event titles never leave the app.
+          </p>
+        </div>
+      </div>
+      <Button
+        type="button"
+        variant="cta-flat"
+        onClick={onTurnOn}
+        className="rounded-full"
+      >
+        Turn on
+      </Button>
+    </div>
+  );
+}
+
+/** The versioned, just-in-time Smart Planning disclosure. It appears before the
+ *  first outside contact and, on agreement, records consent for the disclosed
+ *  policy version — after which weather may be fetched. */
+function SmartPlanningDisclosure({
+  onAgree,
+  onCancel,
+}: {
+  onAgree: () => void;
+  onCancel: () => void;
+}) {
+  React.useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onCancel();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="bg-brand-ink/35 fixed inset-0 z-50 grid place-items-end p-3 backdrop-blur-sm sm:place-items-center sm:p-6"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="smart-planning-disclosure-title"
+        className="bg-card text-card-foreground w-full max-w-md rounded-3xl border p-5 shadow-2xl sm:p-7"
+      >
+        <h2
+          id="smart-planning-disclosure-title"
+          className="font-heading text-2xl tracking-wide uppercase"
+        >
+          Turn on Smart Planning
+        </h2>
+        <p className="text-muted-foreground mt-3 text-sm leading-relaxed text-pretty">
+          {SMART_PLANNING_DISCLOSURE}
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Not now
+          </Button>
+          <Button type="button" onClick={onAgree}>
+            Turn on Smart Planning
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function AddEventDialog({

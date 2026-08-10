@@ -17,17 +17,22 @@ datasource db {
 
 /// Application user, mirrored from Clerk via `clerkId`.
 model User {
-  id          String   @id @default(cuid())
-  clerkId     String   @unique
-  email       String   @unique
-  name        String?
-  imageUrl    String?
-  auraProfile AuraProfile?
-  savedLooks  SavedLook[]
-  wardrobeItems WardrobeItem[]
+  id                      String                   @id @default(cuid())
+  clerkId                 String                   @unique
+  email                   String                   @unique
+  name                    String?
+  imageUrl                String?
+  auraProfile             AuraProfile?
+  savedLooks              SavedLook[]
+  wardrobeItems           WardrobeItem[]
   wardrobeAnalysisConsent WardrobeAnalysisConsent?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Outfit Calendar (see docs/adr/0001-planned-outfits-track-live-wardrobe-items.md).
+  plannedEvents           PlannedEvent[]
+  plannedOutfits          PlannedOutfit[]
+  stylePreference         StylePreference?
+  planningConsent         PlanningConsent?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
 
   @@index([email])
 }
@@ -50,30 +55,35 @@ enum WardrobeItemCategory {
 /// working rendition are separate private Cloudinary objects: only their public
 /// identifiers and formats are persisted, never a durable delivery URL.
 model WardrobeItem {
-  id     String @id @default(cuid())
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
+  id                    String               @id @default(cuid())
+  user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                String
   /// Current participant-confirmed attributes; future import/review work may
   /// suggest values, but this record stores only what its owner confirmed.
-  category WardrobeItemCategory
-  name     String
-  color    String
-  brand    String?
+  category              WardrobeItemCategory
+  name                  String
+  color                 String
+  brand                 String?
   /// AI-suggested, owner-editable occasion to wear this piece (e.g. "casual",
   /// "office", "dinner date"). Optional, like `brand`; never gates a save.
-  occasion String?
+  occasion              String?
   /// Separate private media objects. The format is kept because Cloudinary's
   /// expiring private-download URL requires the stored asset format.
-  originalMediaId         String
-  originalMediaFormat     String
-  normalizedMediaId       String
-  normalizedMediaFormat   String
+  originalMediaId       String
+  originalMediaFormat   String
+  normalizedMediaId     String
+  normalizedMediaFormat String
   /// `deletedAt` starts the recoverable-deletion lifecycle. Active records have
   /// both fields null; a deletion worker later removes expired records/media.
-  deletedAt          DateTime?
-  recoveryExpiresAt  DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  deletedAt             DateTime?
+  recoveryExpiresAt     DateTime?
+  /// Planned Outfits reference this item live (not a snapshot); a soft-deleted
+  /// item stays referable during its recovery window, which is exactly what
+  /// lets a plan be gap-flagged rather than treated as corrupt. See the ADR
+  /// docs/adr/0001-planned-outfits-track-live-wardrobe-items.md.
+  plannedOutfitItems    PlannedOutfitItem[]
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   @@index([userId, deletedAt, category, createdAt])
 }
@@ -99,12 +109,12 @@ model WardrobeAnalysisConsent {
 /// Reference photos and consent for one user's AURA portrait profile.
 /// Re-saving replaces profile data and references without clearing a portrait.
 model AuraProfile {
-  id     String @id @default(cuid())
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String @unique
+  id              String   @id @default(cuid())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String   @unique
   /// The AURA display name. Owned by AURA, seeded from Google on a first save,
   /// and never written back to the Clerk or Google account it came from.
-  name   String
+  name            String
   // Cloudinary secure URLs for the two portrait references.
   photoFrontUrl   String
   photoCloseupUrl String
@@ -115,9 +125,9 @@ model AuraProfile {
   // Saved only by the separate portrait-generation operation.
   portraitUrl     String?
   // Timestamp rather than a boolean: a consent record needs to say when.
-  consentedAt DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  consentedAt     DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 /// One durably saved try-on: the generated look, the Source(s) it was built
@@ -125,9 +135,9 @@ model AuraProfile {
 /// generated against. Belongs to one user; a user has many. Insert-only and
 /// immutable once saved — the absence of an `updatedAt` column encodes that.
 model SavedLook {
-  id     String @id @default(cuid())
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
   /// Cloudinary secure URL of the generated look.
   lookImageUrl String
   /// Auto-derived from source/garment names; no manual rename in v1.
@@ -144,4 +154,134 @@ model SavedLook {
   createdAt    DateTime @default(now())
 
   @@index([userId, createdAt]) // newest-first per-owner grid
+}
+
+// ---------------------------------------------------------------------------
+// Outfit Calendar — the weekly, per-occasion wardrobe outfit planner.
+// A Planned Outfit tracks LIVE wardrobe items and is mutable; a Saved Look
+// snapshots a past moment and is immutable. That distinction (and its
+// consequence — a plan may read partial/empty as a gap, not corruption) is
+// recorded in docs/adr/0001-planned-outfits-track-live-wardrobe-items.md.
+// ---------------------------------------------------------------------------
+
+/// How a Planned Event entered the calendar: hand-entered by the owner, or
+/// imported read-only from Google Calendar.
+enum PlannedEventSource {
+  manual
+  google
+}
+
+/// Whether a Planned Outfit is still exactly as AURA proposed it, or has been
+/// touched by its owner. Flips to `user_edited` on any human edit and never
+/// flips back.
+enum PlannedOutfitProvenance {
+  ai_planned
+  user_edited
+}
+
+/// One dated occasion on a user's Outfit Calendar — added manually or imported
+/// read-only from Google. Hard-deleted (no soft-delete lifecycle). The `title`
+/// is the owner's own label: it is STORED but NEVER egresses to any third party
+/// — the planner keys off `occasion` + place + weather only (the privacy
+/// invariant enforced at the PlanningConsent boundary). Geocoded coordinates are
+/// cached here; weather is never persisted (live fetch only).
+model PlannedEvent {
+  id         String             @id @default(cuid())
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  /// Human label (manual entry, or the Google event summary on sync). Never sent
+  /// to geocoding, weather, or AI.
+  title      String
+  /// Owner-entered/defaulted free-text occasion — NOT AI-suggested from `title`.
+  /// Defaulted to a generic occasion when left blank. Shares the free-text
+  /// vocabulary of `WardrobeItem.occasion`.
+  occasion   String?
+  startsAt   DateTime
+  endsAt     DateTime?
+  allDay     Boolean            @default(false)
+  /// Flat, nullable, geocoded place. `placeText` is raw (as typed / from Google);
+  /// `placeLabel` is the resolved canonical name; lat/long/timezone are filled
+  /// once geocoded (null until resolved, or if unresolvable). The IANA `timezone`
+  /// drives weather day-bucketing.
+  placeText  String?
+  placeLabel String?
+  latitude   Float?
+  longitude  Float?
+  timezone   String?
+  source     PlannedEventSource @default(manual)
+  /// Google event id; null for manual events. Postgres treats NULLs as distinct,
+  /// so `@@unique([userId, externalId])` permits many manual rows while pinning
+  /// exactly one row per Google event (re-sync upserts on it).
+  externalId String?
+  outfit     PlannedOutfit?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([userId, externalId])
+  @@index([userId, startsAt]) // week-view range query + fixed-week nav
+}
+
+/// The proposed outfit for one Planned Event: a mutable, living plan (unlike the
+/// insert-only SavedLook), 1:1 with its event. Tracks LIVE wardrobe items via
+/// PlannedOutfitItem, so it can become partial or empty as the wardrobe changes
+/// — readers treat that as a gap signal, not corruption (see ADR 0001).
+model PlannedOutfit {
+  id              String                  @id @default(cuid())
+  event           PlannedEvent            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId         String                  @unique // the 1:1
+  /// Denormalized owner for direct authorization — a schema convention here.
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  provenance      PlannedOutfitProvenance @default(ai_planned)
+  /// Cached on-demand try-on preview URL; CLEARED to null whenever the item set
+  /// changes, so a stale preview is never shown for a changed outfit.
+  previewImageUrl String?
+  items           PlannedOutfitItem[]
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt // mutable living plan; drives the re-plan nudge
+
+  @@index([userId]) // per-owner outfit lookups (authz-scoped reads)
+}
+
+/// One wardrobe item chosen for a Planned Outfit. The FK to `WardrobeItem` is a
+/// LIVE reference, not a snapshot (ADR 0001): if the item is later deleted this
+/// row cascades away and the outfit reads as partial/empty — a gap to flag.
+model PlannedOutfitItem {
+  id              String        @id @default(cuid())
+  plannedOutfit   PlannedOutfit @relation(fields: [plannedOutfitId], references: [id], onDelete: Cascade)
+  plannedOutfitId String
+  wardrobeItem    WardrobeItem  @relation(fields: [wardrobeItemId], references: [id], onDelete: Cascade)
+  wardrobeItemId  String
+  /// Optional display order within the outfit.
+  position        Int?
+
+  @@unique([plannedOutfitId, wardrobeItemId])
+  @@index([wardrobeItemId]) // reverse query → gap-flagging
+}
+
+/// One participant's free-text style preference, fed verbatim to the planner as
+/// a soft signal. Optional; exactly one row per user (upserted, replace-on-edit).
+/// Plain content, NOT a consent record — its AI egress is governed by
+/// PlanningConsent. The ~200-char soft cap lives in the form/Zod, not the DB.
+model StylePreference {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String   @unique
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Consent gating the non-Google auto-plan pipeline: geocoding + weather + AI.
+/// Mirrors WardrobeAnalysisConsent's semantics (versioned, timestamped,
+/// withdrawable): active ⟺ `withdrawnAt` is null AND `policyVersion` still
+/// matches the current disclosure. Withdrawal is forward-only — it bars future
+/// egress but never touches existing events or outfits.
+model PlanningConsent {
+  id            String    @id @default(cuid())
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String    @unique
+  policyVersion Int
+  consentedAt   DateTime  @default(now())
+  withdrawnAt   DateTime?
 }

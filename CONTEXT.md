@@ -42,3 +42,52 @@ Selection uses Vercel AI SDK with direct OpenAI and Anthropic provider packages.
 ## Text generation
 
 The current provider-neutral AI capability: a non-streaming server-side exchange of a system prompt and a user prompt for reply text. Streaming, tool calls, images, and provider-specific request options are not part of this capability yet.
+
+## Outfit calendar
+
+A weekly, per-occasion planning surface at `/aura/calendar` that proposes one
+outfit per event from a participant's own wardrobe. It is in-app pull — the
+participant opens it; nothing is pushed — and wardrobe-only: it flags gaps but
+never suggests shopping. Opening it is a pure read, showing live weather beside
+each event with no AI call, until the participant asks for a plan or regenerates a
+single outfit. It is net-new on top of the wardrobe, the try-on generator, and
+the text-generation boundary, and reuses those generators rather than their data
+models.
+
+## Planned event
+
+One dated occasion on the Outfit Calendar. It is added manually, which always
+works, or imported read-only from Google Calendar, in which case it is badged
+"Google" and arrives unplanned. It carries a title, an occasion, a time (start,
+optional end, all-day), and an optional geocoded place. Its title is stored but
+never egresses to any third party: the planner works from occasion, place, and
+weather only. It is hard-deleted, not soft-deleted.
+
+## Planned outfit
+
+The proposed set of wardrobe items for one Planned Event, shown as item tiles with
+an AURA rationale and an optional on-demand try-on preview. Unlike a saved look —
+an immutable snapshot of a past look preserved in the Style Book — a planned
+outfit tracks live wardrobe items and is mutable: as the wardrobe changes it can
+become partial or empty, which the calendar reads as an honest gap rather than
+corruption (see `docs/adr/0001-planned-outfits-track-live-wardrobe-items.md`). A
+planned outfit and a saved look are deliberately separate; there is no link
+between them.
+
+## Occasion
+
+A short, free-text label for the kind of event an outfit is for, such as "casual",
+"office", or "dinner date". It is shared vocabulary: the same free-text field
+lives on a wardrobe item, describing what a piece is suited to, and on a planned
+event, describing what the event calls for, and the planner matches one against
+the other. On a planned event it is owner-entered, or defaulted to a generic
+occasion when left blank; it is never AI-inferred from the event title.
+
+## Style preference
+
+A single, optional free-text note in which a participant tells AURA how they like
+to dress: tones, vibe, formality lean, fabrics they love, and anything they avoid.
+There is one per user, editable at any time and replaced on each edit. It is a
+soft signal fed verbatim to the planner and never gates planning; when absent, the
+planner simply omits it. It is plain content, not a consent record — its egress to
+the AI planner is governed by the planning-consent gate.

@@ -8,6 +8,10 @@ import {
 import { getPrisma } from "@/lib/prisma";
 import { getOrProvisionUserId } from "@/lib/wardrobe-user";
 import {
+  serializePlannedOutfit,
+  type PlannedOutfitRow,
+} from "@/lib/aura-outfit-planner";
+import {
   DEFAULT_PLANNED_OCCASION,
   plannedEventCreateSchema,
 } from "@/lib/validations";
@@ -15,6 +19,8 @@ import {
 // The row shape returned to the calendar. Weather and the geocoded place fields
 // are deliberately absent: opening the calendar is a pure read with zero AI and
 // zero external requests, and `placeText` is captured raw (never geocoded here).
+// The planned outfit, in contrast, IS included — it is already-persisted state,
+// so a plan renders on reload without any AI call (the calendar stays a pure read).
 const eventSelect = {
   id: true,
   title: true,
@@ -24,6 +30,20 @@ const eventSelect = {
   allDay: true,
   placeText: true,
   source: true,
+  outfit: {
+    select: {
+      id: true,
+      provenance: true,
+      rationale: true,
+      gaps: true,
+      items: {
+        select: {
+          position: true,
+          wardrobeItem: { select: { id: true, category: true, name: true, color: true } },
+        },
+      },
+    },
+  },
 } as const;
 
 type EventRow = {
@@ -35,6 +55,7 @@ type EventRow = {
   allDay: boolean;
   placeText: string | null;
   source: "manual" | "google";
+  outfit: PlannedOutfitRow | null;
 };
 
 function serializeEvent(row: EventRow) {
@@ -47,6 +68,7 @@ function serializeEvent(row: EventRow) {
     allDay: row.allDay,
     placeText: row.placeText,
     source: row.source,
+    outfit: row.outfit ? serializePlannedOutfit(row.outfit) : null,
   };
 }
 

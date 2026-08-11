@@ -16,11 +16,14 @@ import {
   CloudRain,
   CloudSnow,
   CloudSun,
+  Loader2,
   MapPin,
   Plus,
+  Shirt,
   Sun,
   Sparkles,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,6 +31,7 @@ import {
   plannedEventFormSchema,
   type PlannedEventFormInput,
 } from "@/lib/validations";
+import type { PlannedOutfitDto } from "@/lib/aura-outfit-planner";
 import {
   PLANNING_POLICY_VERSION,
   SMART_PLANNING_DISCLOSURE,
@@ -59,10 +63,12 @@ export type PlannedEventDto = {
   allDay: boolean;
   placeText: string | null;
   source: "manual" | "google";
+  outfit: PlannedOutfitDto | null;
 };
 
 type EventsResponse = { events?: PlannedEventDto[]; error?: string };
 type EventResponse = { event?: PlannedEventDto; error?: string };
+type PlanResponse = { outfit?: PlannedOutfitDto; error?: string; code?: string };
 
 // Civil-date formatters are anchored to UTC noon (via `civilToUtcNoon`) and read
 // back with `timeZone: "UTC"`, so the label matches the civil date exactly,
@@ -303,6 +309,10 @@ export function CalendarSurface() {
   // is what triggers it.
   const [consentActive, setConsentActive] = React.useState<boolean | null>(null);
   const [showDisclosure, setShowDisclosure] = React.useState(false);
+  // The event currently being planned (drives its inline spinner), and — when a
+  // plan is blocked on consent — the event to resume once Smart Planning is on.
+  const [planningId, setPlanningId] = React.useState<string | null>(null);
+  const pendingPlanRef = React.useRef<PlannedEventDto | null>(null);
   const queryClient = useQueryClient();
 
   // Resolve the viewer's zone and today's civil date once, after mount. Done
@@ -392,10 +402,60 @@ export function CalendarSurface() {
       }
       setShowDisclosure(false);
       setConsentActive(true);
+      // Resume a plan that was blocked on consent, if the disclosure was raised
+      // by clicking "Plan this outfit".
+      const pending = pendingPlanRef.current;
+      pendingPlanRef.current = null;
+      if (pending) void planOutfit(pending);
     } catch {
       toast.error("We couldn't turn on Smart Planning", {
         description: "Please try again.",
       });
+    }
+  }
+
+  /** Plan one event's outfit with a single AI call, gated by Smart Planning
+   *  consent. If consent isn't active yet, the route replies 403 and we raise the
+   *  disclosure, resuming this plan on agreement. On success the outfit is injected
+   *  into local state so it renders inline (and again on reload — it is persisted). */
+  async function planOutfit(event: PlannedEventDto) {
+    setPlanningId(event.id);
+    try {
+      const response = await fetch(`/api/aura/calendar/events/${event.id}/plan`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION }),
+      });
+      const body = (await response.json().catch(() => null)) as PlanResponse | null;
+
+      if (response.status === 403 && body?.code === "consent-required") {
+        pendingPlanRef.current = event;
+        setShowDisclosure(true);
+        return;
+      }
+      if (!response.ok || !body?.outfit) {
+        toast.error("We couldn't plan this outfit", {
+          description: body?.error ?? "Please try again.",
+        });
+        return;
+      }
+
+      const outfit = body.outfit;
+      setEvents((current) =>
+        current.map((candidate) =>
+          candidate.id === event.id ? { ...candidate, outfit } : candidate,
+        ),
+      );
+      toast.success("Outfit planned", {
+        description:
+          outfit.items.length > 0
+            ? `${outfit.items.length} ${outfit.items.length === 1 ? "piece" : "pieces"} from your wardrobe`
+            : "AURA flagged a wardrobe gap.",
+      });
+    } catch {
+      toast.error("We couldn't plan this outfit", { description: "Please try again." });
+    } finally {
+      setPlanningId((current) => (current === event.id ? null : current));
     }
   }
 
@@ -477,8 +537,8 @@ export function CalendarSurface() {
             Your week
           </h1>
           <p className="text-muted-foreground mt-2 max-w-md text-sm text-pretty">
-            Add what&apos;s coming up, one occasion at a time. Planning outfits
-            from your wardrobe arrives next.
+            Add what&apos;s coming up, one occasion at a time, then let AURA plan
+            each outfit from your own wardrobe.
           </p>
         </div>
         <Button
@@ -553,8 +613,10 @@ export function CalendarSurface() {
                 events={eventsByDay.get(day) ?? []}
                 loading={loading}
                 weatherEnabled={weatherEnabled}
+                planningId={planningId}
                 onAdd={() => openAdd(day)}
                 onDelete={deleteEvent}
+                onPlan={planOutfit}
               />
             ))
           )}
@@ -603,7 +665,10 @@ export function CalendarSurface() {
       {showDisclosure ? (
         <SmartPlanningDisclosure
           onAgree={() => void enableSmartPlanning()}
-          onCancel={() => setShowDisclosure(false)}
+          onCancel={() => {
+            pendingPlanRef.current = null;
+            setShowDisclosure(false);
+          }}
         />
       ) : null}
     </main>
@@ -616,16 +681,20 @@ function DaySection({
   events,
   loading,
   weatherEnabled,
+  planningId,
   onAdd,
   onDelete,
+  onPlan,
 }: {
   date: CivilDate;
   today: CivilDate;
   events: PlannedEventDto[];
   loading: boolean;
   weatherEnabled: boolean;
+  planningId: string | null;
   onAdd: () => void;
   onDelete: (event: PlannedEventDto) => void;
+  onPlan: (event: PlannedEventDto) => void;
 }) {
   const past = isPastDate(date, today);
   const isToday = date === today;
@@ -662,7 +731,10 @@ function DaySection({
               <EventCard
                 event={event}
                 weatherEnabled={weatherEnabled && !past}
+                canPlan={!past}
+                planning={planningId === event.id}
                 onDelete={() => onDelete(event)}
+                onPlan={() => onPlan(event)}
               />
             </li>
           ))}
@@ -700,15 +772,21 @@ function AddToDay({ onAdd, inline = false }: { onAdd: () => void; inline?: boole
 function EventCard({
   event,
   weatherEnabled,
+  canPlan,
+  planning,
   onDelete,
+  onPlan,
 }: {
   event: PlannedEventDto;
   weatherEnabled: boolean;
+  canPlan: boolean;
+  planning: boolean;
   onDelete: () => void;
+  onPlan: () => void;
 }) {
   return (
     <article className="border-border bg-card group flex items-start justify-between gap-3 rounded-xl border p-3 shadow-sm">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-heading truncate text-base tracking-wide uppercase">
             {event.title}
@@ -739,6 +817,12 @@ function EventCard({
             {event.occasion}
           </span>
         ) : null}
+
+        {event.outfit ? (
+          <PlannedOutfitView outfit={event.outfit} />
+        ) : canPlan ? (
+          <PlanOutfitButton planning={planning} onPlan={onPlan} />
+        ) : null}
       </div>
       <Button
         type="button"
@@ -751,6 +835,123 @@ function EventCard({
         <Trash2 className="size-4" />
       </Button>
     </article>
+  );
+}
+
+/** The per-event "Plan this outfit" action, shown on an unplanned, non-past
+ *  event. Clicking it runs one AI planner call (raising the Smart Planning
+ *  disclosure first if consent isn't active yet). */
+function PlanOutfitButton({
+  planning,
+  onPlan,
+}: {
+  planning: boolean;
+  onPlan: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={onPlan}
+      disabled={planning}
+      className="mt-3 rounded-full"
+    >
+      {planning ? (
+        <>
+          <Loader2 className="animate-spin" />
+          Planning…
+        </>
+      ) : (
+        <>
+          <Sparkles />
+          Plan this outfit
+        </>
+      )}
+    </Button>
+  );
+}
+
+/** A planned outfit inline in the event row: wardrobe-item tiles, the AURA
+ *  rationale, and amber gap chips for anything the wardrobe couldn't cover. */
+function PlannedOutfitView({ outfit }: { outfit: PlannedOutfitDto }) {
+  return (
+    <div className="mt-3 space-y-2">
+      {outfit.items.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {outfit.items.map((item) => (
+            <li key={item.id}>
+              <OutfitItemTile item={item} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {outfit.rationale ? (
+        <p className="text-muted-foreground flex items-start gap-1.5 text-xs text-pretty">
+          <Shirt className="text-brand-magenta mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>{outfit.rationale}</span>
+        </p>
+      ) : null}
+
+      {outfit.gaps.length > 0 ? (
+        <ul className="flex flex-wrap gap-1.5">
+          {outfit.gaps.map((gap, index) => (
+            <li key={`${gap.slot}-${index}`}>
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                title={gap.note}
+              >
+                <TriangleAlert className="size-3" aria-hidden="true" />
+                {gap.slot}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** One wardrobe-item tile in a planned outfit. It fetches its own short-lived,
+ *  server-authorized media URL — the browser never receives a durable asset URL —
+ *  exactly as the wardrobe gallery does. */
+function OutfitItemTile({
+  item,
+}: {
+  item: PlannedOutfitDto["items"][number];
+}) {
+  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    async function loadImage() {
+      try {
+        const response = await fetch(`/api/wardrobe/${item.id}/media?variant=normalized`, {
+          signal: controller.signal,
+        });
+        const body = (await response.json().catch(() => null)) as { url?: string } | null;
+        if (!controller.signal.aborted && response.ok && body?.url) setImageUrl(body.url);
+      } catch {
+        // A missing tile image is non-fatal — the label still identifies the piece.
+      }
+    }
+    void loadImage();
+    return () => controller.abort();
+  }, [item.id]);
+
+  return (
+    <div className="w-16" title={`${item.name} · ${item.color}`}>
+      <div className="bg-muted aspect-square w-16 overflow-hidden rounded-lg border">
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not a durable asset
+          <img src={imageUrl} alt={item.name} className="size-full object-cover" />
+        ) : (
+          <div className="size-full animate-pulse" aria-hidden="true" />
+        )}
+      </div>
+      <p className="text-muted-foreground mt-1 truncate text-[10px]">{item.name}</p>
+    </div>
   );
 }
 

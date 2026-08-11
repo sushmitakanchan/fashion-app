@@ -14,6 +14,17 @@ import { DEFAULT_PLANNED_OCCASION } from "@/lib/validations";
  * columns are never written.
  */
 
+type OutfitFixture = {
+  id: string;
+  provenance: "ai_planned" | "user_edited";
+  rationale: string | null;
+  gaps: unknown;
+  items: {
+    position: number | null;
+    wardrobeItem: { id: string; category: string; name: string; color: string };
+  }[];
+};
+
 type EventRow = {
   id: string;
   userId: string;
@@ -24,6 +35,7 @@ type EventRow = {
   allDay: boolean;
   placeText: string | null;
   source: "manual" | "google";
+  outfit?: OutfitFixture | null;
 };
 
 let usersByClerk: Record<string, string> = {
@@ -70,6 +82,7 @@ const eventFields = (row: EventRow) => ({
   allDay: row.allDay,
   placeText: row.placeText,
   source: row.source,
+  outfit: row.outfit ?? null,
 });
 
 const prismaStub = {
@@ -250,6 +263,36 @@ describe("GET /api/aura/calendar/events", () => {
       endsAt: null,
       source: "manual",
     });
+    // An unplanned event carries a null outfit.
+    expect(body.events[0].outfit).toBeNull();
+  });
+
+  it("serializes a persisted planned outfit so it renders on reload (pure read)", async () => {
+    rows[0].outfit = {
+      id: "outfit_1",
+      provenance: "ai_planned",
+      rationale: "A crisp, weather-ready pick.",
+      gaps: [{ slot: "formal shoes", note: "No formal shoes in the wardrobe." }],
+      items: [
+        { position: 1, wardrobeItem: { id: "w2", category: "bottom", name: "Chinos", color: "navy" } },
+        { position: 0, wardrobeItem: { id: "w1", category: "top", name: "Oxford shirt", color: "white" } },
+      ],
+    };
+
+    const response = await get(WEEK_FROM, WEEK_TO);
+    const body = await response.json();
+    const planned = body.events.find((event: { id: string }) => event.id === "seed_1");
+
+    expect(planned.outfit).toMatchObject({
+      id: "outfit_1",
+      provenance: "ai_planned",
+      rationale: "A crisp, weather-ready pick.",
+    });
+    // Items are ordered by position.
+    expect(planned.outfit.items.map((item: { id: string }) => item.id)).toEqual(["w1", "w2"]);
+    expect(planned.outfit.gaps).toEqual([
+      { slot: "formal shoes", note: "No formal shoes in the wardrobe." },
+    ]);
   });
 });
 

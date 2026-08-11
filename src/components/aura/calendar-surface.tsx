@@ -49,6 +49,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StylePreferenceCard } from "@/components/aura/style-preference-card";
 
 export type PlannedEventDto = {
   id: string;
@@ -560,6 +561,11 @@ export function CalendarSurface() {
           )}
         </div>
       )}
+
+      {/* Style Preference capture — an optional free-text note the planner leans
+          on later. Purely local content (no egress), so it sits outside the
+          Smart Planning gate. */}
+      <StylePreferenceCard />
 
       {/* Open-Meteo attribution (required) + forward-only withdrawal, shown once
           weather is actually being displayed. */}

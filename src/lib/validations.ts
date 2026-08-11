@@ -573,3 +573,38 @@ export const plannedEventCreateSchema = z
   );
 
 export type PlannedEventCreateInput = z.infer<typeof plannedEventCreateSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*                    Outfit Calendar — style preference                      */
+/* -------------------------------------------------------------------------- */
+
+/** The soft cap on the free-text style preference — enforced HERE (form + wire),
+ *  never on the `StylePreference.text` DB column, which stays uncapped. A sentence
+ *  or two is the intent; this keeps a run-on from becoming the whole prompt. */
+export const STYLE_PREFERENCE_MAX_LENGTH = 200;
+
+const STYLE_PREFERENCE_TOO_LONG = "Keep it to a sentence or two";
+
+// The preference is optional and empty-tolerant: a blank field is a legitimate
+// value meaning "no preference". The route treats an empty string as a clear
+// (the row is removed), so the participant returns to the absent state the
+// planner simply omits — never a stored empty string masquerading as a signal.
+const stylePreferenceText = z
+  .string()
+  .trim()
+  .max(STYLE_PREFERENCE_MAX_LENGTH, STYLE_PREFERENCE_TOO_LONG);
+
+/**
+ * The single policy for the style preference, shared by the browser form and the
+ * `PUT /api/aura/calendar/style-preference` wire. One free-text field, soft-capped
+ * here (never on the DB column), so the counter the form shows and the limit the
+ * server holds can't drift. Unlike the event/profile schemas — where the form
+ * (Files / local datetimes) and the wire (data URIs / ISO instants) genuinely
+ * differ — capture and submission are byte-identical here, so one schema serves
+ * both. An empty `text` is valid and clears the preference.
+ */
+export const stylePreferenceSchema = z.object({
+  text: stylePreferenceText,
+});
+
+export type StylePreferenceInput = z.infer<typeof stylePreferenceSchema>;

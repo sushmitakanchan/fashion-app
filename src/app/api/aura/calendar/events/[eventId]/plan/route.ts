@@ -24,10 +24,11 @@ import {
   reconcileItemIds,
   serializePlannedOutfit,
   type PlannerGap,
+  type PlannerOutput,
   type PlannerWardrobeItem,
   type PlannerWeatherInput,
 } from "@/lib/aura-outfit-planner";
-import { planningEgressSchema } from "@/lib/validations";
+import { DEFAULT_PLANNED_OCCASION, planningEgressSchema } from "@/lib/validations";
 
 /**
  * Plan ONE event's outfit from the wardrobe with a single AI call (spec §3–§5,
@@ -140,6 +141,44 @@ async function resolvePlannerWeather(
     },
     placeLabel,
   };
+}
+
+type PlannerCallResult =
+  | { ok: true; output: PlannerOutput | null }
+  | { ok: false; response: NextResponse };
+
+/**
+ * One planner exchange: generate, then fence-strip → parse → safeParse (null on
+ * any format failure). A provider misconfiguration becomes a 503 and any other
+ * generation error a 502 — the same failure vocabulary the review route uses —
+ * returned as a ready response so the caller can short-circuit. Shared by the
+ * first attempt and the one-shot retry so that vocabulary can't drift between them.
+ */
+async function callPlanner(prompt: string): Promise<PlannerCallResult> {
+  try {
+    const { text } = await generateText({ instructions: PLANNER_INSTRUCTIONS, prompt });
+    return { ok: true, output: parsePlannerOutput(text) };
+  } catch (error) {
+    if (error instanceof AiProviderConfigError) {
+      return {
+        ok: false,
+        response: failure(503, {
+          code: "ai-unavailable",
+          error: "AURA planning is unavailable right now.",
+          retryable: true,
+        }),
+      };
+    }
+    console.error("Planner generation failed", error);
+    return {
+      ok: false,
+      response: failure(502, {
+        code: "plan-failed",
+        error: "AURA couldn't plan this outfit. Please try again.",
+        retryable: true,
+      }),
+    };
+  }
 }
 
 const outfitSelect = {
@@ -282,7 +321,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   const { weather } = await resolvePlannerWeather(prisma, event as PlannerEvent);
 
   const prompt = buildPlannerPrompt({
-    occasion: event.occasion ?? "Everyday",
+    occasion: event.occasion ?? DEFAULT_PLANNED_OCCASION,
     when: formatPlannerWhen({
       startsAt: event.startsAt,
       endsAt: event.endsAt,
@@ -298,26 +337,9 @@ export async function POST(request: Request, { params }: RouteContext) {
   const allowedIds = new Set(wardrobe.map((item) => item.id));
 
   // First attempt.
-  let output;
-  try {
-    const { text } = await generateText({ instructions: PLANNER_INSTRUCTIONS, prompt });
-    output = parsePlannerOutput(text);
-  } catch (error) {
-    if (error instanceof AiProviderConfigError) {
-      return failure(503, {
-        code: "ai-unavailable",
-        error: "AURA planning is unavailable right now.",
-        retryable: true,
-      });
-    }
-    console.error("Planner generation failed", error);
-    return failure(502, {
-      code: "plan-failed",
-      error: "AURA couldn't plan this outfit. Please try again.",
-      retryable: true,
-    });
-  }
-
+  const first = await callPlanner(prompt);
+  if (!first.ok) return first.response;
+  let output = first.output;
   let reconciled = output ? reconcileItemIds(output.itemIds, allowedIds) : null;
 
   // One-shot retry when the reply couldn't be parsed OR referenced invented ids.
@@ -328,24 +350,9 @@ export async function POST(request: Request, { params }: RouteContext) {
       `${prompt}\n\nYour previous reply was not usable: it either wasn't valid JSON or ` +
       `it referenced ids that are not in the wardrobe. Choose ONLY from these exact ids: ` +
       `${JSON.stringify([...allowedIds])}. Return the same JSON shape and nothing else.`;
-    try {
-      const { text } = await generateText({ instructions: PLANNER_INSTRUCTIONS, prompt: retryPrompt });
-      output = parsePlannerOutput(text);
-    } catch (error) {
-      if (error instanceof AiProviderConfigError) {
-        return failure(503, {
-          code: "ai-unavailable",
-          error: "AURA planning is unavailable right now.",
-          retryable: true,
-        });
-      }
-      console.error("Planner retry generation failed", error);
-      return failure(502, {
-        code: "plan-failed",
-        error: "AURA couldn't plan this outfit. Please try again.",
-        retryable: true,
-      });
-    }
+    const retry = await callPlanner(retryPrompt);
+    if (!retry.ok) return retry.response;
+    output = retry.output;
     reconciled = output ? reconcileItemIds(output.itemIds, allowedIds) : null;
   }
 

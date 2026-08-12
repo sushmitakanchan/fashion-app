@@ -17,11 +17,13 @@ import {
   CloudRain,
   CloudSnow,
   CloudSun,
+  Eye,
   Loader2,
   MapPin,
   Plus,
   RefreshCw,
   Replace,
+  RotateCcw,
   Settings2,
   Shirt,
   Sun,
@@ -63,6 +65,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StylePreferenceCard } from "@/components/aura/style-preference-card";
 import { GoogleCalendarConnect } from "@/components/aura/google-calendar-connect";
+import {
+  AuraPortraitLoading,
+  TRY_ON_CAPTIONS,
+} from "@/components/aura/aura-portrait-loading";
 
 export type PlannedEventDto = {
   id: string;
@@ -1092,6 +1098,7 @@ function EventCard({
 
         {event.outfit ? (
           <PlannedOutfitView
+            eventId={event.id}
             outfit={event.outfit}
             showReplanNudge={showReplanNudge}
             canEdit={canPlan}
@@ -1163,6 +1170,7 @@ function PlanOutfitButton({
  *  actions (#178). Each tile carries its own hover Swap affordance; Regenerate
  *  redoes the whole pick. */
 function PlannedOutfitView({
+  eventId,
   outfit,
   showReplanNudge,
   canEdit,
@@ -1170,6 +1178,7 @@ function PlannedOutfitView({
   swapItemId,
   onReplan,
 }: {
+  eventId: string;
   outfit: PlannedOutfitDto;
   showReplanNudge: boolean;
   canEdit: boolean;
@@ -1182,6 +1191,18 @@ function PlannedOutfitView({
 
   return (
     <div className="mt-3 space-y-2">
+      {/* On-demand try-on preview — the portrait wearing this outfit — foregrounded
+          as the hero. Only offered when there's a pick to render (an all-gaps
+          outfit has nothing to try on). A Regenerate/Swap that changes the item
+          set clears previewImageUrl server-side (#178), so the cache is keyed on
+          the current item set. */}
+      {outfit.items.length > 0 ? (
+        <OutfitPreview
+          key={outfit.previewImageUrl ?? "none"}
+          eventId={eventId}
+          cachedPreviewUrl={outfit.previewImageUrl}
+        />
+      ) : null}
       {showReplanNudge ? (
         <p className="text-brand-magenta flex items-start gap-1.5 text-xs font-medium">
           <CloudSun className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
@@ -1249,6 +1270,149 @@ function PlannedOutfitView({
               </>
             )}
           </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type PreviewResponse = {
+  previewImageUrl?: string;
+  error?: string;
+  retryable?: boolean;
+};
+
+/**
+ * The on-demand try-on preview for one planned outfit: the saved portrait wearing
+ * the outfit, generated server-side and cached to `previewImageUrl` (#169). The
+ * outfit-id → preview binding is server-authoritative — this only offers the
+ * trigger and shows the result. "Generate preview" (none yet) becomes "See
+ * preview" once a preview is cached; "Regenerate preview" re-runs it in place
+ * (distinct from the outfit-level Regenerate, which re-plans the pieces). While it
+ * generates it reuses the try-on surface's darkroom loading + retry treatment
+ * (up to ~2 minutes, per the generator's timeout).
+ */
+function OutfitPreview({
+  eventId,
+  cachedPreviewUrl,
+}: {
+  eventId: string;
+  cachedPreviewUrl: string | null;
+}) {
+  const [previewUrl, setPreviewUrl] = React.useState(cachedPreviewUrl);
+  // A cached preview stays collapsed behind "See preview"; a freshly generated
+  // one reveals itself. (A cleared cache remounts this component — see the parent
+  // `key` — so there's no stale state to reset here.)
+  const [open, setOpen] = React.useState(false);
+  const [phase, setPhase] = React.useState<"idle" | "generating" | "error">("idle");
+  const [errorMessage, setErrorMessage] = React.useState("");
+
+  async function generate() {
+    setPhase("generating");
+    setOpen(true);
+    setErrorMessage("");
+    try {
+      const response = await fetch(
+        `/api/aura/calendar/events/${eventId}/preview`,
+        { method: "POST" },
+      );
+      const body = (await response.json().catch(() => null)) as PreviewResponse | null;
+      if (!response.ok || !body?.previewImageUrl) {
+        setPhase("error");
+        setErrorMessage(body?.error ?? "We couldn't generate this preview. Please try again.");
+        return;
+      }
+      setPreviewUrl(body.previewImageUrl);
+      setPhase("idle");
+    } catch {
+      setPhase("error");
+      setErrorMessage("Couldn't reach the server. Please try again.");
+    }
+  }
+
+  const generating = phase === "generating";
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {previewUrl && !open ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(true)}
+            className="rounded-full"
+          >
+            <Eye />
+            See preview
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void generate()}
+            disabled={generating}
+            className="rounded-full"
+          >
+            {generating ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Generating…
+              </>
+            ) : previewUrl ? (
+              <>
+                <RotateCcw />
+                Regenerate preview
+              </>
+            ) : (
+              <>
+                <Sparkles />
+                Generate preview
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+
+      {open ? (
+        <div className="mx-auto w-full max-w-xs">
+          {generating ? (
+            <AuraPortraitLoading
+              title="Styling your preview"
+              captions={TRY_ON_CAPTIONS}
+              note="This can take up to ~2 minutes."
+            />
+          ) : phase === "error" ? (
+            <div className="border-destructive/40 bg-destructive/5 flex flex-col items-center gap-3 rounded-xl border p-6 text-center">
+              <p className="text-sm font-medium">We couldn&apos;t generate this preview</p>
+              <p className="text-muted-foreground text-xs text-pretty">{errorMessage}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void generate()}
+                className="rounded-full"
+              >
+                <RotateCcw />
+                Try again
+              </Button>
+            </div>
+          ) : previewUrl ? (
+            <figure className="space-y-1.5">
+              <div className="bg-muted aspect-[2/3] w-full overflow-hidden rounded-xl border">
+                {/* eslint-disable-next-line @next/next/no-img-element -- Cloudinary preview asset, kept off next/image to avoid a remote-host round-trip here */}
+                <img
+                  src={previewUrl}
+                  alt="Your portrait wearing this outfit"
+                  className="size-full object-cover"
+                />
+              </div>
+              <figcaption className="text-muted-foreground text-center text-[11px]">
+                Your portrait wearing this outfit
+              </figcaption>
+            </figure>
+          ) : null}
         </div>
       ) : null}
     </div>

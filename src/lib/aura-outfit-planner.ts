@@ -438,6 +438,10 @@ export type PlannedOutfitDto = {
   rationale: string | null;
   gaps: PlannerGap[];
   items: PlannedOutfitItemDto[];
+  /** The cached on-demand try-on preview (#169), or null when none has been
+   *  generated or the item set changed since. Drives "Generate preview" (null)
+   *  vs "See preview" (present) in the UI. */
+  previewImageUrl: string | null;
   /** When the outfit last changed, ISO 8601. Drives the storage-free re-plan
    *  nudge ({@link shouldSuggestReplan}) — no weather is persisted to derive it. */
   updatedAt: string;
@@ -455,6 +459,7 @@ export const PLANNED_OUTFIT_SELECT = {
   provenance: true,
   rationale: true,
   gaps: true,
+  previewImageUrl: true,
   updatedAt: true,
   items: {
     select: {
@@ -470,6 +475,7 @@ export type PlannedOutfitRow = {
   provenance: "ai_planned" | "user_edited";
   rationale: string | null;
   gaps: unknown;
+  previewImageUrl: string | null;
   updatedAt: Date;
   items: {
     position: number | null;
@@ -499,6 +505,7 @@ export function serializePlannedOutfit(row: PlannedOutfitRow): PlannedOutfitDto 
     rationale: row.rationale,
     gaps: parseStoredGaps(row.gaps),
     items,
+    previewImageUrl: row.previewImageUrl,
     updatedAt: row.updatedAt.toISOString(),
   };
 }

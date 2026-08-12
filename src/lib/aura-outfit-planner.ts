@@ -1,6 +1,17 @@
 import { z } from "zod";
 
 import { MAX_TRY_ON_GARMENTS } from "@/lib/validations";
+import { civilDaysBetween, type CivilDate } from "@/lib/calendar-week";
+
+/**
+ * How far ahead Open-Meteo's free forecast reaches. An event beyond this is
+ * planned weather-less; once it crosses into the window the calendar nudges a
+ * re-plan ({@link shouldSuggestReplan}). Defined here — the one client-safe
+ * planning module — so both the server weather lib (which re-exports it) and the
+ * client-side re-plan nudge read a single source. Kept a touch under the
+ * provider's ~16-day ceiling so an off-by-one near the edge degrades cleanly.
+ */
+export const WEATHER_FORECAST_HORIZON_DAYS = 15;
 
 /**
  * Pure planning logic for the Outfit Calendar's per-event "Plan this outfit"
@@ -276,6 +287,15 @@ export type BuildPlannerPromptInput = {
   stylePreference: string | null;
   /** All active wardrobe items — the only ids the model may return. */
   wardrobe: readonly PlannerWardrobeItem[];
+  /**
+   * Item ids already committed to earlier events this week, when planning the
+   * whole week in date order (spec §4). It is a **soft** repeat-avoidance nudge —
+   * basics may repeat, distinctive pieces should not (the model judges which is
+   * which). Empty or omitted for a standalone single-event plan, in which case no
+   * repeat-avoidance line is added at all. The route feeds only ids that are in
+   * this participant's wardrobe, so a foreign id can never reach the prompt.
+   */
+  priorItemIds?: readonly string[];
 };
 
 /**
@@ -295,6 +315,15 @@ export function buildPlannerPrompt(input: BuildPlannerPromptInput): string {
   ];
   if (input.stylePreference && input.stylePreference.trim().length > 0) {
     lines.push(`Style preference: ${input.stylePreference.trim()}`);
+  }
+  if (input.priorItemIds && input.priorItemIds.length > 0) {
+    lines.push(
+      "",
+      `Already worn earlier this week: ${JSON.stringify([...input.priorItemIds])}. ` +
+        "Basics (plain tees, denim, a coat, everyday shoes) may repeat freely; " +
+        "avoid re-using distinctive or statement pieces across the week — you " +
+        "judge which is which.",
+    );
   }
   lines.push(
     "",
@@ -337,6 +366,9 @@ export type PlannedOutfitDto = {
   rationale: string | null;
   gaps: PlannerGap[];
   items: PlannedOutfitItemDto[];
+  /** When the outfit last changed, ISO 8601. Drives the storage-free re-plan
+   *  nudge ({@link shouldSuggestReplan}) — no weather is persisted to derive it. */
+  updatedAt: string;
 };
 
 /** The shape a Prisma select must produce for {@link serializePlannedOutfit}. */
@@ -345,6 +377,7 @@ export type PlannedOutfitRow = {
   provenance: "ai_planned" | "user_edited";
   rationale: string | null;
   gaps: unknown;
+  updatedAt: Date;
   items: {
     position: number | null;
     wardrobeItem: { id: string; category: string; name: string; color: string };
@@ -373,5 +406,112 @@ export function serializePlannedOutfit(row: PlannedOutfitRow): PlannedOutfitDto 
     rationale: row.rationale,
     gaps: parseStoredGaps(row.gaps),
     items,
+    updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/*               "Plan my week" — sequential batch orchestration              */
+/* -------------------------------------------------------------------------- */
+
+/** The minimum an event must expose for the week-plan orchestrator: an id, a
+ *  date-ordering key (ISO instant), and whether it is already planned. The
+ *  calendar's `PlannedEventDto` satisfies this structurally. */
+export type WeekPlanEvent = {
+  id: string;
+  startsAt: string;
+  outfit: PlannedOutfitDto | null;
+};
+
+/** The result of planning one event in the week: the event and its new outfit,
+ *  or a null outfit when that event failed (continue-on-error). */
+export type WeekPlanOutcome<E extends WeekPlanEvent> = {
+  event: E;
+  outfit: PlannedOutfitDto | null;
+};
+
+/**
+ * "Plan my week" (spec §3, §5): run the per-event planner **sequentially by
+ * date** over **only the unplanned** events, feeding each call the item ids
+ * already committed to earlier events this week so distinctive pieces don't
+ * repeat while basics may. It is **non-destructive** — an event that already has
+ * an outfit is skipped, never re-planned — and **continues on error**: one event
+ * that fails (throws, or resolves to null) never aborts the rest of the week.
+ *
+ * The actual planner call is the injected {@link planOne} (the route call in the
+ * app, a stub in tests), so this orchestration — the load-bearing date order,
+ * prior-id accumulation, and continue-on-error — is pure and testable without a
+ * model or a network. Each resolved event is handed to {@link onResolved} as it
+ * lands, which is what drives the calendar's **progressive reveal**.
+ *
+ * `planOne` receives a **snapshot copy** of the committed ids, so a caller that
+ * captures the argument sees exactly what was passed at call time.
+ */
+export async function planWeekSequentially<E extends WeekPlanEvent>(
+  events: readonly E[],
+  planOne: (event: E, priorItemIds: readonly string[]) => Promise<PlannedOutfitDto | null>,
+  onResolved?: (outcome: WeekPlanOutcome<E>) => void,
+): Promise<WeekPlanOutcome<E>[]> {
+  const unplanned = events
+    .filter((event) => event.outfit === null)
+    .slice()
+    .sort((a, b) => (a.startsAt < b.startsAt ? -1 : a.startsAt > b.startsAt ? 1 : 0));
+
+  const committed: string[] = [];
+  const outcomes: WeekPlanOutcome<E>[] = [];
+
+  for (const event of unplanned) {
+    let outfit: PlannedOutfitDto | null = null;
+    try {
+      outfit = await planOne(event, committed.slice());
+    } catch {
+      // Continue-on-error: a failing day is recorded as a null outcome and the
+      // week carries on.
+      outfit = null;
+    }
+    if (outfit) {
+      for (const item of outfit.items) {
+        if (!committed.includes(item.id)) committed.push(item.id);
+      }
+    }
+    const outcome: WeekPlanOutcome<E> = { event, outfit };
+    outcomes.push(outcome);
+    onResolved?.(outcome);
+  }
+
+  return outcomes;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                    Storage-free "forecast now — re-plan?" nudge            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Whether to surface the "there's a forecast now — re-plan?" nudge for a placed
+ * event's planned outfit (spec §5). It is **derived, never stored** — no weather
+ * snapshot is persisted: the nudge fires exactly when the event is placed, sits
+ * **within** the forecast horizon **now**, yet was planned **before** it entered
+ * that window (so the plan is weather-less). `outfitUpdatedDate` is the outfit's
+ * `updatedAt` as a civil date; a re-plan or user edit refreshes it and clears the
+ * nudge. Past events (negative days-ahead) never nudge.
+ */
+export function shouldSuggestReplan(params: {
+  placed: boolean;
+  eventDate: CivilDate;
+  outfitUpdatedDate: CivilDate;
+  today: CivilDate;
+  horizonDays?: number;
+}): boolean {
+  const { placed, eventDate, outfitUpdatedDate, today } = params;
+  if (!placed) return false;
+  const horizon = params.horizonDays ?? WEATHER_FORECAST_HORIZON_DAYS;
+
+  const nowAhead = civilDaysBetween(today, eventDate);
+  // Only within the live window (today .. horizon) is a forecast newly available.
+  if (nowAhead < 0 || nowAhead > horizon) return false;
+
+  // Was the outfit planned while the event was still beyond the horizon? If so it
+  // was planned weather-less and is worth upgrading now.
+  const plannedAhead = civilDaysBetween(outfitUpdatedDate, eventDate);
+  return plannedAhead > horizon;
 }

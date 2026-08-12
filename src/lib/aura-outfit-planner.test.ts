@@ -8,9 +8,14 @@ import {
   extractPlannerJson,
   formatPlannerWhen,
   parsePlannerOutput,
+  planWeekSequentially,
   plannerOutputSchema,
   reconcileItemIds,
+  shouldSuggestReplan,
+  WEATHER_FORECAST_HORIZON_DAYS,
+  type PlannedOutfitDto,
   type PlannerWardrobeItem,
+  type WeekPlanEvent,
 } from "./aura-outfit-planner";
 
 const WARDROBE: PlannerWardrobeItem[] = [
@@ -215,5 +220,180 @@ describe("buildPlannerPrompt", () => {
     });
     expect(prompt.toLowerCase()).not.toContain("oncology");
     expect(prompt.toLowerCase()).not.toContain("confidential");
+  });
+
+  it("adds the week repeat-avoidance line only when prior ids are given", () => {
+    expect(buildPlannerPrompt(base)).not.toMatch(/already worn/i);
+    expect(buildPlannerPrompt({ ...base, priorItemIds: [] })).not.toMatch(/already worn/i);
+
+    const prompt = buildPlannerPrompt({ ...base, priorItemIds: ["a", "b"] });
+    expect(prompt).toMatch(/already worn earlier this week/i);
+    expect(prompt).toContain(JSON.stringify(["a", "b"]));
+    // Frames the soft basics-may-repeat / distinctive-avoid rule.
+    expect(prompt.toLowerCase()).toContain("basics");
+    expect(prompt.toLowerCase()).toContain("distinctive");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/*                          planWeekSequentially                              */
+/* -------------------------------------------------------------------------- */
+
+function outfit(items: string[], updatedAt = "2026-08-10T00:00:00.000Z"): PlannedOutfitDto {
+  return {
+    id: `outfit_${items.join("-")}`,
+    provenance: "ai_planned",
+    rationale: "A coherent pick.",
+    gaps: [],
+    items: items.map((id, index) => ({
+      id,
+      category: "top",
+      name: `Item ${id}`,
+      color: "black",
+      position: index,
+    })),
+    updatedAt,
+  };
+}
+
+function event(id: string, startsAt: string, planned = false): WeekPlanEvent {
+  return { id, startsAt, outfit: planned ? outfit(["x"]) : null };
+}
+
+describe("planWeekSequentially", () => {
+  it("plans only unplanned events, in date order, feeding prior committed ids", async () => {
+    // Deliberately out of date order, with one already-planned event mixed in.
+    const events: WeekPlanEvent[] = [
+      event("wed", "2026-08-12T18:00:00.000Z"),
+      event("mon", "2026-08-10T09:00:00.000Z"),
+      event("tue-planned", "2026-08-11T09:00:00.000Z", true),
+      event("tue", "2026-08-11T12:00:00.000Z"),
+    ];
+
+    const calls: { id: string; prior: string[] }[] = [];
+    const outcomes = await planWeekSequentially(events, async (evt, priorItemIds) => {
+      calls.push({ id: evt.id, prior: [...priorItemIds] });
+      // Each event commits one distinct piece.
+      return outfit([evt.id === "mon" ? "a" : evt.id === "tue" ? "b" : "c"]);
+    });
+
+    // Ran in date order and skipped the already-planned event (non-destructive).
+    expect(calls.map((call) => call.id)).toEqual(["mon", "tue", "wed"]);
+    // Each call received the ids committed to the earlier events this week.
+    expect(calls.map((call) => call.prior)).toEqual([[], ["a"], ["a", "b"]]);
+    // Only the three unplanned events produced outcomes.
+    expect(outcomes.map((outcome) => outcome.event.id)).toEqual(["mon", "tue", "wed"]);
+  });
+
+  it("continues on error — one failing day never sinks the week", async () => {
+    const events = [
+      event("mon", "2026-08-10T09:00:00.000Z"),
+      event("tue", "2026-08-11T09:00:00.000Z"),
+      event("wed", "2026-08-12T09:00:00.000Z"),
+    ];
+
+    const revealed: { id: string; ok: boolean }[] = [];
+    const outcomes = await planWeekSequentially(
+      events,
+      async (evt, priorItemIds) => {
+        if (evt.id === "tue") throw new Error("planner boom");
+        // The failed day contributed nothing, so its id is absent downstream.
+        expect([...priorItemIds]).not.toContain("b");
+        return outfit([evt.id === "mon" ? "a" : "c"]);
+      },
+      (outcome) => revealed.push({ id: outcome.event.id, ok: outcome.outfit !== null }),
+    );
+
+    // All three resolved; only the middle one failed.
+    expect(outcomes.map((outcome) => Boolean(outcome.outfit))).toEqual([true, false, true]);
+    // Progressive reveal fired once per event, in order.
+    expect(revealed).toEqual([
+      { id: "mon", ok: true },
+      { id: "tue", ok: false },
+      { id: "wed", ok: true },
+    ]);
+  });
+
+  it("passes a snapshot of prior ids, immune to later mutation", async () => {
+    const events = [
+      event("mon", "2026-08-10T09:00:00.000Z"),
+      event("tue", "2026-08-11T09:00:00.000Z"),
+    ];
+    const captured: readonly string[][] = [];
+    await planWeekSequentially(events, async (_evt, priorItemIds) => {
+      (captured as string[][]).push(priorItemIds as string[]);
+      return outfit(["a"]);
+    });
+    // The first call's snapshot stays empty even after the second call commits "a".
+    expect(captured[0]).toEqual([]);
+    expect(captured[1]).toEqual(["a"]);
+  });
+
+  it("does nothing when every event is already planned", async () => {
+    const events = [event("mon", "2026-08-10T09:00:00.000Z", true)];
+    let called = false;
+    const outcomes = await planWeekSequentially(events, async () => {
+      called = true;
+      return outfit(["a"]);
+    });
+    expect(called).toBe(false);
+    expect(outcomes).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/*                          shouldSuggestReplan                               */
+/* -------------------------------------------------------------------------- */
+
+describe("shouldSuggestReplan", () => {
+  const today = "2026-08-12";
+  // An event now 3 days out (well inside the horizon) that was planned back when
+  // it was still 40 days out (beyond the horizon → weather-less).
+  const inWindow = {
+    placed: true,
+    eventDate: "2026-08-15",
+    outfitUpdatedDate: "2026-07-06",
+    today,
+  };
+
+  it("nudges a placed, in-window event that was planned weather-less", () => {
+    expect(shouldSuggestReplan(inWindow)).toBe(true);
+  });
+
+  it("does not nudge an unplaced event", () => {
+    expect(shouldSuggestReplan({ ...inWindow, placed: false })).toBe(false);
+  });
+
+  it("does not nudge an event still beyond the forecast horizon", () => {
+    const eventDate = "2026-09-30"; // ~49 days out — outside the window now
+    expect(
+      shouldSuggestReplan({ ...inWindow, eventDate }),
+    ).toBe(false);
+  });
+
+  it("does not nudge a past event", () => {
+    expect(
+      shouldSuggestReplan({ ...inWindow, eventDate: "2026-08-01" }),
+    ).toBe(false);
+  });
+
+  it("does not nudge when the outfit was already planned inside the window", () => {
+    // Planned yesterday, when the event was already in the forecast window.
+    expect(
+      shouldSuggestReplan({ ...inWindow, outfitUpdatedDate: "2026-08-11" }),
+    ).toBe(false);
+  });
+
+  it("keys off the forecast horizon boundary", () => {
+    // Event exactly at the horizon is in-window; one day past it is not.
+    const atHorizon = "2026-08-27"; // today + 15
+    const pastHorizon = "2026-08-28"; // today + 16
+    expect(
+      shouldSuggestReplan({ ...inWindow, eventDate: atHorizon }),
+    ).toBe(true);
+    expect(
+      shouldSuggestReplan({ ...inWindow, eventDate: pastHorizon }),
+    ).toBe(false);
+    expect(WEATHER_FORECAST_HORIZON_DAYS).toBe(15);
   });
 });

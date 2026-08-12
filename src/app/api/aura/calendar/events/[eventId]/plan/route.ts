@@ -28,7 +28,7 @@ import {
   type PlannerWardrobeItem,
   type PlannerWeatherInput,
 } from "@/lib/aura-outfit-planner";
-import { DEFAULT_PLANNED_OCCASION, planningEgressSchema } from "@/lib/validations";
+import { DEFAULT_PLANNED_OCCASION, plannerPlanSchema } from "@/lib/validations";
 
 /**
  * Plan ONE event's outfit from the wardrobe with a single AI call (spec §3–§5,
@@ -186,6 +186,7 @@ const outfitSelect = {
   provenance: true,
   rationale: true,
   gaps: true,
+  updatedAt: true,
   items: {
     select: {
       position: true,
@@ -209,7 +210,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   const { eventId } = await params;
 
-  const parsed = planningEgressSchema.safeParse(await request.json().catch(() => null));
+  const parsed = plannerPlanSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid request", issues: parsed.error.issues },
@@ -320,6 +321,16 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   const { weather } = await resolvePlannerWeather(prisma, event as PlannerEvent);
 
+  const allowedIds = new Set(wardrobe.map((item) => item.id));
+
+  // Repeat-avoidance context for "Plan my week" (spec §4): the ids already
+  // committed to earlier events this week. Intersect with the fed wardrobe so a
+  // client-supplied id can only ever reference this participant's own items —
+  // the prompt never sees a foreign or invented id.
+  const priorItemIds = (parsed.data.priorItemIds ?? []).filter((id) =>
+    allowedIds.has(id),
+  );
+
   const prompt = buildPlannerPrompt({
     occasion: event.occasion ?? DEFAULT_PLANNED_OCCASION,
     when: formatPlannerWhen({
@@ -332,9 +343,8 @@ export async function POST(request: Request, { params }: RouteContext) {
     weather,
     stylePreference: event.user.stylePreference?.text ?? null,
     wardrobe,
+    priorItemIds,
   });
-
-  const allowedIds = new Set(wardrobe.map((item) => item.id));
 
   // First attempt.
   const first = await callPlanner(prompt);

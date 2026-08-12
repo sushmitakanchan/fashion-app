@@ -213,6 +213,7 @@ mock.module("@/lib/prisma", () => ({
           provenance: createdOutfit.provenance,
           rationale: createdOutfit.rationale,
           gaps: createdOutfit.gaps,
+          updatedAt: new Date("2026-08-10T00:00:00.000Z"),
           items: createdOutfit.items.map((item) => {
             const w = wardrobe.find((candidate) => candidate.id === item.wardrobeItemId)!;
             return {
@@ -468,6 +469,25 @@ describe("POST /api/aura/calendar/events/[eventId]/plan", () => {
     aiReplies = [planReply(["a"])];
     await post("evt_1", { policyVersion: PLANNING_POLICY_VERSION });
     expect(aiPrompts[0]).toContain("minimal, dark tones");
+  });
+
+  it("feeds prior-committed ids for repeat avoidance, dropping any not in the wardrobe", async () => {
+    // "a" is a real wardrobe id; "ghost" is not — only the real one may reach the
+    // prompt, so a client-supplied id can never smuggle in a foreign reference.
+    aiReplies = [planReply(["b"])];
+    await post("evt_1", {
+      policyVersion: PLANNING_POLICY_VERSION,
+      priorItemIds: ["a", "ghost"],
+    });
+    expect(aiPrompts[0]).toMatch(/already worn earlier this week/i);
+    expect(aiPrompts[0]).toContain(JSON.stringify(["a"]));
+    expect(aiPrompts[0]).not.toContain("ghost");
+  });
+
+  it("omits the repeat-avoidance line when no prior ids are sent", async () => {
+    aiReplies = [planReply(["a"])];
+    await post("evt_1", { policyVersion: PLANNING_POLICY_VERSION });
+    expect(aiPrompts[0]).not.toMatch(/already worn/i);
   });
 
   it("502s when the reply can't be formatted even after a retry", async () => {

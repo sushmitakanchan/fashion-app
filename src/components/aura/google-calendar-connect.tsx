@@ -67,6 +67,13 @@ export function GoogleCalendarConnect({
     if (!user) return;
     setConnecting(true);
     try {
+      // Record the (re)connect intent before leaving for Google. If the user had
+      // previously disconnected in-app, the Clerk-held token still carries the
+      // scope, so this clears the disconnect flag now — otherwise the lingering
+      // token would read as still-disconnected on return. Best-effort: a failure
+      // here shouldn't block the OAuth flow.
+      await fetch("/api/aura/calendar/google", { method: "PUT" }).catch(() => {});
+
       const redirectUrl = `${window.location.origin}/aura/calendar`;
       const google = user.externalAccounts.find(
         (account) => account.provider === GOOGLE_OAUTH_PROVIDER,

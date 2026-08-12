@@ -36,6 +36,7 @@ const eventSelect = {
       provenance: true,
       rationale: true,
       gaps: true,
+      updatedAt: true,
       items: {
         select: {
           position: true,

@@ -19,6 +19,7 @@ type OutfitFixture = {
   provenance: "ai_planned" | "user_edited";
   rationale: string | null;
   gaps: unknown;
+  updatedAt: Date;
   items: {
     position: number | null;
     wardrobeItem: { id: string; category: string; name: string; color: string };
@@ -273,6 +274,7 @@ describe("GET /api/aura/calendar/events", () => {
       provenance: "ai_planned",
       rationale: "A crisp, weather-ready pick.",
       gaps: [{ slot: "formal shoes", note: "No formal shoes in the wardrobe." }],
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
       items: [
         { position: 1, wardrobeItem: { id: "w2", category: "bottom", name: "Chinos", color: "navy" } },
         { position: 0, wardrobeItem: { id: "w1", category: "top", name: "Oxford shirt", color: "white" } },

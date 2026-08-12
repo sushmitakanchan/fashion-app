@@ -472,6 +472,21 @@ export const planningEgressSchema = z.object({
 
 export type PlanningEgressInput = z.infer<typeof planningEgressSchema>;
 
+/**
+ * The "Plan this outfit" request body: the echoed policy version plus, when the
+ * call is part of a sequential "Plan my week" pass, the item ids already
+ * committed to earlier events this week (spec §4 repeat-avoidance). The ids are a
+ * soft nudge only and the route re-intersects them with the participant's own
+ * wardrobe, so the cap here is just an abuse bound (a week commits at most a few
+ * dozen). Omitted `priorItemIds` ⇒ a standalone single-event plan.
+ */
+export const plannerPlanSchema = z.object({
+  policyVersion: z.number().int(),
+  priorItemIds: z.array(z.string().trim().min(1)).max(200).optional(),
+});
+
+export type PlannerPlanInput = z.infer<typeof plannerPlanSchema>;
+
 /* -------------------------------------------------------------------------- */
 /*                   Outfit Calendar — manual planned events                  */
 /* -------------------------------------------------------------------------- */

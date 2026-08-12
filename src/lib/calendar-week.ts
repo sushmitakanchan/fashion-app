@@ -56,6 +56,18 @@ export function addDays(date: CivilDate, days: number): CivilDate {
 }
 
 /**
+ * Whole civil days from `from` to `to` (both `YYYY-MM-DD`), signed — negative
+ * when `to` is earlier. Anchored to UTC noon so a daylight-saving transition
+ * near midnight can never skew the count. Used to place an event relative to the
+ * forecast horizon (weather degrade, re-plan nudge).
+ */
+export function civilDaysBetween(from: CivilDate, to: CivilDate): number {
+  return Math.round(
+    (civilToUtcNoon(to).getTime() - civilToUtcNoon(from).getTime()) / DAY_MS,
+  );
+}
+
+/**
  * The Monday of the week containing `date`. Weeks are Monday→Sunday, so a date
  * that already is a Monday returns itself and a Sunday returns the Monday six
  * days earlier.

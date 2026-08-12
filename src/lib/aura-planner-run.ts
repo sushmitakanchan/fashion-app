@@ -251,6 +251,10 @@ export async function buildPlannedOutfit(params: {
   prisma: ReturnType<typeof getPrisma>;
   event: PlannerEvent;
   stylePreference: string | null;
+  /** Ids committed to earlier events this week — soft repeat-avoidance for "Plan
+   *  my week". Filtered to this wardrobe here, so a foreign id can't reach the
+   *  prompt. Omitted for a standalone plan and for Regenerate/Swap. */
+  priorItemIds?: readonly string[];
   exclude?: readonly string[];
   keep?: readonly string[];
 }): Promise<PlannerRunResult> {
@@ -290,6 +294,12 @@ export async function buildPlannedOutfit(params: {
     };
   }
 
+  const allowedIds = new Set(wardrobe.map((item) => item.id));
+
+  // Repeat-avoidance ids are a soft nudge; re-intersect with this wardrobe so a
+  // foreign id can never reach the prompt (the same guard the plan route applied).
+  const priorItemIds = (params.priorItemIds ?? []).filter((id) => allowedIds.has(id));
+
   const { weather } = await resolvePlannerWeather(prisma, event);
 
   const prompt = buildPlannerPrompt({
@@ -304,9 +314,10 @@ export async function buildPlannedOutfit(params: {
     weather,
     stylePreference: params.stylePreference,
     wardrobe,
+    priorItemIds,
     exclude: params.exclude,
     keep: params.keep,
   });
 
-  return runPlanner(prompt, new Set(wardrobe.map((item) => item.id)));
+  return runPlanner(prompt, allowedIds);
 }

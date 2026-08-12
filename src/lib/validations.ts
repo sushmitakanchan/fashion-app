@@ -473,6 +473,21 @@ export const planningEgressSchema = z.object({
 export type PlanningEgressInput = z.infer<typeof planningEgressSchema>;
 
 /**
+ * The "Plan this outfit" request body: the echoed policy version plus, when the
+ * call is part of a sequential "Plan my week" pass, the item ids already
+ * committed to earlier events this week (spec §4 repeat-avoidance). The ids are a
+ * soft nudge only and the route re-intersects them with the participant's own
+ * wardrobe, so the cap here is just an abuse bound (a week commits at most a few
+ * dozen). Omitted `priorItemIds` ⇒ a standalone single-event plan.
+ */
+export const plannerPlanSchema = z.object({
+  policyVersion: z.number().int(),
+  priorItemIds: z.array(z.string().trim().min(1)).max(200).optional(),
+});
+
+export type PlannerPlanInput = z.infer<typeof plannerPlanSchema>;
+
+/**
  * The body for an inline outfit edit (#178): Regenerate the whole pick, or Swap a
  * single piece. Both are Smart Planning egress, so each carries the echoed
  * `policyVersion` like every other planner call; the `mode` discriminates the two,
@@ -590,6 +605,24 @@ export const plannedEventCreateSchema = z
   );
 
 export type PlannedEventCreateInput = z.infer<typeof plannedEventCreateSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*                 Outfit Calendar — Google read-only import                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What crosses the wire to `POST /api/aura/calendar/google` (trigger a sync).
+ * The client sends the instant that is start-of-today in the viewer's timezone,
+ * so the forward-only window is bounded exactly at the viewer's civil "today"
+ * (the same day-granular active/past boundary the agenda uses). It is optional
+ * and offset-bearing; the route falls back to the current instant when it is
+ * absent — never importing anything already in the past for the viewer.
+ */
+export const googleCalendarSyncSchema = z.object({
+  startOfToday: z.iso.datetime({ offset: true }).optional(),
+});
+
+export type GoogleCalendarSyncInput = z.infer<typeof googleCalendarSyncSchema>;
 
 /* -------------------------------------------------------------------------- */
 /*                    Outfit Calendar — style preference                      */

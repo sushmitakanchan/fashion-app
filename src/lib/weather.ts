@@ -17,11 +17,10 @@ import { describeWeatherCode, type WeatherDescription } from "@/lib/weather-code
 
 const FORECAST_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
 
-/** How far ahead Open-Meteo's free forecast reaches. An event beyond this has no
- *  live forecast yet — the calendar plans it weather-less and nudges a re-plan
- *  once it enters the window (a later ticket). Kept a touch under the provider's
- *  ~16-day ceiling so an off-by-one near the edge degrades cleanly. */
-export const WEATHER_FORECAST_HORIZON_DAYS = 15;
+/** How far ahead Open-Meteo's free forecast reaches. The single source lives in
+ *  the client-safe planner module (the re-plan nudge needs it too); re-exported
+ *  here so the server weather/plan routes keep importing it from `@/lib/weather`. */
+export { WEATHER_FORECAST_HORIZON_DAYS } from "@/lib/aura-outfit-planner";
 
 export type DayWeather = {
   /** The place-local civil date this forecast is for (YYYY-MM-DD). */

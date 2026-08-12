@@ -13,7 +13,7 @@ import {
   serializePlannedOutfit,
 } from "@/lib/aura-outfit-planner";
 import { buildPlannedOutfit, type PlannerEvent } from "@/lib/aura-planner-run";
-import { planningEgressSchema } from "@/lib/validations";
+import { plannerPlanSchema } from "@/lib/validations";
 
 /**
  * Plan ONE event's outfit from the wardrobe with a single AI call (spec §3–§5,
@@ -24,11 +24,11 @@ import { planningEgressSchema } from "@/lib/validations";
  * The event **title never egresses** and is never even selected below: the planner
  * works from occasion, when, place, weather, style, and the wardrobe list only.
  *
- * The model intermittently invents ids, so every returned id is validated against
- * the fed set; a miss triggers one retry with the exact allowed-id list, and any
- * id still invalid after that is dropped and gap-flagged — never a phantom or a
- * foreign item. Beyond the ~7-day weather horizon (or when the place can't be
- * located) the plan degrades to occasion + style + place with a note.
+ * The wardrobe load, weather resolution, prompt assembly, and the id-discipline
+ * loop (validate returned ids → one-shot retry → drop-and-gap-flag) all live in the
+ * shared {@link buildPlannedOutfit}, so this route and Regenerate/Swap can't drift.
+ * "Plan my week" runs this route per event in date order, feeding the ids already
+ * committed earlier this week as soft repeat-avoidance (`priorItemIds`).
  */
 
 type RouteContext = { params: Promise<{ eventId: string }> };
@@ -54,7 +54,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   const { eventId } = await params;
 
-  const parsed = planningEgressSchema.safeParse(await request.json().catch(() => null));
+  const parsed = plannerPlanSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid request", issues: parsed.error.issues },
@@ -104,7 +104,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   // Non-destructive: "Plan this outfit" only fills an unplanned event. Regenerate
-  // (a later ticket) is what replaces an existing pick.
+  // and Swap (the /replan route) are what replace an existing pick.
   if (event.outfit) {
     return failure(409, {
       code: "already-planned",
@@ -135,13 +135,15 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   // ---- Egress is authorized from here. ----
 
-  // Load the wardrobe, resolve weather, build the prompt, and run the shared
-  // id-discipline loop (identical to Regenerate/Swap). A ready error response
-  // comes back for an empty wardrobe, a wardrobe-read failure, or an unusable reply.
+  // Load the wardrobe, resolve weather, build the prompt (with this week's
+  // repeat-avoidance ids), and run the shared id-discipline loop. A ready error
+  // response comes back for an empty wardrobe, a wardrobe-read failure, or an
+  // unusable reply.
   const run = await buildPlannedOutfit({
     prisma,
     event: event as PlannerEvent,
     stylePreference: event.user.stylePreference?.text ?? null,
+    priorItemIds: parsed.data.priorItemIds,
   });
   if (!run.ok) return run.response;
   const { itemIds, gaps, output } = run;

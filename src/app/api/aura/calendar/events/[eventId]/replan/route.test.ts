@@ -116,6 +116,7 @@ function selectedOutfit(store: OutfitStore) {
     provenance: store.provenance,
     rationale: store.rationale,
     gaps: store.gaps,
+    updatedAt: new Date("2026-08-11T00:00:00.000Z"),
     items: store.items.map((item) => {
       const w = wardrobe.find((candidate) => candidate.id === item.wardrobeItemId)!;
       return {

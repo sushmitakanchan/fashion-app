@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +22,7 @@ import {
   Plus,
   RefreshCw,
   Replace,
+  Settings2,
   Shirt,
   Sun,
   Sparkles,
@@ -33,7 +35,11 @@ import {
   plannedEventFormSchema,
   type PlannedEventFormInput,
 } from "@/lib/validations";
-import type { PlannedOutfitDto } from "@/lib/aura-outfit-planner";
+import {
+  planWeekSequentially,
+  shouldSuggestReplan,
+  type PlannedOutfitDto,
+} from "@/lib/aura-outfit-planner";
 import {
   PLANNING_POLICY_VERSION,
   SMART_PLANNING_DISCLOSURE,
@@ -56,6 +62,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StylePreferenceCard } from "@/components/aura/style-preference-card";
+import { GoogleCalendarConnect } from "@/components/aura/google-calendar-connect";
 
 export type PlannedEventDto = {
   id: string;
@@ -320,6 +327,12 @@ export function CalendarSurface() {
   // plan is blocked on consent — the event to resume once Smart Planning is on.
   const [planningId, setPlanningId] = React.useState<string | null>(null);
   const pendingPlanRef = React.useRef<PlannedEventDto | null>(null);
+  // Sequential "Plan my week" progress (null when not running), and a pending
+  // flag so a week plan blocked on consent resumes once Smart Planning is on.
+  const [weekPlan, setWeekPlan] = React.useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const pendingWeekRef = React.useRef(false);
   // The outfit currently being edited inline (Regenerate/Swap) and, for a Swap,
   // the specific piece — so only the touched tile and the touched outfit show a
   // spinner. Held apart from `planningId` (the initial plan) so both can coexist.
@@ -417,13 +430,16 @@ export function CalendarSurface() {
       }
       setShowDisclosure(false);
       setConsentActive(true);
-      // Resume whatever was blocked on consent — the initial plan, or an inline
-      // Regenerate/Swap — depending on which raised the disclosure.
-      const pending = pendingPlanRef.current;
-      pendingPlanRef.current = null;
+      // Resume whatever raised the disclosure: a single "Plan this outfit", a
+      // whole-week "Plan my week", or an inline Regenerate/Swap.
+      const pendingEvent = pendingPlanRef.current;
+      const pendingWeek = pendingWeekRef.current;
       const pendingReplan = pendingReplanRef.current;
+      pendingPlanRef.current = null;
+      pendingWeekRef.current = false;
       pendingReplanRef.current = null;
-      if (pending) void planOutfit(pending);
+      if (pendingWeek) void planWeek();
+      else if (pendingEvent) void planOutfit(pendingEvent);
       else if (pendingReplan) void replanOutfit(pendingReplan.event, pendingReplan.edit);
     } catch {
       toast.error("We couldn't turn on Smart Planning", {
@@ -432,48 +448,121 @@ export function CalendarSurface() {
     }
   }
 
+  /** Inject a freshly planned outfit into local state so it renders inline (and
+   *  again on reload — it is persisted). */
+  function injectOutfit(eventId: string, outfit: PlannedOutfitDto) {
+    setEvents((current) =>
+      current.map((candidate) =>
+        candidate.id === eventId ? { ...candidate, outfit } : candidate,
+      ),
+    );
+  }
+
+  type PlanResult =
+    | { outfit: PlannedOutfitDto }
+    | { consentRequired: true }
+    | { error: string };
+
+  /** One planner exchange: POST the event's plan with the echoed policy version
+   *  and, for a week pass, the ids already committed to earlier events. Shared by
+   *  the single-event action and the sequential week plan so the request contract
+   *  can't drift between them. */
+  async function requestPlan(
+    event: PlannedEventDto,
+    priorItemIds: readonly string[],
+  ): Promise<PlanResult> {
+    const response = await fetch(`/api/aura/calendar/events/${event.id}/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION, priorItemIds }),
+    });
+    const body = (await response.json().catch(() => null)) as PlanResponse | null;
+    if (response.status === 403 && body?.code === "consent-required") {
+      return { consentRequired: true };
+    }
+    if (!response.ok || !body?.outfit) {
+      return { error: body?.error ?? "Please try again." };
+    }
+    return { outfit: body.outfit };
+  }
+
   /** Plan one event's outfit with a single AI call, gated by Smart Planning
    *  consent. If consent isn't active yet, the route replies 403 and we raise the
-   *  disclosure, resuming this plan on agreement. On success the outfit is injected
-   *  into local state so it renders inline (and again on reload — it is persisted). */
+   *  disclosure, resuming this plan on agreement. */
   async function planOutfit(event: PlannedEventDto) {
     setPlanningId(event.id);
     try {
-      const response = await fetch(`/api/aura/calendar/events/${event.id}/plan`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION }),
-      });
-      const body = (await response.json().catch(() => null)) as PlanResponse | null;
-
-      if (response.status === 403 && body?.code === "consent-required") {
+      const result = await requestPlan(event, []);
+      if ("consentRequired" in result) {
         pendingPlanRef.current = event;
         setShowDisclosure(true);
         return;
       }
-      if (!response.ok || !body?.outfit) {
-        toast.error("We couldn't plan this outfit", {
-          description: body?.error ?? "Please try again.",
-        });
+      if ("error" in result) {
+        toast.error("We couldn't plan this outfit", { description: result.error });
         return;
       }
-
-      const outfit = body.outfit;
-      setEvents((current) =>
-        current.map((candidate) =>
-          candidate.id === event.id ? { ...candidate, outfit } : candidate,
-        ),
-      );
+      injectOutfit(event.id, result.outfit);
       toast.success("Outfit planned", {
         description:
-          outfit.items.length > 0
-            ? `${outfit.items.length} ${outfit.items.length === 1 ? "piece" : "pieces"} from your wardrobe`
+          result.outfit.items.length > 0
+            ? `${result.outfit.items.length} ${result.outfit.items.length === 1 ? "piece" : "pieces"} from your wardrobe`
             : "AURA flagged a wardrobe gap.",
       });
     } catch {
       toast.error("We couldn't plan this outfit", { description: "Please try again." });
     } finally {
       setPlanningId((current) => (current === event.id ? null : current));
+    }
+  }
+
+  /** "Plan my week": fill only the unplanned, non-past events of the viewed week,
+   *  sequentially by date, non-destructively. Each call is fed the ids committed
+   *  to earlier events this week (so distinctive pieces don't repeat), one failing
+   *  day never sinks the rest, and each outfit reveals as it resolves. Consent is
+   *  checked up front — if it isn't active, the disclosure is raised and the week
+   *  plan resumes on agreement. */
+  async function planWeek() {
+    if (consentActive !== true) {
+      pendingWeekRef.current = true;
+      setShowDisclosure(true);
+      return;
+    }
+    if (weekPlanTargets.length === 0) return;
+
+    setWeekPlan({ done: 0, total: weekPlanTargets.length });
+    try {
+      const outcomes = await planWeekSequentially(
+        weekPlanTargets,
+        async (event, priorItemIds) => {
+          const result = await requestPlan(event, priorItemIds);
+          // A consent-required or errored day resolves to null — continue-on-error
+          // records it as a failure and the week carries on.
+          return "outfit" in result ? result.outfit : null;
+        },
+        (outcome) => {
+          if (outcome.outfit) injectOutfit(outcome.event.id, outcome.outfit);
+          setWeekPlan((current) =>
+            current ? { ...current, done: current.done + 1 } : current,
+          );
+        },
+      );
+
+      const planned = outcomes.filter((outcome) => outcome.outfit).length;
+      const failed = outcomes.length - planned;
+      if (planned === 0) {
+        toast.error("We couldn't plan your week", { description: "Please try again." });
+      } else if (failed === 0) {
+        toast.success("Your week is planned", {
+          description: `${planned} ${planned === 1 ? "outfit" : "outfits"} from your wardrobe.`,
+        });
+      } else {
+        toast.success(`Planned ${planned} of ${outcomes.length}`, {
+          description: `${failed} couldn't be planned — try those again individually.`,
+        });
+      }
+    } finally {
+      setWeekPlan(null);
     }
   }
 
@@ -509,12 +598,7 @@ export function CalendarSurface() {
         return;
       }
 
-      const outfit = body.outfit;
-      setEvents((current) =>
-        current.map((candidate) =>
-          candidate.id === event.id ? { ...candidate, outfit } : candidate,
-        ),
-      );
+      injectOutfit(event.id, body.outfit);
       toast.success(edit.mode === "swap" ? "Piece swapped" : "Outfit regenerated");
     } catch {
       toast.error(
@@ -589,6 +673,17 @@ export function CalendarSurface() {
       )}`
     : "";
 
+  // "Plan my week" targets: the unplanned events on non-past days of the viewed
+  // week, in date order. Past days are the read-only archive; already-planned
+  // events are skipped (the batch is non-destructive). The orchestrator re-sorts
+  // and re-filters, so this only has to scope the set the button acts on.
+  const weekPlanTargets = today
+    ? days
+        .filter((day) => !isPastDate(day, today))
+        .flatMap((day) => eventsByDay.get(day) ?? [])
+        .filter((event) => event.outfit === null)
+    : [];
+
   // Weather is an outside contact — fetch only once consent is active. Placed
   // events in the viewed week are what the disclosure/attribution key off.
   const weatherEnabled = consentActive === true;
@@ -611,16 +706,28 @@ export function CalendarSurface() {
             each outfit from your own wardrobe.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="cta-flat"
-          onClick={() => openAdd(today ?? "")}
-          disabled={!today}
-          className="rounded-full"
-        >
-          <CalendarPlus />
-          Add event
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            className="rounded-full"
+            render={<Link href="/aura/calendar/settings" aria-label="Calendar settings" />}
+          >
+            <Settings2 />
+            <span className="sr-only sm:not-sr-only">Settings</span>
+          </Button>
+          <Button
+            type="button"
+            variant="cta-flat"
+            onClick={() => openAdd(today ?? "")}
+            disabled={!today}
+            className="rounded-full"
+          >
+            <CalendarPlus />
+            Add event
+          </Button>
+        </div>
       </div>
 
       {/* Week navigation toolbar. */}
@@ -659,10 +766,49 @@ export function CalendarSurface() {
         </Button>
       </div>
 
+      {/* Read-only Google Calendar import — a secondary, dismissible nudge whose
+          OAuth grant is its own consent (independent of Smart Planning). A synced
+          import re-fetches so freshly-imported events land in the right day. */}
+      <GoogleCalendarConnect
+        startOfTodayIso={today ? `${today}T00:00:00.000Z` : null}
+        onSynced={() => setRefresh((value) => value + 1)}
+      />
+
       {/* Smart Planning invite — shown inline before the first outside contact,
           only when there is a placed event whose weather we could fetch. */}
       {hasPlacedInView && consentActive === false ? (
         <SmartPlanningBanner onTurnOn={() => setShowDisclosure(true)} />
+      ) : null}
+
+      {/* "Plan my week" — the top-level primary. It fills only the unplanned days
+          of the viewed week, sequentially, revealing each outfit as it lands. */}
+      {today && weekPlanTargets.length > 0 ? (
+        <div className="mt-6 flex flex-col items-center gap-1.5">
+          <Button
+            type="button"
+            variant="cta-flat"
+            onClick={() => void planWeek()}
+            disabled={weekPlan !== null}
+            className="rounded-full"
+          >
+            {weekPlan ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Planning your week… ({weekPlan.done}/{weekPlan.total})
+              </>
+            ) : (
+              <>
+                <Sparkles />
+                Plan my week
+              </>
+            )}
+          </Button>
+          <p className="text-muted-foreground text-xs">
+            {weekPlan
+              ? "Each outfit appears as AURA finishes it."
+              : `${weekPlanTargets.length} ${weekPlanTargets.length === 1 ? "event" : "events"} to plan from your wardrobe`}
+          </p>
+        </div>
       ) : null}
 
       {error ? (
@@ -680,10 +826,12 @@ export function CalendarSurface() {
                 key={day}
                 date={day}
                 today={today}
+                tz={tz}
                 events={eventsByDay.get(day) ?? []}
                 loading={loading}
                 weatherEnabled={weatherEnabled}
                 planningId={planningId}
+                weekPlanning={weekPlan !== null}
                 editingId={editingId}
                 swapItemId={swapItemId}
                 onAdd={() => openAdd(day)}
@@ -757,10 +905,12 @@ export function CalendarSurface() {
 function DaySection({
   date,
   today,
+  tz,
   events,
   loading,
   weatherEnabled,
   planningId,
+  weekPlanning,
   editingId,
   swapItemId,
   onAdd,
@@ -770,10 +920,12 @@ function DaySection({
 }: {
   date: CivilDate;
   today: CivilDate;
+  tz: string;
   events: PlannedEventDto[];
   loading: boolean;
   weatherEnabled: boolean;
   planningId: string | null;
+  weekPlanning: boolean;
   editingId: string | null;
   swapItemId: string | null;
   onAdd: () => void;
@@ -815,9 +967,13 @@ function DaySection({
             <li key={event.id}>
               <EventCard
                 event={event}
+                eventDate={date}
+                today={today}
+                tz={tz}
                 weatherEnabled={weatherEnabled && !past}
                 canPlan={!past}
                 planning={planningId === event.id}
+                weekPlanning={weekPlanning}
                 editing={editingId === event.id}
                 swapItemId={editingId === event.id ? swapItemId : null}
                 onDelete={() => onDelete(event)}
@@ -859,9 +1015,13 @@ function AddToDay({ onAdd, inline = false }: { onAdd: () => void; inline?: boole
 
 function EventCard({
   event,
+  eventDate,
+  today,
+  tz,
   weatherEnabled,
   canPlan,
   planning,
+  weekPlanning,
   editing,
   swapItemId,
   onDelete,
@@ -869,15 +1029,33 @@ function EventCard({
   onReplan,
 }: {
   event: PlannedEventDto;
+  eventDate: CivilDate;
+  today: CivilDate;
+  tz: string;
   weatherEnabled: boolean;
   canPlan: boolean;
   planning: boolean;
+  weekPlanning: boolean;
   editing: boolean;
   swapItemId: string | null;
   onDelete: () => void;
   onPlan: () => void;
   onReplan: (edit: OutfitEdit) => void;
 }) {
+  // Storage-free re-plan nudge: an already-planned, placed event that was planned
+  // weather-less but has since entered the forecast window. Derived from the
+  // outfit's updatedAt — no weather is persisted to compute it.
+  const showReplanNudge = Boolean(
+    event.outfit &&
+      canPlan &&
+      shouldSuggestReplan({
+        placed: Boolean(event.placeText),
+        eventDate,
+        outfitUpdatedDate: civilDateInTimeZone(new Date(event.outfit.updatedAt), tz),
+        today,
+      }),
+  );
+
   return (
     <article className="border-border bg-card group flex items-start justify-between gap-3 rounded-xl border p-3 shadow-sm">
       <div className="min-w-0 flex-1">
@@ -915,13 +1093,18 @@ function EventCard({
         {event.outfit ? (
           <PlannedOutfitView
             outfit={event.outfit}
+            showReplanNudge={showReplanNudge}
             canEdit={canPlan}
             editing={editing}
             swapItemId={swapItemId}
             onReplan={onReplan}
           />
         ) : canPlan ? (
-          <PlanOutfitButton planning={planning} onPlan={onPlan} />
+          <PlanOutfitButton
+            planning={planning}
+            disabled={weekPlanning}
+            onPlan={onPlan}
+          />
         ) : null}
       </div>
       <Button
@@ -943,9 +1126,11 @@ function EventCard({
  *  disclosure first if consent isn't active yet). */
 function PlanOutfitButton({
   planning,
+  disabled,
   onPlan,
 }: {
   planning: boolean;
+  disabled: boolean;
   onPlan: () => void;
 }) {
   return (
@@ -954,7 +1139,7 @@ function PlanOutfitButton({
       variant="outline"
       size="sm"
       onClick={onPlan}
-      disabled={planning}
+      disabled={planning || disabled}
       className="mt-3 rounded-full"
     >
       {planning ? (
@@ -973,17 +1158,20 @@ function PlanOutfitButton({
 }
 
 /** A planned outfit inline in the event row: wardrobe-item tiles, the AURA
- *  rationale, amber gap chips for anything the wardrobe couldn't cover, and — when
- *  editable — inline Regenerate / Swap actions (#178). Each tile carries its own
- *  hover Swap affordance; Regenerate redoes the whole pick. */
+ *  rationale, amber gap chips for anything the wardrobe couldn't cover, the
+ *  storage-free re-plan nudge, and — when editable — inline Regenerate / Swap
+ *  actions (#178). Each tile carries its own hover Swap affordance; Regenerate
+ *  redoes the whole pick. */
 function PlannedOutfitView({
   outfit,
+  showReplanNudge,
   canEdit,
   editing,
   swapItemId,
   onReplan,
 }: {
   outfit: PlannedOutfitDto;
+  showReplanNudge: boolean;
   canEdit: boolean;
   editing: boolean;
   swapItemId: string | null;
@@ -994,6 +1182,12 @@ function PlannedOutfitView({
 
   return (
     <div className="mt-3 space-y-2">
+      {showReplanNudge ? (
+        <p className="text-brand-magenta flex items-start gap-1.5 text-xs font-medium">
+          <CloudSun className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>There&apos;s a forecast for this day now — re-plan to factor in the weather.</span>
+        </p>
+      ) : null}
       {outfit.items.length > 0 ? (
         <ul className="flex flex-wrap gap-2">
           {outfit.items.map((item) => (

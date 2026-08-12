@@ -213,6 +213,7 @@ mock.module("@/lib/prisma", () => ({
           provenance: createdOutfit.provenance,
           rationale: createdOutfit.rationale,
           gaps: createdOutfit.gaps,
+          previewImageUrl: null,
           updatedAt: new Date("2026-08-10T00:00:00.000Z"),
           items: createdOutfit.items.map((item) => {
             const w = wardrobe.find((candidate) => candidate.id === item.wardrobeItemId)!;

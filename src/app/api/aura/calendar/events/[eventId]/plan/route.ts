@@ -186,6 +186,7 @@ const outfitSelect = {
   provenance: true,
   rationale: true,
   gaps: true,
+  previewImageUrl: true,
   updatedAt: true,
   items: {
     select: {

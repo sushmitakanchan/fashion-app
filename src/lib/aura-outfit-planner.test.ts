@@ -252,6 +252,7 @@ function outfit(items: string[], updatedAt = "2026-08-10T00:00:00.000Z"): Planne
       color: "black",
       position: index,
     })),
+    previewImageUrl: null,
     updatedAt,
   };
 }

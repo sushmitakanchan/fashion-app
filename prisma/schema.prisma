@@ -233,6 +233,14 @@ model PlannedOutfit {
   user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId          String
   provenance      PlannedOutfitProvenance @default(ai_planned)
+  /// The AI planner's one-line rationale for this pick (occasion + weather +
+  /// palette). Nullable: a hand-built or legacy outfit may carry none.
+  rationale       String?
+  /// Honest coverage gaps the wardrobe can't fill for this event, as a JSON array
+  /// of `{ slot, note }` (the planner's `gaps` output). A gap always means a real,
+  /// actionable hole — compromises live in `rationale`, not here. Null/[] means a
+  /// complete pick. Stored as JSON, like `SavedLook.auraReview`.
+  gaps            Json?
   /// Cached on-demand try-on preview URL; CLEARED to null whenever the item set
   /// changes, so a stale preview is never shown for a changed outfit.
   previewImageUrl String?

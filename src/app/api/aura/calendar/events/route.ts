@@ -8,6 +8,7 @@ import {
 import { getPrisma } from "@/lib/prisma";
 import { getOrProvisionUserId } from "@/lib/wardrobe-user";
 import {
+  PLANNED_OUTFIT_SELECT,
   serializePlannedOutfit,
   type PlannedOutfitRow,
 } from "@/lib/aura-outfit-planner";
@@ -30,21 +31,7 @@ const eventSelect = {
   allDay: true,
   placeText: true,
   source: true,
-  outfit: {
-    select: {
-      id: true,
-      provenance: true,
-      rationale: true,
-      gaps: true,
-      updatedAt: true,
-      items: {
-        select: {
-          position: true,
-          wardrobeItem: { select: { id: true, category: true, name: true, color: true } },
-        },
-      },
-    },
-  },
+  outfit: { select: PLANNED_OUTFIT_SELECT },
 } as const;
 
 type EventRow = {

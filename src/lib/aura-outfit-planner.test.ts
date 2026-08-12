@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { MAX_TRY_ON_GARMENTS } from "@/lib/validations";
 import {
+  buildAdjustmentDirective,
   buildPlannerPrompt,
   buildWeatherSummary,
   droppedItemsGap,
@@ -222,6 +223,33 @@ describe("buildPlannerPrompt", () => {
     expect(prompt.toLowerCase()).not.toContain("confidential");
   });
 
+  it("adds no adjustment directive for a fresh plan", () => {
+    const prompt = buildPlannerPrompt(base);
+    expect(prompt).not.toContain("Adjustment");
+    expect(prompt).not.toContain("Do NOT reuse");
+    expect(prompt).not.toContain("Keep these");
+  });
+
+  it("Regenerate: excludes the current pick softly, no keep list", () => {
+    const prompt = buildPlannerPrompt({ ...base, exclude: ["a", "b"] });
+    expect(prompt).toContain("Do NOT reuse");
+    expect(prompt).toContain("a (White tee)");
+    expect(prompt).toContain("b (Black jeans)");
+    expect(prompt).toContain("a genuinely different outfit");
+    // Soft — never fabricate a gap when nothing else fits.
+    expect(prompt).toContain("do NOT invent a gap");
+    expect(prompt).not.toContain("Keep these");
+  });
+
+  it("Swap: keeps the untouched pieces and excludes only the swapped one", () => {
+    const prompt = buildPlannerPrompt({ ...base, exclude: ["c"], keep: ["a", "b"] });
+    expect(prompt).toContain("Keep these already-chosen pieces");
+    expect(prompt).toContain("a (White tee)");
+    expect(prompt).toContain("b (Black jeans)");
+    expect(prompt).toContain("Do NOT reuse this piece: c (Sneakers)");
+    expect(prompt).toContain("a different piece to complete the outfit");
+  });
+
   it("adds the week repeat-avoidance line only when prior ids are given", () => {
     expect(buildPlannerPrompt(base)).not.toMatch(/already worn/i);
     expect(buildPlannerPrompt({ ...base, priorItemIds: [] })).not.toMatch(/already worn/i);
@@ -395,5 +423,20 @@ describe("shouldSuggestReplan", () => {
       shouldSuggestReplan({ ...inWindow, eventDate: pastHorizon }),
     ).toBe(false);
     expect(WEATHER_FORECAST_HORIZON_DAYS).toBe(15);
+  });
+});
+
+describe("buildAdjustmentDirective", () => {
+  it("returns null when there is nothing to adjust", () => {
+    expect(buildAdjustmentDirective({ wardrobe: WARDROBE })).toBeNull();
+    expect(
+      buildAdjustmentDirective({ exclude: [], keep: [], wardrobe: WARDROBE }),
+    ).toBeNull();
+  });
+
+  it("falls back to the bare id when it isn't in the fed wardrobe", () => {
+    const directive = buildAdjustmentDirective({ exclude: ["zzz"], wardrobe: WARDROBE });
+    expect(directive).toContain("zzz");
+    expect(directive).not.toContain("zzz (");
   });
 });

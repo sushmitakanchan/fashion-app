@@ -20,6 +20,8 @@ import {
   Loader2,
   MapPin,
   Plus,
+  RefreshCw,
+  Replace,
   Settings2,
   Shirt,
   Sun,
@@ -77,6 +79,10 @@ export type PlannedEventDto = {
 type EventsResponse = { events?: PlannedEventDto[]; error?: string };
 type EventResponse = { event?: PlannedEventDto; error?: string };
 type PlanResponse = { outfit?: PlannedOutfitDto; error?: string; code?: string };
+
+/** An inline nudge to an already-planned outfit (#178): Regenerate the whole pick
+ *  or Swap one wardrobe piece. Mirrors the route's discriminated body. */
+type OutfitEdit = { mode: "regenerate" } | { mode: "swap"; itemId: string };
 
 // Civil-date formatters are anchored to UTC noon (via `civilToUtcNoon`) and read
 // back with `timeZone: "UTC"`, so the label matches the civil date exactly,
@@ -327,6 +333,14 @@ export function CalendarSurface() {
     null,
   );
   const pendingWeekRef = React.useRef(false);
+  // The outfit currently being edited inline (Regenerate/Swap) and, for a Swap,
+  // the specific piece — so only the touched tile and the touched outfit show a
+  // spinner. Held apart from `planningId` (the initial plan) so both can coexist.
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [swapItemId, setSwapItemId] = React.useState<string | null>(null);
+  const pendingReplanRef = React.useRef<{ event: PlannedEventDto; edit: OutfitEdit } | null>(
+    null,
+  );
   const queryClient = useQueryClient();
 
   // Resolve the viewer's zone and today's civil date once, after mount. Done
@@ -416,14 +430,17 @@ export function CalendarSurface() {
       }
       setShowDisclosure(false);
       setConsentActive(true);
-      // Resume whatever raised the disclosure: a single "Plan this outfit", or a
-      // whole-week "Plan my week". The week flag wins if both were somehow set.
+      // Resume whatever raised the disclosure: a single "Plan this outfit", a
+      // whole-week "Plan my week", or an inline Regenerate/Swap.
       const pendingEvent = pendingPlanRef.current;
       const pendingWeek = pendingWeekRef.current;
+      const pendingReplan = pendingReplanRef.current;
       pendingPlanRef.current = null;
       pendingWeekRef.current = false;
+      pendingReplanRef.current = null;
       if (pendingWeek) void planWeek();
       else if (pendingEvent) void planOutfit(pendingEvent);
+      else if (pendingReplan) void replanOutfit(pendingReplan.event, pendingReplan.edit);
     } catch {
       toast.error("We couldn't turn on Smart Planning", {
         description: "Please try again.",
@@ -546,6 +563,53 @@ export function CalendarSurface() {
       }
     } finally {
       setWeekPlan(null);
+    }
+  }
+
+  /** Nudge an already-planned outfit inline (#178): Regenerate the whole pick or
+   *  Swap one piece. Exclusion is applied server-side in the prompt (soft), so the
+   *  result is a fresh outfit that flips provenance to `user_edited`. Like the
+   *  initial plan, a withdrawn consent replies 403 and we raise the disclosure,
+   *  resuming this exact edit on agreement. */
+  async function replanOutfit(event: PlannedEventDto, edit: OutfitEdit) {
+    if (!event.outfit) return;
+    setEditingId(event.id);
+    if (edit.mode === "swap") setSwapItemId(edit.itemId);
+    try {
+      const response = await fetch(`/api/aura/calendar/events/${event.id}/replan`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION, ...edit }),
+      });
+      const body = (await response.json().catch(() => null)) as PlanResponse | null;
+
+      if (response.status === 403 && body?.code === "consent-required") {
+        pendingReplanRef.current = { event, edit };
+        setShowDisclosure(true);
+        return;
+      }
+      if (!response.ok || !body?.outfit) {
+        toast.error(
+          edit.mode === "swap"
+            ? "We couldn't swap that piece"
+            : "We couldn't regenerate this outfit",
+          { description: body?.error ?? "Please try again." },
+        );
+        return;
+      }
+
+      injectOutfit(event.id, body.outfit);
+      toast.success(edit.mode === "swap" ? "Piece swapped" : "Outfit regenerated");
+    } catch {
+      toast.error(
+        edit.mode === "swap"
+          ? "We couldn't swap that piece"
+          : "We couldn't regenerate this outfit",
+        { description: "Please try again." },
+      );
+    } finally {
+      setEditingId((current) => (current === event.id ? null : current));
+      setSwapItemId(null);
     }
   }
 
@@ -768,9 +832,12 @@ export function CalendarSurface() {
                 weatherEnabled={weatherEnabled}
                 planningId={planningId}
                 weekPlanning={weekPlan !== null}
+                editingId={editingId}
+                swapItemId={swapItemId}
                 onAdd={() => openAdd(day)}
                 onDelete={deleteEvent}
                 onPlan={planOutfit}
+                onReplan={replanOutfit}
               />
             ))
           )}
@@ -826,6 +893,7 @@ export function CalendarSurface() {
           onAgree={() => void enableSmartPlanning()}
           onCancel={() => {
             pendingPlanRef.current = null;
+            pendingReplanRef.current = null;
             setShowDisclosure(false);
           }}
         />
@@ -843,9 +911,12 @@ function DaySection({
   weatherEnabled,
   planningId,
   weekPlanning,
+  editingId,
+  swapItemId,
   onAdd,
   onDelete,
   onPlan,
+  onReplan,
 }: {
   date: CivilDate;
   today: CivilDate;
@@ -855,9 +926,12 @@ function DaySection({
   weatherEnabled: boolean;
   planningId: string | null;
   weekPlanning: boolean;
+  editingId: string | null;
+  swapItemId: string | null;
   onAdd: () => void;
   onDelete: (event: PlannedEventDto) => void;
   onPlan: (event: PlannedEventDto) => void;
+  onReplan: (event: PlannedEventDto, edit: OutfitEdit) => void;
 }) {
   const past = isPastDate(date, today);
   const isToday = date === today;
@@ -900,8 +974,11 @@ function DaySection({
                 canPlan={!past}
                 planning={planningId === event.id}
                 weekPlanning={weekPlanning}
+                editing={editingId === event.id}
+                swapItemId={editingId === event.id ? swapItemId : null}
                 onDelete={() => onDelete(event)}
                 onPlan={() => onPlan(event)}
+                onReplan={(edit) => onReplan(event, edit)}
               />
             </li>
           ))}
@@ -945,8 +1022,11 @@ function EventCard({
   canPlan,
   planning,
   weekPlanning,
+  editing,
+  swapItemId,
   onDelete,
   onPlan,
+  onReplan,
 }: {
   event: PlannedEventDto;
   eventDate: CivilDate;
@@ -956,8 +1036,11 @@ function EventCard({
   canPlan: boolean;
   planning: boolean;
   weekPlanning: boolean;
+  editing: boolean;
+  swapItemId: string | null;
   onDelete: () => void;
   onPlan: () => void;
+  onReplan: (edit: OutfitEdit) => void;
 }) {
   // Storage-free re-plan nudge: an already-planned, placed event that was planned
   // weather-less but has since entered the forecast window. Derived from the
@@ -1008,7 +1091,14 @@ function EventCard({
         ) : null}
 
         {event.outfit ? (
-          <PlannedOutfitView outfit={event.outfit} showReplanNudge={showReplanNudge} />
+          <PlannedOutfitView
+            outfit={event.outfit}
+            showReplanNudge={showReplanNudge}
+            canEdit={canPlan}
+            editing={editing}
+            swapItemId={swapItemId}
+            onReplan={onReplan}
+          />
         ) : canPlan ? (
           <PlanOutfitButton
             planning={planning}
@@ -1068,14 +1158,28 @@ function PlanOutfitButton({
 }
 
 /** A planned outfit inline in the event row: wardrobe-item tiles, the AURA
- *  rationale, and amber gap chips for anything the wardrobe couldn't cover. */
+ *  rationale, amber gap chips for anything the wardrobe couldn't cover, the
+ *  storage-free re-plan nudge, and — when editable — inline Regenerate / Swap
+ *  actions (#178). Each tile carries its own hover Swap affordance; Regenerate
+ *  redoes the whole pick. */
 function PlannedOutfitView({
   outfit,
   showReplanNudge,
+  canEdit,
+  editing,
+  swapItemId,
+  onReplan,
 }: {
   outfit: PlannedOutfitDto;
   showReplanNudge: boolean;
+  canEdit: boolean;
+  editing: boolean;
+  swapItemId: string | null;
+  onReplan: (edit: OutfitEdit) => void;
 }) {
+  // A Regenerate is in flight when the outfit is editing but no specific tile is.
+  const regenerating = editing && swapItemId === null;
+
   return (
     <div className="mt-3 space-y-2">
       {showReplanNudge ? (
@@ -1088,7 +1192,13 @@ function PlannedOutfitView({
         <ul className="flex flex-wrap gap-2">
           {outfit.items.map((item) => (
             <li key={item.id}>
-              <OutfitItemTile item={item} />
+              <OutfitItemTile
+                item={item}
+                canSwap={canEdit && outfit.items.length > 1}
+                swapping={swapItemId === item.id}
+                disabled={editing}
+                onSwap={() => onReplan({ mode: "swap", itemId: item.id })}
+              />
             </li>
           ))}
         </ul>
@@ -1116,17 +1226,51 @@ function PlannedOutfitView({
           ))}
         </ul>
       ) : null}
+
+      {canEdit ? (
+        <div className="pt-0.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onReplan({ mode: "regenerate" })}
+            disabled={editing}
+            className="text-muted-foreground hover:text-brand-magenta h-7 gap-1.5 rounded-full px-2.5 text-xs"
+          >
+            {regenerating ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Regenerating…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="size-3.5" />
+                Regenerate
+              </>
+            )}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 /** One wardrobe-item tile in a planned outfit. It fetches its own short-lived,
  *  server-authorized media URL — the browser never receives a durable asset URL —
- *  exactly as the wardrobe gallery does. */
+ *  exactly as the wardrobe gallery does. When the outfit is editable it carries a
+ *  hover/focus Swap affordance that replaces just this piece (#178). */
 function OutfitItemTile({
   item,
+  canSwap = false,
+  swapping = false,
+  disabled = false,
+  onSwap,
 }: {
   item: PlannedOutfitDto["items"][number];
+  canSwap?: boolean;
+  swapping?: boolean;
+  disabled?: boolean;
+  onSwap?: () => void;
 }) {
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
 
@@ -1148,14 +1292,34 @@ function OutfitItemTile({
   }, [item.id]);
 
   return (
-    <div className="w-16" title={`${item.name} · ${item.color}`}>
-      <div className="bg-muted aspect-square w-16 overflow-hidden rounded-lg border">
+    <div className="group/tile w-16" title={`${item.name} · ${item.color}`}>
+      <div className="bg-muted relative aspect-square w-16 overflow-hidden rounded-lg border">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not a durable asset
           <img src={imageUrl} alt={item.name} className="size-full object-cover" />
         ) : (
           <div className="size-full animate-pulse" aria-hidden="true" />
         )}
+        {canSwap ? (
+          <button
+            type="button"
+            onClick={onSwap}
+            disabled={disabled}
+            aria-label={`Swap ${item.name}`}
+            className="bg-brand-ink/55 focus-visible:ring-ring absolute inset-0 grid place-items-center text-white opacity-0 transition-opacity group-focus-within/tile:opacity-100 group-hover/tile:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-0"
+          >
+            {swapping ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Replace className="size-4" />
+            )}
+          </button>
+        ) : null}
+        {swapping && !canSwap ? (
+          <div className="bg-brand-ink/55 absolute inset-0 grid place-items-center text-white">
+            <Loader2 className="size-4 animate-spin" />
+          </div>
+        ) : null}
       </div>
       <p className="text-muted-foreground mt-1 truncate text-[10px]">{item.name}</p>
     </div>

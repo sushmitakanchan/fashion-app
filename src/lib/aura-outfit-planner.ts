@@ -296,7 +296,73 @@ export type BuildPlannerPromptInput = {
    * this participant's wardrobe, so a foreign id can never reach the prompt.
    */
   priorItemIds?: readonly string[];
+  /**
+   * Ids the model must NOT reuse — a soft, prompt-level nudge for Regenerate/Swap
+   * (spec §4). Regenerate feeds the whole current pick ("produce a different
+   * outfit"); Swap feeds just the one piece being replaced. Soft: if excluding
+   * them leaves no viable alternative, the model is told to return its best pick
+   * with a rationale note rather than a fabricated gap. Omit for a fresh plan.
+   */
+  exclude?: readonly string[];
+  /**
+   * Ids to hold fixed in the outfit — Swap keeps every untouched piece so only the
+   * targeted slot changes. Omit (or leave empty) for Regenerate and fresh plans.
+   */
+  keep?: readonly string[];
 };
+
+/** Render a comma-separated `id (name)` list for the adjustment directive, so the
+ *  model can match ids by the readable name it also sees in the wardrobe list. */
+function describeIds(
+  ids: readonly string[],
+  wardrobe: readonly PlannerWardrobeItem[],
+): string {
+  const nameById = new Map(wardrobe.map((item) => [item.id, item.name]));
+  return ids
+    .map((id) => {
+      const name = nameById.get(id);
+      return name ? `${id} (${name})` : id;
+    })
+    .join(", ");
+}
+
+/**
+ * The soft exclusion/keep directive appended to a Regenerate or Swap prompt, or
+ * `null` when there is nothing to adjust (a fresh plan). Exclusion is prompt-level
+ * and soft by design (spec §4): it guarantees a different result in the normal
+ * case, but when no alternative exists the model returns its best pick with a
+ * rationale note — never a manufactured gap. `keep` (Swap) pins the untouched
+ * pieces so only the swapped slot moves.
+ */
+export function buildAdjustmentDirective(input: {
+  exclude?: readonly string[];
+  keep?: readonly string[];
+  wardrobe: readonly PlannerWardrobeItem[];
+}): string | null {
+  const exclude = (input.exclude ?? []).filter((id) => id.length > 0);
+  const keep = (input.keep ?? []).filter((id) => id.length > 0);
+  if (exclude.length === 0 && keep.length === 0) return null;
+
+  const parts = ["Adjustment — the participant wants to change this outfit."];
+  if (keep.length > 0) {
+    parts.push(
+      `Keep these already-chosen pieces (include their exact ids): ${describeIds(keep, input.wardrobe)}.`,
+    );
+  }
+  if (exclude.length > 0) {
+    const noun = exclude.length === 1 ? "this piece" : "these pieces";
+    const want =
+      keep.length > 0
+        ? "a different piece to complete the outfit"
+        : "a genuinely different outfit";
+    parts.push(
+      `Do NOT reuse ${noun}: ${describeIds(exclude, input.wardrobe)}. Choose ${want}.`,
+      "If excluding leaves no good alternative, still return your best possible " +
+        "outfit and explain the compromise in the rationale — do NOT invent a gap for this.",
+    );
+  }
+  return parts.join(" ");
+}
 
 /**
  * Assemble the user prompt from the event's occasion, when, place, a weather
@@ -339,6 +405,12 @@ export function buildPlannerPrompt(input: BuildPlannerPromptInput): string {
       })),
     ),
   );
+  const adjustment = buildAdjustmentDirective({
+    exclude: input.exclude,
+    keep: input.keep,
+    wardrobe: input.wardrobe,
+  });
+  if (adjustment) lines.push("", adjustment);
   return lines.join("\n");
 }
 
@@ -370,6 +442,27 @@ export type PlannedOutfitDto = {
    *  nudge ({@link shouldSuggestReplan}) — no weather is persisted to derive it. */
   updatedAt: string;
 };
+
+/**
+ * The Prisma `select` that produces a {@link PlannedOutfitRow} for
+ * {@link serializePlannedOutfit}. Shared by every surface that returns a planned
+ * outfit — the events list, the plan route, and the Regenerate/Swap route — so the
+ * selected columns can't drift from what the serializer reads. A plain literal (no
+ * Prisma import), spread into a `select` (or nested under an event's `outfit`).
+ */
+export const PLANNED_OUTFIT_SELECT = {
+  id: true,
+  provenance: true,
+  rationale: true,
+  gaps: true,
+  updatedAt: true,
+  items: {
+    select: {
+      position: true,
+      wardrobeItem: { select: { id: true, category: true, name: true, color: true } },
+    },
+  },
+} as const;
 
 /** The shape a Prisma select must produce for {@link serializePlannedOutfit}. */
 export type PlannedOutfitRow = {

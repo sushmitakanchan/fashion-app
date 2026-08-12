@@ -54,6 +54,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StylePreferenceCard } from "@/components/aura/style-preference-card";
+import { GoogleCalendarConnect } from "@/components/aura/google-calendar-connect";
 
 export type PlannedEventDto = {
   id: string;
@@ -589,6 +590,14 @@ export function CalendarSurface() {
           <ChevronRight />
         </Button>
       </div>
+
+      {/* Read-only Google Calendar import — a secondary, dismissible nudge whose
+          OAuth grant is its own consent (independent of Smart Planning). A synced
+          import re-fetches so freshly-imported events land in the right day. */}
+      <GoogleCalendarConnect
+        startOfTodayIso={today ? `${today}T00:00:00.000Z` : null}
+        onSynced={() => setRefresh((value) => value + 1)}
+      />
 
       {/* Smart Planning invite — shown inline before the first outside contact,
           only when there is a placed event whose weather we could fetch. */}

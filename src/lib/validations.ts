@@ -575,6 +575,24 @@ export const plannedEventCreateSchema = z
 export type PlannedEventCreateInput = z.infer<typeof plannedEventCreateSchema>;
 
 /* -------------------------------------------------------------------------- */
+/*                 Outfit Calendar — Google read-only import                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What crosses the wire to `POST /api/aura/calendar/google` (trigger a sync).
+ * The client sends the instant that is start-of-today in the viewer's timezone,
+ * so the forward-only window is bounded exactly at the viewer's civil "today"
+ * (the same day-granular active/past boundary the agenda uses). It is optional
+ * and offset-bearing; the route falls back to the current instant when it is
+ * absent — never importing anything already in the past for the viewer.
+ */
+export const googleCalendarSyncSchema = z.object({
+  startOfToday: z.iso.datetime({ offset: true }).optional(),
+});
+
+export type GoogleCalendarSyncInput = z.infer<typeof googleCalendarSyncSchema>;
+
+/* -------------------------------------------------------------------------- */
 /*                    Outfit Calendar — style preference                      */
 /* -------------------------------------------------------------------------- */
 

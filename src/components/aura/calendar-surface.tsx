@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +20,7 @@ import {
   Loader2,
   MapPin,
   Plus,
+  Settings2,
   Shirt,
   Sun,
   Sparkles,
@@ -640,16 +642,28 @@ export function CalendarSurface() {
             each outfit from your own wardrobe.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="cta-flat"
-          onClick={() => openAdd(today ?? "")}
-          disabled={!today}
-          className="rounded-full"
-        >
-          <CalendarPlus />
-          Add event
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            className="rounded-full"
+            render={<Link href="/aura/calendar/settings" aria-label="Calendar settings" />}
+          >
+            <Settings2 />
+            <span className="sr-only sm:not-sr-only">Settings</span>
+          </Button>
+          <Button
+            type="button"
+            variant="cta-flat"
+            onClick={() => openAdd(today ?? "")}
+            disabled={!today}
+            className="rounded-full"
+          >
+            <CalendarPlus />
+            Add event
+          </Button>
+        </div>
       </div>
 
       {/* Week navigation toolbar. */}

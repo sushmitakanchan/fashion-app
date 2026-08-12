@@ -148,7 +148,7 @@ mock.module("@/lib/prisma", () => ({
   }),
 }));
 
-const { GET, POST } = await import("./route");
+const { GET, POST, PUT, DELETE } = await import("./route");
 
 function syncRequest(body: unknown = {}) {
   return new Request("http://localhost/api/aura/calendar/google", {
@@ -308,5 +308,130 @@ describe("POST /api/aura/calendar/google — sync", () => {
     syncRecords = [record({ externalId: "g1" })];
     listError = new GoogleCalendarError("unavailable", "down");
     expect((await POST(syncRequest())).status).toBe(503);
+  });
+
+  it("refuses to sync after an in-app disconnect even while the token lingers", async () => {
+    // Scope is still present (Google token doubles as sign-in, never deleted),
+    // but the user disconnected in-app — honour that forward-only.
+    publicMetadata = {
+      googleCalendar: {
+        connectedAt: "2026-08-01T00:00:00.000Z",
+        policyVersion: 1,
+        disconnectedAt: "2026-08-10T00:00:00.000Z",
+      },
+    };
+    syncRecords = [record({ externalId: "g1" })];
+    const response = await POST(syncRequest());
+    expect(response.status).toBe(403);
+    expect((await response.json()).code).toBe("reconnect-required");
+    // No import happened.
+    expect(events).toHaveLength(0);
+  });
+});
+
+describe("DELETE /api/aura/calendar/google — disconnect", () => {
+  it("401s when signed out", async () => {
+    userId = null;
+    expect((await DELETE()).status).toBe(401);
+  });
+
+  it("disconnects forward-only: flags disconnect and keeps imported events", async () => {
+    publicMetadata = {
+      googleCalendar: { connectedAt: "2026-08-01T00:00:00.000Z", policyVersion: 1 },
+    };
+    // An already-imported Google event that must survive the disconnect.
+    events.push({
+      id: "e1",
+      userId: "u1",
+      externalId: "g1",
+      source: "google",
+      title: "Dinner",
+      occasion: "Everyday",
+      allDay: false,
+      startsAt: new Date("2026-08-14T14:00:00.000Z"),
+      endsAt: null,
+      placeText: "Bandra",
+      placeLabel: null,
+      latitude: null,
+      longitude: null,
+      timezone: null,
+    });
+
+    const response = await DELETE();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ connected: false, needsReconnect: false });
+
+    // The disconnect is recorded, preserving the original connect moment.
+    expect(metadataWrites).toHaveLength(1);
+    expect(metadataWrites[0].googleCalendar).toMatchObject({
+      connectedAt: "2026-08-01T00:00:00.000Z",
+      disconnectedAt: expect.any(String),
+    });
+    // Imported events are untouched — the disconnect is forward-only.
+    expect(events).toHaveLength(1);
+  });
+
+  it("is idempotent when already disconnected — no second write", async () => {
+    publicMetadata = {
+      googleCalendar: {
+        connectedAt: "2026-08-01T00:00:00.000Z",
+        policyVersion: 1,
+        disconnectedAt: "2026-08-10T00:00:00.000Z",
+      },
+    };
+    const response = await DELETE();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ connected: false, needsReconnect: false });
+    expect(metadataWrites).toHaveLength(0);
+  });
+
+  it("is a no-op for a never-connected account with no lingering scope", async () => {
+    oauthTokens = [{ token: "ya29.test", scopes: [] }];
+    publicMetadata = {};
+    const response = await DELETE();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ connected: false, needsReconnect: false });
+    expect(metadataWrites).toHaveLength(0);
+  });
+
+  it("disconnects a scoped-but-unrecorded token rather than leaving it stuck connected", async () => {
+    // Scope present (a prior best-effort intent write never landed) but no
+    // metadata record — a real disconnect must still be written, else the card
+    // would show "Connected" with a no-op button.
+    oauthTokens = [{ token: "ya29.test", scopes: [GOOGLE_CALENDAR_SCOPE] }];
+    publicMetadata = {};
+    const response = await DELETE();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ connected: false, needsReconnect: false });
+    expect(metadataWrites).toHaveLength(1);
+    expect(metadataWrites[0].googleCalendar).toMatchObject({
+      disconnectedAt: expect.any(String),
+    });
+  });
+});
+
+describe("PUT /api/aura/calendar/google — reconnect intent", () => {
+  it("401s when signed out", async () => {
+    userId = null;
+    expect((await PUT()).status).toBe(401);
+  });
+
+  it("clears a prior disconnect so a lingering scoped token reads as connected", async () => {
+    publicMetadata = {
+      googleCalendar: {
+        connectedAt: "2026-08-01T00:00:00.000Z",
+        policyVersion: 1,
+        disconnectedAt: "2026-08-10T00:00:00.000Z",
+      },
+    };
+    const response = await PUT();
+    expect(response.status).toBe(200);
+    // Scope still present + disconnect cleared → connected again.
+    expect(await response.json()).toEqual({ connected: true, needsReconnect: false });
+    expect(metadataWrites).toHaveLength(1);
+    expect(metadataWrites[0].googleCalendar).toMatchObject({
+      connectedAt: expect.any(String),
+      disconnectedAt: null,
+    });
   });
 });

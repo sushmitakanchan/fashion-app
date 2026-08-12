@@ -487,6 +487,23 @@ export const plannerPlanSchema = z.object({
 
 export type PlannerPlanInput = z.infer<typeof plannerPlanSchema>;
 
+/**
+ * The body for an inline outfit edit (#178): Regenerate the whole pick, or Swap a
+ * single piece. Both are Smart Planning egress, so each carries the echoed
+ * `policyVersion` like every other planner call; the `mode` discriminates the two,
+ * and Swap names the wardrobe-item `itemId` being replaced. Exclusion is applied
+ * prompt-side (soft), so nothing here bounds the result — the route does.
+ */
+export const outfitEditSchema = z.discriminatedUnion("mode", [
+  planningEgressSchema.extend({ mode: z.literal("regenerate") }),
+  planningEgressSchema.extend({
+    mode: z.literal("swap"),
+    itemId: z.string().trim().min(1),
+  }),
+]);
+
+export type OutfitEditInput = z.infer<typeof outfitEditSchema>;
+
 /* -------------------------------------------------------------------------- */
 /*                   Outfit Calendar — manual planned events                  */
 /* -------------------------------------------------------------------------- */

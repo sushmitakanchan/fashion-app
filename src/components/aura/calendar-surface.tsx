@@ -721,9 +721,12 @@ export function CalendarSurface() {
             <Settings2 />
             <span className="sr-only sm:not-sr-only">Settings</span>
           </Button>
+          {/* Secondary to "Plan my week": the CTA fill is the app's single action
+              colour (`--cta`, declared once and never themed), so only the
+              week's primary action may wear it. */}
           <Button
             type="button"
-            variant="cta-flat"
+            variant="outline"
             onClick={() => openAdd(today ?? "")}
             disabled={!today}
             className="rounded-full"
@@ -734,40 +737,80 @@ export function CalendarSurface() {
         </div>
       </div>
 
-      {/* Week navigation toolbar. */}
-      <div className="border-border mt-8 flex items-center justify-between gap-3 border-y py-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setWeekOffset((offset) => offset - 1)}
-          disabled={!today}
-        >
-          <ChevronLeft />
-          <span className="sr-only sm:not-sr-only">Previous</span>
-        </Button>
-        <div className="text-center">
-          <p className="font-heading text-lg tracking-wide uppercase">{weekLabel || "…"}</p>
-          {weekOffset !== 0 && today ? (
-            <button
-              type="button"
-              onClick={() => setWeekOffset(0)}
-              className="text-brand-magenta text-xs font-semibold tracking-wide uppercase underline underline-offset-4"
-            >
-              Back to this week
-            </button>
-          ) : null}
+      {/* Week toolbar: navigation, and — below it, in the same band — the
+          week-scoped primary action. "Plan my week" belongs here rather than
+          free-floating below the fold, because it acts on exactly the week this
+          bar names: paging the nav retargets the button. */}
+      <div className="border-border mt-8 border-y py-3">
+        <div className="flex items-center justify-between gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setWeekOffset((offset) => offset - 1)}
+            disabled={!today}
+          >
+            <ChevronLeft />
+            <span className="sr-only sm:not-sr-only">Previous</span>
+          </Button>
+          <div className="text-center">
+            <p className="font-heading text-lg tracking-wide uppercase">
+              {weekLabel || "…"}
+            </p>
+            {weekOffset !== 0 && today ? (
+              <button
+                type="button"
+                onClick={() => setWeekOffset(0)}
+                className="text-brand-magenta text-xs font-semibold tracking-wide uppercase underline underline-offset-4"
+              >
+                Back to this week
+              </button>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setWeekOffset((offset) => offset + 1)}
+            disabled={!today}
+          >
+            <span className="sr-only sm:not-sr-only">Next</span>
+            <ChevronRight />
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setWeekOffset((offset) => offset + 1)}
-          disabled={!today}
-        >
-          <span className="sr-only sm:not-sr-only">Next</span>
-          <ChevronRight />
-        </Button>
+
+        {/* The count rides in the label rather than a caption underneath: it is
+            how many sequential AI calls the click commits to, so it belongs in
+            the thing being clicked. */}
+        {today && weekPlanTargets.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+            {weekPlan ? (
+              <p className="text-muted-foreground mr-auto text-xs">
+                Each outfit appears as AURA finishes it.
+              </p>
+            ) : null}
+            <Button
+              type="button"
+              variant="cta-flat"
+              onClick={() => void planWeek()}
+              disabled={weekPlan !== null}
+              className="rounded-full"
+            >
+              {weekPlan ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Planning your week… ({weekPlan.done}/{weekPlan.total})
+                </>
+              ) : (
+                <>
+                  <Sparkles />
+                  Plan {weekPlanTargets.length}{" "}
+                  {weekPlanTargets.length === 1 ? "outfit" : "outfits"}
+                </>
+              )}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {/* Read-only Google Calendar import — a secondary, dismissible nudge whose
@@ -782,37 +825,6 @@ export function CalendarSurface() {
           only when there is a placed event whose weather we could fetch. */}
       {hasPlacedInView && consentActive === false ? (
         <SmartPlanningBanner onTurnOn={() => setShowDisclosure(true)} />
-      ) : null}
-
-      {/* "Plan my week" — the top-level primary. It fills only the unplanned days
-          of the viewed week, sequentially, revealing each outfit as it lands. */}
-      {today && weekPlanTargets.length > 0 ? (
-        <div className="mt-6 flex flex-col items-center gap-1.5">
-          <Button
-            type="button"
-            variant="cta-flat"
-            onClick={() => void planWeek()}
-            disabled={weekPlan !== null}
-            className="rounded-full"
-          >
-            {weekPlan ? (
-              <>
-                <Loader2 className="animate-spin" />
-                Planning your week… ({weekPlan.done}/{weekPlan.total})
-              </>
-            ) : (
-              <>
-                <Sparkles />
-                Plan my week
-              </>
-            )}
-          </Button>
-          <p className="text-muted-foreground text-xs">
-            {weekPlan
-              ? "Each outfit appears as AURA finishes it."
-              : `${weekPlanTargets.length} ${weekPlanTargets.length === 1 ? "event" : "events"} to plan from your wardrobe`}
-          </p>
-        </div>
       ) : null}
 
       {error ? (

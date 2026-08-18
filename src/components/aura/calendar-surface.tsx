@@ -21,6 +21,7 @@ import {
   Eye,
   Loader2,
   MapPin,
+  Pencil,
   Plus,
   RefreshCw,
   Replace,
@@ -35,6 +36,7 @@ import {
 import { toast } from "sonner";
 
 import {
+  DEFAULT_PLANNED_OCCASION,
   plannedEventFormSchema,
   type PlannedEventFormInput,
 } from "@/lib/validations";
@@ -161,6 +163,23 @@ function reshapeWhen(value: string, toAllDay: boolean): string {
 function toInstant(local: string, allDay: boolean): string {
   const date = allDay ? new Date(`${local}T00:00:00.000Z`) : new Date(local);
   return date.toISOString();
+}
+
+// The inverse of `toInstant`, for prefilling the edit form: an absolute ISO
+// instant → the matching local input string. A timed value renders in the
+// viewer's own timezone (mirroring how the browser reads a tz-less
+// `datetime-local`); an all-day value is the UTC date portion, so it stays the
+// same calendar day everywhere. `null`/empty stays empty.
+function toLocalInput(iso: string | null, allDay: boolean): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  if (allDay) return date.toISOString().slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -360,6 +379,8 @@ export function CalendarSurface() {
   const [refresh, setRefresh] = React.useState(0);
   const [addFor, setAddFor] = React.useState<CivilDate | null>(null);
   const [adding, setAdding] = React.useState(false);
+  // The event currently open in the edit dialog, or `null` when not editing.
+  const [editEvent, setEditEvent] = React.useState<PlannedEventDto | null>(null);
 
   // Smart Planning consent gates all outside contact (geocoding + weather).
   // `null` while we resolve it; `true`/`false` once known. Weather only ever
@@ -897,6 +918,7 @@ export function CalendarSurface() {
                 editingId={editingId}
                 swapItemId={swapItemId}
                 onAdd={() => openAdd(day)}
+                onEdit={setEditEvent}
                 onDelete={deleteEvent}
                 onPlan={planOutfit}
                 onReplan={replanOutfit}
@@ -931,16 +953,25 @@ export function CalendarSurface() {
         </div>
       ) : null}
 
-      {adding ? (
+      {adding || editEvent ? (
         <AddEventDialog
           defaultDate={addFor}
-          onClose={() => setAdding(false)}
-          onCreated={(event) => {
+          event={editEvent}
+          onClose={() => {
             setAdding(false);
-            // Refetch so the new event lands in the right day even if it falls in
-            // a different week than the one on screen.
+            setEditEvent(null);
+          }}
+          onSaved={(event, mode) => {
+            setAdding(false);
+            setEditEvent(null);
+            // Refetch so a moved event lands in the right day even if its new
+            // time falls in a different week than the one on screen.
             setRefresh((value) => value + 1);
-            toast.success("Event added", { description: event.title });
+            if (mode === "updated") {
+              toast.success("Event updated", { description: event.title });
+            } else {
+              toast.success("Event added", { description: event.title });
+            }
           }}
         />
       ) : null}
@@ -971,6 +1002,7 @@ function DaySection({
   editingId,
   swapItemId,
   onAdd,
+  onEdit,
   onDelete,
   onPlan,
   onReplan,
@@ -986,6 +1018,7 @@ function DaySection({
   editingId: string | null;
   swapItemId: string | null;
   onAdd: () => void;
+  onEdit: (event: PlannedEventDto) => void;
   onDelete: (event: PlannedEventDto) => void;
   onPlan: (event: PlannedEventDto) => void;
   onReplan: (event: PlannedEventDto, edit: OutfitEdit) => void;
@@ -1054,6 +1087,7 @@ function DaySection({
                 weekPlanning={weekPlanning}
                 editing={editingId === event.id}
                 swapItemId={editingId === event.id ? swapItemId : null}
+                onEdit={() => onEdit(event)}
                 onDelete={() => onDelete(event)}
                 onPlan={() => onPlan(event)}
                 onReplan={(edit) => onReplan(event, edit)}
@@ -1169,6 +1203,7 @@ function EventCard({
   weekPlanning,
   editing,
   swapItemId,
+  onEdit,
   onDelete,
   onPlan,
   onReplan,
@@ -1183,6 +1218,7 @@ function EventCard({
   weekPlanning: boolean;
   editing: boolean;
   swapItemId: string | null;
+  onEdit: () => void;
   onDelete: () => void;
   onPlan: () => void;
   onReplan: (edit: OutfitEdit) => void;
@@ -1215,16 +1251,28 @@ function EventCard({
               </span>
             ) : null}
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={onDelete}
-            aria-label={`Delete ${event.title}`}
-            className="text-muted-foreground hover:text-destructive shrink-0"
-          >
-            <Trash2 className="size-4" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={onEdit}
+              aria-label={`Edit ${event.title}`}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Pencil className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={onDelete}
+              aria-label={`Delete ${event.title}`}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-x-6 gap-y-2">
@@ -1705,13 +1753,17 @@ function SmartPlanningBanner({ onTurnOn }: { onTurnOn: () => void }) {
 
 function AddEventDialog({
   defaultDate,
+  event: editing,
   onClose,
-  onCreated,
+  onSaved,
 }: {
   defaultDate: CivilDate | null;
+  // The event being edited, or `null`/undefined to add a new one.
+  event?: PlannedEventDto | null;
   onClose: () => void;
-  onCreated: (event: PlannedEventDto) => void;
+  onSaved: (event: PlannedEventDto, mode: "created" | "updated") => void;
 }) {
+  const isEditing = Boolean(editing);
   const {
     register,
     control,
@@ -1721,14 +1773,28 @@ function AddEventDialog({
     formState: { errors, isSubmitting },
   } = useForm<PlannedEventFormInput>({
     resolver: zodResolver(plannedEventFormSchema),
-    defaultValues: {
-      title: "",
-      occasion: "",
-      allDay: false,
-      startsAtLocal: defaultDate ? `${defaultDate}T09:00` : "",
-      endsAtLocal: "",
-      placeText: "",
-    },
+    defaultValues: editing
+      ? {
+          title: editing.title,
+          // A Google import lands with the default occasion; don't prefill that
+          // literal so an untouched edit doesn't look owner-entered.
+          occasion:
+            editing.occasion && editing.occasion !== DEFAULT_PLANNED_OCCASION
+              ? editing.occasion
+              : "",
+          allDay: editing.allDay,
+          startsAtLocal: toLocalInput(editing.startsAt, editing.allDay),
+          endsAtLocal: toLocalInput(editing.endsAt, editing.allDay),
+          placeText: editing.placeText ?? "",
+        }
+      : {
+          title: "",
+          occasion: "",
+          allDay: false,
+          startsAtLocal: defaultDate ? `${defaultDate}T09:00` : "",
+          endsAtLocal: "",
+          placeText: "",
+        },
   });
 
   const allDay = useWatch({ control, name: "allDay" });
@@ -1755,11 +1821,16 @@ function AddEventDialog({
 
     let response: Response;
     try {
-      response = await fetch("/api/aura/calendar/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      response = await fetch(
+        editing
+          ? `/api/aura/calendar/events/${editing.id}`
+          : "/api/aura/calendar/events",
+        {
+          method: editing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
     } catch {
       toast.error("Couldn't reach the server", {
         description: "Check your connection and try again.",
@@ -1769,13 +1840,13 @@ function AddEventDialog({
 
     const body = (await response.json().catch(() => null)) as EventResponse | null;
     if (!response.ok || !body?.event) {
-      toast.error("We couldn't add your event", {
+      toast.error(isEditing ? "We couldn't save your changes" : "We couldn't add your event", {
         description: body?.error ?? "Please try again.",
       });
       return;
     }
 
-    onCreated(body.event);
+    onSaved(body.event, isEditing ? "updated" : "created");
   }
 
   const fieldClass =
@@ -1785,7 +1856,7 @@ function AddEventDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Add an event"
+      aria-label={isEditing ? "Edit event" : "Add an event"}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-brand-ink/60 p-4 backdrop-blur-sm"
       onMouseDown={(mouseEvent) => {
         if (mouseEvent.target === mouseEvent.currentTarget) onClose();
@@ -1793,7 +1864,7 @@ function AddEventDialog({
     >
       <section className="bg-card text-card-foreground my-auto w-full max-w-lg rounded-3xl border p-6 shadow-2xl sm:p-8">
         <h2 className="font-heading text-brand-magenta text-2xl tracking-wide uppercase sm:text-3xl">
-          Add an event
+          {isEditing ? "Edit event" : "Add an event"}
         </h2>
         <form className="mt-6 grid gap-5" onSubmit={handleSubmit(onSubmit)} noValidate>
           <div className="grid gap-2">
@@ -1900,7 +1971,13 @@ function AddEventDialog({
               disabled={isSubmitting}
               className="bg-brand-magenta text-brand-magenta-foreground rounded-full px-6 hover:brightness-105"
             >
-              {isSubmitting ? "Adding…" : "Add event"}
+              {isEditing
+                ? isSubmitting
+                  ? "Saving…"
+                  : "Save changes"
+                : isSubmitting
+                  ? "Adding…"
+                  : "Add event"}
             </Button>
             <Button
               type="button"

@@ -7,58 +7,11 @@ import {
 } from "@/lib/aura-config";
 import { getPrisma } from "@/lib/prisma";
 import { getOrProvisionUserId } from "@/lib/wardrobe-user";
-import {
-  PLANNED_OUTFIT_SELECT,
-  serializePlannedOutfit,
-  type PlannedOutfitRow,
-} from "@/lib/aura-outfit-planner";
+import { eventSelect, serializeEvent } from "@/lib/planned-event";
 import {
   DEFAULT_PLANNED_OCCASION,
   plannedEventCreateSchema,
 } from "@/lib/validations";
-
-// The row shape returned to the calendar. Weather and the geocoded place fields
-// are deliberately absent: opening the calendar is a pure read with zero AI and
-// zero external requests, and `placeText` is captured raw (never geocoded here).
-// The planned outfit, in contrast, IS included — it is already-persisted state,
-// so a plan renders on reload without any AI call (the calendar stays a pure read).
-const eventSelect = {
-  id: true,
-  title: true,
-  occasion: true,
-  startsAt: true,
-  endsAt: true,
-  allDay: true,
-  placeText: true,
-  source: true,
-  outfit: { select: PLANNED_OUTFIT_SELECT },
-} as const;
-
-type EventRow = {
-  id: string;
-  title: string;
-  occasion: string | null;
-  startsAt: Date;
-  endsAt: Date | null;
-  allDay: boolean;
-  placeText: string | null;
-  source: "manual" | "google";
-  outfit: PlannedOutfitRow | null;
-};
-
-function serializeEvent(row: EventRow) {
-  return {
-    id: row.id,
-    title: row.title,
-    occasion: row.occasion,
-    startsAt: row.startsAt.toISOString(),
-    endsAt: row.endsAt ? row.endsAt.toISOString() : null,
-    allDay: row.allDay,
-    placeText: row.placeText,
-    source: row.source,
-    outfit: row.outfit ? serializePlannedOutfit(row.outfit) : null,
-  };
-}
 
 /**
  * List the authenticated participant's planned events whose start falls in the

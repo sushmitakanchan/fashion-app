@@ -688,43 +688,6 @@ export function CalendarSurface() {
         .filter((event) => event.outfit === null)
     : [];
 
-  // "Plan my week" rides in the header of the first upcoming day rather than a
-  // band of its own: that puts it directly above the first card it will fill,
-  // so the action and its result share a sightline. Past days are skipped —
-  // the button never appears over the read-only archive.
-  const weekActionDate = today
-    ? (days.find((day) => !isPastDate(day, today)) ?? null)
-    : null;
-  const weekAction =
-    weekActionDate !== null && weekPlanTargets.length > 0 ? (
-      <div className="flex flex-col items-end gap-1">
-        <Button
-          type="button"
-          variant="cta-flat"
-          onClick={() => void planWeek()}
-          disabled={weekPlan !== null}
-          className="rounded-full"
-        >
-          {weekPlan ? (
-            <>
-              <Loader2 className="animate-spin" />
-              Planning your week… ({weekPlan.done}/{weekPlan.total})
-            </>
-          ) : (
-            <>
-              <Sparkles />
-              Plan my week
-            </>
-          )}
-        </Button>
-        <p className="text-muted-foreground text-xs">
-          {weekPlan
-            ? "Each outfit appears as AURA finishes it."
-            : `${weekPlanTargets.length} ${weekPlanTargets.length === 1 ? "event" : "events"} to plan from your wardrobe`}
-        </p>
-      </div>
-    ) : null;
-
   // Weather is an outside contact — fetch only once consent is active. Placed
   // events in the viewed week are what the disclosure/attribution key off.
   const weatherEnabled = consentActive === true;
@@ -775,44 +738,39 @@ export function CalendarSurface() {
       </div>
 
       {/* Week navigation toolbar. */}
-      <div className="border-border mt-8 border-y py-3">
-        <div className="flex items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setWeekOffset((offset) => offset - 1)}
-            disabled={!today}
-          >
-            <ChevronLeft />
-            <span className="sr-only sm:not-sr-only">Previous</span>
-          </Button>
-          <div className="text-center">
-            <p className="font-heading text-lg tracking-wide uppercase">
-              {weekLabel || "…"}
-            </p>
-            {weekOffset !== 0 && today ? (
-              <button
-                type="button"
-                onClick={() => setWeekOffset(0)}
-                className="text-brand-magenta text-xs font-semibold tracking-wide uppercase underline underline-offset-4"
-              >
-                Back to this week
-              </button>
-            ) : null}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setWeekOffset((offset) => offset + 1)}
-            disabled={!today}
-          >
-            <span className="sr-only sm:not-sr-only">Next</span>
-            <ChevronRight />
-          </Button>
+      <div className="border-border mt-8 flex items-center justify-between gap-3 border-y py-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setWeekOffset((offset) => offset - 1)}
+          disabled={!today}
+        >
+          <ChevronLeft />
+          <span className="sr-only sm:not-sr-only">Previous</span>
+        </Button>
+        <div className="text-center">
+          <p className="font-heading text-lg tracking-wide uppercase">{weekLabel || "…"}</p>
+          {weekOffset !== 0 && today ? (
+            <button
+              type="button"
+              onClick={() => setWeekOffset(0)}
+              className="text-brand-magenta text-xs font-semibold tracking-wide uppercase underline underline-offset-4"
+            >
+              Back to this week
+            </button>
+          ) : null}
         </div>
-
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setWeekOffset((offset) => offset + 1)}
+          disabled={!today}
+        >
+          <span className="sr-only sm:not-sr-only">Next</span>
+          <ChevronRight />
+        </Button>
       </div>
 
       {/* Read-only Google Calendar import — a secondary, dismissible nudge whose
@@ -827,6 +785,52 @@ export function CalendarSurface() {
           only when there is a placed event whose weather we could fetch. */}
       {hasPlacedInView && consentActive === false ? (
         <SmartPlanningBanner onTurnOn={() => setShowDisclosure(true)} />
+      ) : null}
+
+      {/* The week-level invitation, sitting directly above the agenda it fills.
+          Deliberately borderless: two bordered strips already precede the
+          calendar, and a third box would push the week itself below the fold.
+          It renders only while the viewed week still has unplanned events, so
+          it retires as you work through them rather than nagging every visit. */}
+      {today && weekPlanTargets.length > 0 ? (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <p className="flex items-start gap-2 text-sm text-pretty">
+            <Sparkles
+              className="text-brand-magenta mt-0.5 size-4 shrink-0"
+              aria-hidden="true"
+            />
+            <span>
+              {weekPlan ? (
+                "Each outfit appears as AURA finishes it."
+              ) : (
+                <>
+                  Wish someone would plan your outfits?{" "}
+                  <span className="text-muted-foreground">
+                    {weekPlanTargets.length}{" "}
+                    {weekPlanTargets.length === 1 ? "event" : "events"}, from your
+                    own wardrobe.
+                  </span>
+                </>
+              )}
+            </span>
+          </p>
+          <Button
+            type="button"
+            variant="cta-flat"
+            onClick={() => void planWeek()}
+            disabled={weekPlan !== null}
+            className="rounded-full"
+          >
+            {weekPlan ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Planning your week… ({weekPlan.done}/{weekPlan.total})
+              </>
+            ) : (
+              "Plan my week"
+            )}
+          </Button>
+        </div>
       ) : null}
 
       {error ? (
@@ -850,7 +854,6 @@ export function CalendarSurface() {
                 weatherEnabled={weatherEnabled}
                 planningId={planningId}
                 weekPlanning={weekPlan !== null}
-                weekAction={day === weekActionDate ? weekAction : null}
                 editingId={editingId}
                 swapItemId={swapItemId}
                 onAdd={() => openAdd(day)}
@@ -930,7 +933,6 @@ function DaySection({
   weatherEnabled,
   planningId,
   weekPlanning,
-  weekAction,
   editingId,
   swapItemId,
   onAdd,
@@ -946,7 +948,6 @@ function DaySection({
   weatherEnabled: boolean;
   planningId: string | null;
   weekPlanning: boolean;
-  weekAction: React.ReactNode;
   editingId: string | null;
   swapItemId: string | null;
   onAdd: () => void;
@@ -963,7 +964,7 @@ function DaySection({
 
   return (
     <section className={cn("py-4", past && "opacity-60")}>
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-2">
+      <div className="mb-2 flex items-baseline gap-3">
         <h2 className="font-heading flex items-baseline gap-2 text-lg tracking-wide uppercase">
           <span className={cn(isToday && "text-brand-magenta")}>
             {weekdayFmt.format(anchor)}
@@ -979,13 +980,6 @@ function DaySection({
           <span className="ml-auto self-center">
             <DayHighLow eventId={primaryPlaced.id} enabled={weatherEnabled} />
           </span>
-        ) : null}
-        {/* The week-level action, on the day it starts from. `ml-auto` only when
-            weather hasn't already claimed it, so the two sit side by side. */}
-        {weekAction ? (
-          <div className={cn("self-center", !(weatherEnabled && primaryPlaced) && "ml-auto")}>
-            {weekAction}
-          </div>
         ) : null}
       </div>
 

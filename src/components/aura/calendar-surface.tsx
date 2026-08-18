@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -111,9 +112,12 @@ const rangeEndFmt = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
   timeZone: "UTC",
 });
+// 12-hour throughout: the ticket reads its clock in am/pm, and the day rail
+// splits the two apart so the hour can carry the display face on its own.
 const timeFmt = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
   minute: "2-digit",
+  hour12: true,
 });
 
 function formatEventTime(event: PlannedEventDto): string {
@@ -123,6 +127,22 @@ function formatEventTime(event: PlannedEventDto): string {
     return `${start} – ${timeFmt.format(new Date(event.endsAt))}`;
   }
   return start;
+}
+
+/** The start time split for the day rail: `9:00` over a separate `am`. All-day
+ *  events have no clock, so the rail carries the words instead. */
+function railTime(event: PlannedEventDto): { clock: string; meridiem: string } {
+  if (event.allDay) return { clock: "All", meridiem: "day" };
+  // A 12-hour format is "9:00 AM" in every locale that has one; anything the
+  // browser hands back without a trailing marker falls through as clock-only.
+  const parts = timeFmt.formatToParts(new Date(event.startsAt));
+  const meridiem = parts.find((part) => part.type === "dayPeriod")?.value ?? "";
+  const clock = parts
+    .filter((part) => part.type === "hour" || part.type === "literal" || part.type === "minute")
+    .map((part) => part.value)
+    .join("")
+    .trim();
+  return { clock, meridiem };
 }
 
 // Convert a form field between the two "when" input formats when the all-day
@@ -219,59 +239,79 @@ function useEventWeather(eventId: string, enabled: boolean) {
   });
 }
 
-/** Compact per-event weather line: icon · conditions · high/low, with honest
- *  fallbacks for an unlocatable place or a date past the forecast horizon. */
+/** One stencilled field on the ticket: a small uppercase label over its value.
+ *  Time, place and weather all read as the same kind of thing this way. */
+function TicketField({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex min-w-0 flex-col gap-0.5", className)}>
+      <span className="text-muted-foreground font-mono text-[0.6rem] tracking-[0.16em] uppercase">
+        {label}
+      </span>
+      <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">{children}</span>
+    </div>
+  );
+}
+
+/** The weather field on the ticket: icon · high/low, with honest fallbacks for
+ *  an unlocatable place or a date past the forecast horizon. A coarsened match
+ *  still names the place it actually resolved to, so the calendar never
+ *  silently attaches a broader place's weather to a venue it couldn't pinpoint. */
 function EventWeather({ eventId, enabled }: { eventId: string; enabled: boolean }) {
   const { data, isLoading, isError } = useEventWeather(eventId, enabled);
 
   if (!enabled) return null;
   if (isLoading) {
-    return <div className="bg-muted mt-2 h-4 w-32 animate-pulse rounded" aria-hidden="true" />;
+    return (
+      <TicketField label="Weather">
+        <span className="bg-muted h-4 w-16 animate-pulse rounded" aria-hidden="true" />
+      </TicketField>
+    );
   }
   if (isError || !data || data.placed === false) return null;
 
   if (data.unresolved) {
     return (
-      <p className="text-muted-foreground mt-1.5 text-xs">
-        Couldn&apos;t locate that place — no weather.
-      </p>
+      <TicketField label="Weather">
+        <span className="text-muted-foreground font-normal">Place not found</span>
+      </TicketField>
     );
   }
 
   const weather = data.weather;
   if (!weather) {
     const note =
-      data.weatherStatus === "beyond-horizon"
-        ? "Forecast not available yet."
-        : "Weather unavailable right now.";
-    return <p className="text-muted-foreground mt-1.5 text-xs">{note}</p>;
+      data.weatherStatus === "beyond-horizon" ? "Not forecast yet" : "Unavailable";
+    return (
+      <TicketField label="Weather">
+        <span className="text-muted-foreground font-normal">{note}</span>
+      </TicketField>
+    );
   }
 
   const Icon = WEATHER_ICON[weather.description.group] ?? Cloud;
   const precip = weather.precipitationProbabilityMax;
-  // Always name the place the forecast is actually for — a coarsened match reads
-  // as "nearest match" so the calendar never silently attaches a broader place's
-  // weather to a venue it couldn't pinpoint.
   const placeLabel = data.place?.placeLabel;
 
   return (
-    <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-      <span className="text-foreground inline-flex items-center gap-1.5 font-medium">
-        <Icon className="size-3.5" aria-hidden="true" />
-        {weather.description.label}
-      </span>
-      <span>
+    <TicketField label="Weather">
+      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+      <span className="tabular-nums">
         {fmtTemp(weather.temperatureMax)} / {fmtTemp(weather.temperatureMin)}
       </span>
-      {typeof precip === "number" && precip >= 40 ? (
-        <span>{precip}% rain</span>
-      ) : null}
-      {placeLabel ? (
-        <span className="italic">
-          {data.approximate ? `nearest match: ${placeLabel}` : placeLabel}
-        </span>
-      ) : null}
-    </div>
+      <span className="text-muted-foreground truncate font-normal">
+        {weather.description.label}
+        {typeof precip === "number" && precip >= 40 ? ` · ${precip}% rain` : ""}
+        {placeLabel && data.approximate ? ` · nearest match: ${placeLabel}` : ""}
+      </span>
+    </TicketField>
   );
 }
 
@@ -984,9 +1024,27 @@ function DaySection({
       </div>
 
       {events.length > 0 ? (
-        <ul className="space-y-2">
-          {events.map((event) => (
-            <li key={event.id}>
+        <ul>
+          {events.map((event, index) => {
+            const rail = railTime(event);
+            const lastEvent = index === events.length - 1;
+            return (
+            <li key={event.id} className="mb-2 grid grid-cols-[4.25rem_1fr] gap-3">
+              {/* The day's spine: start times on the rail, cards hanging off it.
+                  The connector bridges the gap to the next card, so the last
+                  event's line stops at its own dot. */}
+              <div className="relative pt-4 text-right">
+                <span className="border-background bg-cta absolute top-[1.4rem] -right-[0.8rem] size-3 rounded-full border-2" />
+                {!lastEvent ? (
+                  <span className="bg-border absolute top-[2.2rem] -right-[0.45rem] -bottom-2 w-px" />
+                ) : null}
+                <span className="font-heading block text-lg tracking-wide tabular-nums">
+                  {rail.clock}
+                </span>
+                <span className="text-muted-foreground text-[0.64rem] tracking-[0.18em] uppercase">
+                  {rail.meridiem}
+                </span>
+              </div>
               <EventCard
                 event={event}
                 eventDate={date}
@@ -1003,7 +1061,8 @@ function DaySection({
                 onReplan={(edit) => onReplan(event, edit)}
               />
             </li>
-          ))}
+            );
+          })}
           {!past ? <AddToDay onAdd={onAdd} inline /> : null}
         </ul>
       ) : past ? (
@@ -1032,6 +1091,72 @@ function AddToDay({ onAdd, inline = false }: { onAdd: () => void; inline?: boole
       <Plus className="size-3.5" />
       {inline ? "Add another event" : "Nothing planned — add an event"}
     </button>
+  );
+}
+
+/** The AURA seal: the mark a planned event carries where its plan button was.
+ *  Drawn at 80% of its box so the neon falloff finishes inside its own bounds
+ *  rather than being clipped square by the SVG viewport. The ring text is
+ *  decorative at this size — the caption underneath is what actually reads,
+ *  and the accessible name lives on the wrapper. */
+function AuraSeal({ idSuffix }: { idSuffix: string }) {
+  const topId = `aura-seal-top-${idSuffix}`;
+  const botId = `aura-seal-bot-${idSuffix}`;
+  const ring = (
+    <>
+      <circle cx="50" cy="50" r="47.5" strokeWidth="2.2" />
+      <circle cx="50" cy="50" r="43.5" strokeWidth="1.2" />
+      <circle cx="50" cy="50" r="32.5" strokeWidth="1.4" />
+      <circle cx="12" cy="50" r="1.9" fill="currentColor" stroke="none" />
+      <circle cx="88" cy="50" r="1.9" fill="currentColor" stroke="none" />
+      <text className="fill-current text-[6.8px] font-medium tracking-[2.2px] uppercase">
+        <textPath href={`#${topId}`} startOffset="50%" textAnchor="middle">
+          Planned by AURA
+        </textPath>
+      </text>
+      <text className="fill-current text-[6.8px] font-medium tracking-[2.2px] uppercase">
+        <textPath href={`#${botId}`} startOffset="50%" textAnchor="middle">
+          Made with intent
+        </textPath>
+      </text>
+      <text x="50" y="53" textAnchor="middle" className="font-serif fill-current text-[20px] tracking-[1px]">
+        AURA
+      </text>
+      <path d="M29 61.5h7M64 61.5h7" strokeWidth="0.8" />
+      <text
+        x="50"
+        y="63.1"
+        textAnchor="middle"
+        className="fill-current text-[4.6px] font-medium tracking-[1.4px] uppercase"
+      >
+        Est. 2026
+      </text>
+    </>
+  );
+
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      className="text-brand-magenta dark:text-cta size-16 overflow-visible"
+      aria-hidden="true"
+    >
+      <defs>
+        <path id={topId} d="M 14.5,50 a 35.5,35.5 0 0 1 71,0" />
+        <path id={botId} d="M 9.5,50 a 40.5,40.5 0 0 0 81,0" />
+      </defs>
+      <g
+        className="text-cta fill-none stroke-current opacity-70 [filter:drop-shadow(0_0_1.5px_currentColor)_drop-shadow(0_0_5px_currentColor)_drop-shadow(0_0_11px_currentColor)] motion-safe:animate-pulse"
+        transform="translate(50,50) scale(.8) translate(-50,-50)"
+      >
+        {ring}
+      </g>
+      <g
+        className="fill-none stroke-current"
+        transform="translate(50,50) scale(.8) translate(-50,-50)"
+      >
+        {ring}
+      </g>
+    </svg>
   );
 }
 
@@ -1079,38 +1204,46 @@ function EventCard({
   );
 
   return (
-    <article className="border-border bg-card group flex items-start justify-between gap-3 rounded-xl border p-3 shadow-sm">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="font-heading truncate text-base tracking-wide uppercase">
-            {event.title}
-          </h3>
-          {event.source === "google" ? (
-            <span className="border-border text-muted-foreground rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase">
-              Google
-            </span>
-          ) : null}
+    <article className="border-border bg-card group rounded-xl border shadow-sm">
+      <div className="flex flex-col gap-3 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className="font-heading truncate text-base tracking-wide uppercase">
+              {event.title}
+            </h3>
+            {event.source === "google" ? (
+              <span className="border-border text-muted-foreground rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase">
+                Google
+              </span>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onDelete}
+            aria-label={`Delete ${event.title}`}
+            className="text-muted-foreground hover:text-destructive shrink-0"
+          >
+            <Trash2 className="size-4" />
+          </Button>
         </div>
-        <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <span className="inline-flex items-center gap-1">
-            <Clock className="size-3.5" aria-hidden="true" />
-            {formatEventTime(event)}
-          </span>
+
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <TicketField label="Time">
+            <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="tabular-nums">{formatEventTime(event)}</span>
+          </TicketField>
           {event.placeText ? (
-            <span className="inline-flex min-w-0 items-center gap-1">
+            <TicketField label="Place">
               <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
               <span className="truncate">{event.placeText}</span>
-            </span>
+            </TicketField>
+          ) : null}
+          {event.placeText ? (
+            <EventWeather eventId={event.id} enabled={weatherEnabled} />
           ) : null}
         </div>
-        {event.placeText ? (
-          <EventWeather eventId={event.id} enabled={weatherEnabled} />
-        ) : null}
-        {event.occasion ? (
-          <span className="bg-muted text-muted-foreground mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium">
-            {event.occasion}
-          </span>
-        ) : null}
 
         {event.outfit ? (
           <PlannedOutfitView
@@ -1122,24 +1255,41 @@ function EventCard({
             swapItemId={swapItemId}
             onReplan={onReplan}
           />
-        ) : canPlan ? (
-          <PlanOutfitButton
-            planning={planning}
-            disabled={weekPlanning}
-            onPlan={onPlan}
-          />
         ) : null}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        onClick={onDelete}
-        aria-label={`Delete ${event.title}`}
-        className="text-muted-foreground hover:text-destructive shrink-0"
-      >
-        <Trash2 className="size-4" />
-      </Button>
+
+      {/* The tear line. Its notches are punched in the page colour, so the card
+          only reads as torn while it sits on the calendar's own background. */}
+      <div className="border-border relative border-t border-dashed" aria-hidden="true">
+        <span className="bg-background absolute top-0 -left-2 size-4 -translate-y-1/2 rounded-full" />
+        <span className="bg-background absolute top-0 -right-2 size-4 -translate-y-1/2 rounded-full" />
+      </div>
+
+      <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-3">
+        {event.occasion ? (
+          <span className="bg-brand-lime text-brand-lime-foreground rounded font-mono text-[0.62rem] tracking-[0.16em] uppercase px-2 py-1">
+            {event.occasion}
+          </span>
+        ) : (
+          <span />
+        )}
+        {event.outfit ? (
+          <span
+            className="flex flex-none flex-col items-center gap-1"
+            role="img"
+            aria-label="Planned by AURA"
+          >
+            <span className="rotate-[-9deg] leading-none">
+              <AuraSeal idSuffix={event.id} />
+            </span>
+            <span className="text-foreground font-mono text-[0.56rem] font-semibold tracking-[0.16em] uppercase">
+              Planned by AURA
+            </span>
+          </span>
+        ) : canPlan ? (
+          <PlanOutfitButton planning={planning} disabled={weekPlanning} onPlan={onPlan} />
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -1163,7 +1313,7 @@ function PlanOutfitButton({
       size="sm"
       onClick={onPlan}
       disabled={planning || disabled}
-      className="mt-3 rounded-full"
+      className="rounded-full"
     >
       {planning ? (
         <>

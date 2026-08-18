@@ -688,6 +688,43 @@ export function CalendarSurface() {
         .filter((event) => event.outfit === null)
     : [];
 
+  // "Plan my week" rides in the header of the first upcoming day rather than a
+  // band of its own: that puts it directly above the first card it will fill,
+  // so the action and its result share a sightline. Past days are skipped —
+  // the button never appears over the read-only archive.
+  const weekActionDate = today
+    ? (days.find((day) => !isPastDate(day, today)) ?? null)
+    : null;
+  const weekAction =
+    weekActionDate !== null && weekPlanTargets.length > 0 ? (
+      <div className="flex flex-col items-end gap-1">
+        <Button
+          type="button"
+          variant="cta-flat"
+          onClick={() => void planWeek()}
+          disabled={weekPlan !== null}
+          className="rounded-full"
+        >
+          {weekPlan ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Planning your week… ({weekPlan.done}/{weekPlan.total})
+            </>
+          ) : (
+            <>
+              <Sparkles />
+              Plan my week
+            </>
+          )}
+        </Button>
+        <p className="text-muted-foreground text-xs">
+          {weekPlan
+            ? "Each outfit appears as AURA finishes it."
+            : `${weekPlanTargets.length} ${weekPlanTargets.length === 1 ? "event" : "events"} to plan from your wardrobe`}
+        </p>
+      </div>
+    ) : null;
+
   // Weather is an outside contact — fetch only once consent is active. Placed
   // events in the viewed week are what the disclosure/attribution key off.
   const weatherEnabled = consentActive === true;
@@ -737,10 +774,7 @@ export function CalendarSurface() {
         </div>
       </div>
 
-      {/* Week toolbar: navigation, and — below it, in the same band — the
-          week-scoped primary action. "Plan my week" belongs here rather than
-          free-floating below the fold, because it acts on exactly the week this
-          bar names: paging the nav retargets the button. */}
+      {/* Week navigation toolbar. */}
       <div className="border-border mt-8 border-y py-3">
         <div className="flex items-center justify-between gap-3">
           <Button
@@ -779,38 +813,6 @@ export function CalendarSurface() {
           </Button>
         </div>
 
-        {/* The count rides in the label rather than a caption underneath: it is
-            how many sequential AI calls the click commits to, so it belongs in
-            the thing being clicked. */}
-        {today && weekPlanTargets.length > 0 ? (
-          <div className="mt-3 flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-            {weekPlan ? (
-              <p className="text-muted-foreground mr-auto text-xs">
-                Each outfit appears as AURA finishes it.
-              </p>
-            ) : null}
-            <Button
-              type="button"
-              variant="cta-flat"
-              onClick={() => void planWeek()}
-              disabled={weekPlan !== null}
-              className="rounded-full"
-            >
-              {weekPlan ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  Planning your week… ({weekPlan.done}/{weekPlan.total})
-                </>
-              ) : (
-                <>
-                  <Sparkles />
-                  Plan {weekPlanTargets.length}{" "}
-                  {weekPlanTargets.length === 1 ? "outfit" : "outfits"}
-                </>
-              )}
-            </Button>
-          </div>
-        ) : null}
       </div>
 
       {/* Read-only Google Calendar import — a secondary, dismissible nudge whose
@@ -848,6 +850,7 @@ export function CalendarSurface() {
                 weatherEnabled={weatherEnabled}
                 planningId={planningId}
                 weekPlanning={weekPlan !== null}
+                weekAction={day === weekActionDate ? weekAction : null}
                 editingId={editingId}
                 swapItemId={swapItemId}
                 onAdd={() => openAdd(day)}
@@ -927,6 +930,7 @@ function DaySection({
   weatherEnabled,
   planningId,
   weekPlanning,
+  weekAction,
   editingId,
   swapItemId,
   onAdd,
@@ -942,6 +946,7 @@ function DaySection({
   weatherEnabled: boolean;
   planningId: string | null;
   weekPlanning: boolean;
+  weekAction: React.ReactNode;
   editingId: string | null;
   swapItemId: string | null;
   onAdd: () => void;
@@ -958,7 +963,7 @@ function DaySection({
 
   return (
     <section className={cn("py-4", past && "opacity-60")}>
-      <div className="mb-2 flex items-baseline gap-3">
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-2">
         <h2 className="font-heading flex items-baseline gap-2 text-lg tracking-wide uppercase">
           <span className={cn(isToday && "text-brand-magenta")}>
             {weekdayFmt.format(anchor)}
@@ -974,6 +979,13 @@ function DaySection({
           <span className="ml-auto self-center">
             <DayHighLow eventId={primaryPlaced.id} enabled={weatherEnabled} />
           </span>
+        ) : null}
+        {/* The week-level action, on the day it starts from. `ml-auto` only when
+            weather hasn't already claimed it, so the two sit side by side. */}
+        {weekAction ? (
+          <div className={cn("self-center", !(weatherEnabled && primaryPlaced) && "ml-auto")}>
+            {weekAction}
+          </div>
         ) : null}
       </div>
 

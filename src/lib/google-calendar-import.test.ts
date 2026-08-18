@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   GOOGLE_CALENDAR_LOOKAHEAD_DAYS,
   GOOGLE_EVENT_FALLBACK_TITLE,
+  formatSyncFreshness,
   googleSyncWindow,
   mapGoogleEvent,
   toImportRecords,
@@ -162,5 +163,62 @@ describe("toImportRecords", () => {
 
   it("returns an empty list for no input", () => {
     expect(toImportRecords([], WINDOW)).toEqual([]);
+  });
+});
+
+describe("formatSyncFreshness", () => {
+  const NOW = new Date("2026-08-18T12:00:00.000Z");
+  const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
+
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+
+  it("reports a connected-but-never-synced calendar", () => {
+    expect(formatSyncFreshness(null, NOW)).toBe("Google Calendar not synced yet");
+    expect(formatSyncFreshness(undefined, NOW)).toBe("Google Calendar not synced yet");
+  });
+
+  it("treats an unparseable stamp as never synced rather than NaN", () => {
+    expect(formatSyncFreshness("not-a-date", NOW)).toBe(
+      "Google Calendar not synced yet",
+    );
+  });
+
+  it("collapses the first minute to 'just now'", () => {
+    expect(formatSyncFreshness(ago(0), NOW)).toBe("Google Calendar synced just now");
+    expect(formatSyncFreshness(ago(MINUTE - 1), NOW)).toBe(
+      "Google Calendar synced just now",
+    );
+  });
+
+  it("clamps a future stamp (clock skew) to 'just now'", () => {
+    const future = new Date(NOW.getTime() + HOUR).toISOString();
+    expect(formatSyncFreshness(future, NOW)).toBe("Google Calendar synced just now");
+  });
+
+  it("steps minute → hour → day, singular at each boundary", () => {
+    expect(formatSyncFreshness(ago(MINUTE), NOW)).toBe(
+      "Google Calendar synced 1 minute ago",
+    );
+    expect(formatSyncFreshness(ago(59 * MINUTE), NOW)).toBe(
+      "Google Calendar synced 59 minutes ago",
+    );
+    expect(formatSyncFreshness(ago(HOUR), NOW)).toBe(
+      "Google Calendar synced 1 hour ago",
+    );
+    expect(formatSyncFreshness(ago(23 * HOUR), NOW)).toBe(
+      "Google Calendar synced 23 hours ago",
+    );
+    expect(formatSyncFreshness(ago(DAY), NOW)).toBe("Google Calendar synced 1 day ago");
+    expect(formatSyncFreshness(ago(3 * DAY), NOW)).toBe(
+      "Google Calendar synced 3 days ago",
+    );
+  });
+
+  it("truncates rather than rounds, so it never overstates freshness", () => {
+    expect(formatSyncFreshness(ago(2 * HOUR - MINUTE), NOW)).toBe(
+      "Google Calendar synced 1 hour ago",
+    );
   });
 });

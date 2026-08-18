@@ -9,9 +9,26 @@ import {
   GoogleCalendarDisclosure,
   useGoogleCalendarConnect,
 } from "@/components/aura/google-calendar-connect-flow";
+import { formatSyncFreshness } from "@/lib/google-calendar-import";
 
-type StatusResponse = { connected?: boolean; needsReconnect?: boolean };
-type SyncResponse = { imported?: number; updated?: number; total?: number; error?: string; code?: string };
+type StatusResponse = {
+  connected?: boolean;
+  needsReconnect?: boolean;
+  lastSyncedAt?: string | null;
+};
+type SyncResponse = {
+  imported?: number;
+  updated?: number;
+  total?: number;
+  lastSyncedAt?: string | null;
+  error?: string;
+  code?: string;
+};
+
+/** How often the freshness line re-reads the clock. The label is coarse (minutes
+ *  at its finest), so a minute tick is enough to keep it honest on a calendar
+ *  left open — without it, "synced just now" would still say so an hour later. */
+const FRESHNESS_TICK_MS = 60_000;
 
 /**
  * The read-only Google Calendar connect + sync affordance. Connecting is a
@@ -39,6 +56,17 @@ export function GoogleCalendarConnect({
   const [dismissed, setDismissed] = React.useState(false);
   const [showDisclosure, setShowDisclosure] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
+  const [now, setNow] = React.useState(() => new Date());
+
+  // Tick the clock the freshness line reads, but only while it is on screen.
+  // Nothing renders before `status` lands, so this can't produce a server/client
+  // mismatch — the label is client-only by construction.
+  const connected = status?.connected === true;
+  React.useEffect(() => {
+    if (!connected) return;
+    const id = setInterval(() => setNow(new Date()), FRESHNESS_TICK_MS);
+    return () => clearInterval(id);
+  }, [connected]);
 
   // Read the current connection status once after mount. This is an internal
   // read (Clerk state via our own route) — no calendar data is fetched.
@@ -86,6 +114,16 @@ export function GoogleCalendarConnect({
         return;
       }
 
+      // Advance the freshness line off the route's own stamp. It reports the
+      // sync moment even if the best-effort metadata write behind it failed, so
+      // the label matches what actually happened to the events.
+      setStatus((prior) => ({
+        ...(prior ?? {}),
+        connected: true,
+        lastSyncedAt: body.lastSyncedAt ?? new Date().toISOString(),
+      }));
+      setNow(new Date());
+
       const total = body.total ?? 0;
       toast.success("Google Calendar synced", {
         description:
@@ -103,21 +141,25 @@ export function GoogleCalendarConnect({
 
   if (!isLoaded || !status) return null;
 
-  // Connected: a compact Sync control.
+  // Connected: a quiet utility row, not a banner. It reports freshness rather
+  // than connection state — "connected — read-only" already lives on the
+  // settings card, and repeating it here framed the row as a success notice the
+  // user expected to dismiss. What it can't get anywhere else is how stale the
+  // import is, and nothing syncs automatically, so the control stays put.
   if (status.connected) {
     return (
-      <div className="border-border bg-muted/30 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1">
         <span className="text-muted-foreground inline-flex items-center gap-2 text-sm">
-          <CalendarCheck className="text-brand-magenta size-4" aria-hidden="true" />
-          Google Calendar connected — read-only
+          <CalendarCheck className="size-4 shrink-0" aria-hidden="true" />
+          {formatSyncFreshness(status.lastSyncedAt, now)}
         </span>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => void sync()}
           disabled={syncing}
-          className="rounded-full"
+          className="text-muted-foreground hover:text-foreground -mr-2 h-auto px-2 py-1"
         >
           {syncing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
           {syncing ? "Syncing…" : "Sync now"}

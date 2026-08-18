@@ -105,7 +105,11 @@ mock.module("@/lib/prisma", () => ({
               e.externalId !== null &&
               where.externalId.in.includes(e.externalId),
           )
-          .map((e) => ({ externalId: e.externalId, placeText: e.placeText })),
+          .map((e) => ({
+            externalId: e.externalId,
+            placeText: e.placeText,
+            source: e.source,
+          })),
       upsert: async ({
         where,
         create,
@@ -282,6 +286,37 @@ describe("POST /api/aura/calendar/google — sync", () => {
     // The changed place invalidates the cached geocode so weather re-resolves.
     expect(events[0].latitude).toBeNull();
     expect(events[0].placeLabel).toBeNull();
+  });
+
+  it("leaves a detached (owner-edited) event untouched on re-sync", async () => {
+    // The owner edited this Google import, which detached it to `manual` while
+    // keeping its externalId. A re-sync of the same Google event must not clobber
+    // those local edits, and must not double-count it.
+    events.push({
+      id: "e9",
+      userId: "u1",
+      externalId: "g1",
+      source: "manual",
+      title: "My own title",
+      occasion: "dinner date",
+      allDay: false,
+      startsAt: new Date("2026-08-14T14:00:00.000Z"),
+      endsAt: null,
+      placeText: "My own place",
+      placeLabel: null,
+      latitude: null,
+      longitude: null,
+      timezone: null,
+    });
+
+    syncRecords = [record({ externalId: "g1", title: "Google's title", placeText: "Bandra" })];
+    const response = await POST(syncRequest());
+
+    // Skipped: not counted as imported or updated, and left byte-for-byte alone.
+    expect(await response.json()).toMatchObject({ imported: 0, updated: 0 });
+    expect(events).toHaveLength(1);
+    expect(events[0].title).toBe("My own title");
+    expect(events[0].placeText).toBe("My own place");
   });
 
   it("keeps the cached geocode when a re-sync leaves the place unchanged", async () => {

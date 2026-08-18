@@ -628,6 +628,17 @@ export const plannedEventCreateSchema = z
 
 export type PlannedEventCreateInput = z.infer<typeof plannedEventCreateSchema>;
 
+/**
+ * What crosses the wire to `PATCH /api/aura/calendar/events/:id`. An edit is a
+ * full replace of the owner-editable fields — same shape and rules as a create,
+ * so the same instant/order guarantees hold. A Google-imported event that is
+ * edited is detached to a manual event server-side (its Google-owned fields stop
+ * being re-synced), so there is no partial "Google fields only" variant here.
+ */
+export const plannedEventUpdateSchema = plannedEventCreateSchema;
+
+export type PlannedEventUpdateInput = z.infer<typeof plannedEventUpdateSchema>;
+
 /* -------------------------------------------------------------------------- */
 /*                 Outfit Calendar — Google read-only import                  */
 /* -------------------------------------------------------------------------- */

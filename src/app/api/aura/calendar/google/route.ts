@@ -405,7 +405,7 @@ export async function POST(request: Request) {
     const existing = externalIds.length
       ? await prisma.plannedEvent.findMany({
           where: { userId: ownerId, externalId: { in: externalIds } },
-          select: { externalId: true, placeText: true },
+          select: { externalId: true, placeText: true, source: true },
         })
       : [];
     const priorByExternalId = new Map(
@@ -414,6 +414,10 @@ export async function POST(request: Request) {
 
     for (const record of records) {
       const prior = priorByExternalId.get(record.externalId);
+      // A Google event the owner has since edited was detached to `manual`
+      // (keeping its externalId). Re-sync must not clobber those local edits —
+      // skip it entirely, and don't count it as imported or updated.
+      if (prior?.source === "manual") continue;
       const placeChanged =
         !prior || (prior.placeText ?? null) !== record.placeText;
 

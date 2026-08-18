@@ -52,10 +52,18 @@ import {
 // scope — is what makes a disconnect stick. `publicMetadata` is backend-writable
 // only, and deep-merged, so we always write the whole record (with an explicit
 // `disconnectedAt`, null when connected) to avoid a stale field surviving a merge.
+// `lastSyncedAt` is the moment the last successful sync completed. It lives here
+// rather than on the events themselves because it must survive a sync that
+// imported nothing, and because "how fresh is this calendar" is a property of the
+// connection, not of any one row. It is carried forward by every other writer
+// (connect, reconnect, disconnect) — the whole-record write means an omitted
+// field is a deletion, and a reconnect must not make an already-synced calendar
+// look as if it had never been synced.
 type GoogleCalendarMetadata = {
   connectedAt: string;
   policyVersion: number;
   disconnectedAt?: string | null;
+  lastSyncedAt?: string | null;
 };
 
 function readGoogleMetadata(publicMetadata: unknown): GoogleCalendarMetadata | null {
@@ -72,6 +80,8 @@ function readGoogleMetadata(publicMetadata: unknown): GoogleCalendarMetadata | n
         : GOOGLE_CALENDAR_POLICY_VERSION,
     disconnectedAt:
       typeof record.disconnectedAt === "string" ? record.disconnectedAt : null,
+    lastSyncedAt:
+      typeof record.lastSyncedAt === "string" ? record.lastSyncedAt : null,
   };
 }
 
@@ -94,19 +104,24 @@ function isDisconnected(meta: GoogleCalendarMetadata | null): boolean {
  * metadata write failure on the connect path is swallowed; it never fails the
  * request that triggered it. The disconnect path surfaces its failure to the
  * caller so the user learns their choice didn't take.
+ *
+ * `lastSyncedAt` is passed by every caller because the write is whole-record:
+ * only the sync path advances it, everyone else hands back what they read.
  */
 async function writeGoogleMetadata(
   userId: string,
   {
     connectedAt,
     disconnected,
-  }: { connectedAt: string; disconnected: boolean },
+    lastSyncedAt,
+  }: { connectedAt: string; disconnected: boolean; lastSyncedAt: string | null },
 ): Promise<GoogleCalendarMetadata> {
   const client = await clerkClient();
   const metadata: GoogleCalendarMetadata = {
     connectedAt,
     policyVersion: GOOGLE_CALENDAR_POLICY_VERSION,
     disconnectedAt: disconnected ? new Date().toISOString() : null,
+    lastSyncedAt,
   };
   await client.users.updateUserMetadata(userId, {
     publicMetadata: { googleCalendar: metadata },
@@ -117,14 +132,17 @@ async function writeGoogleMetadata(
 /** Record (or refresh) an active connect intent, clearing any prior disconnect.
  *  Best-effort — a write failure never fails the triggering request; the written
  *  record is returned so callers can report status without a second read (null
- *  when the best-effort write failed). */
+ *  when the best-effort write failed). `lastSyncedAt` is carried through
+ *  unchanged; only the sync path passes a fresh stamp. */
 async function recordConnectIntent(
   userId: string,
+  lastSyncedAt: string | null,
 ): Promise<GoogleCalendarMetadata | null> {
   try {
     return await writeGoogleMetadata(userId, {
       connectedAt: new Date().toISOString(),
       disconnected: false,
+      lastSyncedAt,
     });
   } catch (error) {
     console.error("Recording Google Calendar connect intent failed", error);
@@ -178,15 +196,19 @@ async function readMetadata(userId: string): Promise<GoogleCalendarMetadata | nu
 
 function connectionStatus(scoped: boolean, meta: GoogleCalendarMetadata | null) {
   const disconnected = isDisconnected(meta);
+  // A usable connection the user still wants: the token carries the scope AND
+  // they haven't disconnected in-app (a lingering token after disconnect is
+  // NOT "connected").
+  const connected = scoped && !disconnected;
   return {
-    // A usable connection the user still wants: the token carries the scope AND
-    // they haven't disconnected in-app (a lingering token after disconnect is
-    // NOT "connected").
-    connected: scoped && !disconnected,
+    connected,
     // Wanted calendar before, hasn't disconnected, but the scope is gone → offer
     // reconnect, not a first connect. A deliberate disconnect is a clean off
     // state (offer connect), never a reconnect.
     needsReconnect: hasEverConnected(meta) && !disconnected && !scoped,
+    // Only meaningful while connected — the freshness line is rendered nowhere
+    // else, so an off state reports null rather than a stale stamp.
+    lastSyncedAt: connected ? (meta?.lastSyncedAt ?? null) : null,
   };
 }
 
@@ -212,7 +234,8 @@ export async function GET() {
   // (PUT) that clears the disconnect flag.
   let current = meta;
   if (scoped && !hasEverConnected(meta)) {
-    current = (await recordConnectIntent(userId)) ?? meta;
+    // Never-connected by definition, so there is no sync stamp to carry.
+    current = (await recordConnectIntent(userId, null)) ?? meta;
   }
   return NextResponse.json(connectionStatus(scoped, current));
 }
@@ -231,11 +254,19 @@ export async function PUT() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Read first so the reconnect carries the existing sync stamp forward — the
+  // imported events survive a disconnect, so their freshness should too.
+  const [{ scoped }, prior] = await Promise.all([
+    resolveConnection(userId),
+    readMetadata(userId),
+  ]);
+
   let written: GoogleCalendarMetadata;
   try {
     written = await writeGoogleMetadata(userId, {
       connectedAt: new Date().toISOString(),
       disconnected: false,
+      lastSyncedAt: prior?.lastSyncedAt ?? null,
     });
   } catch (error) {
     console.error("Recording Google Calendar reconnect intent failed", error);
@@ -245,7 +276,6 @@ export async function PUT() {
     );
   }
 
-  const { scoped } = await resolveConnection(userId);
   return NextResponse.json(connectionStatus(scoped, written));
 }
 
@@ -287,6 +317,9 @@ export async function DELETE() {
       // unrecorded token has none, so stamp now.
       connectedAt: meta?.connectedAt ?? new Date().toISOString(),
       disconnected: true,
+      // Kept so a later reconnect knows how stale the retained events are; it is
+      // not reported while disconnected.
+      lastSyncedAt: meta?.lastSyncedAt ?? null,
     });
   } catch (error) {
     console.error("Google Calendar disconnect failed", error);
@@ -437,8 +470,18 @@ export async function POST(request: Request) {
   }
 
   // A successful sync proves the scope is granted; ensure the intent is on record
-  // (idempotent — usually already set by the status GET on page load).
-  await recordConnectIntent(userId);
+  // (idempotent — usually already set by the status GET on page load) and stamp
+  // the freshness the UI reports. Best-effort like every other intent write: the
+  // events did land, so a metadata failure must not fail the sync. It costs the
+  // caller an accurate "synced just now" until the next successful write, which
+  // is why the stamp is returned from our own clock rather than re-read.
+  const syncedAt = new Date().toISOString();
+  await recordConnectIntent(userId, syncedAt);
 
-  return NextResponse.json({ imported, updated, total: imported + updated });
+  return NextResponse.json({
+    imported,
+    updated,
+    total: imported + updated,
+    lastSyncedAt: syncedAt,
+  });
 }

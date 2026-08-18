@@ -13,7 +13,9 @@
 
 /** How far forward one sync looks, from start-of-today. A tuning detail, not a
  *  contract — bounded so a calendar with events years out doesn't page forever.
- *  Well inside Google's own event horizon; re-sync on-open keeps it fresh. */
+ *  Well inside Google's own event horizon. Nothing syncs automatically, so the
+ *  day-31 event (and any Google-side edit since the last sync) only lands when
+ *  the user syncs again — which is why the surface reports its own freshness. */
 export const GOOGLE_CALENDAR_LOOKAHEAD_DAYS = 30;
 
 /** The title used when a Google event has no `summary` (Google permits it). */
@@ -169,4 +171,72 @@ export function toImportRecords(
     if (record) records.push(record);
   }
   return records;
+}
+
+/** Below this, "just now" — a sync that finished seconds ago has no useful
+ *  number to report, and a ticking "1 second ago" reads as noise. */
+const JUST_NOW_MS = 60_000;
+
+/** How old an import may be before opening the calendar re-syncs it on its own.
+ *  A compromise, not a guarantee: long enough that revisiting the page in one
+ *  sitting doesn't re-hit Google, short enough that an event added on your phone
+ *  this morning is there by the time you plan an outfit for it. */
+export const SYNC_STALE_AFTER_MS = 15 * 60_000;
+
+/**
+ * Should opening the calendar trigger a sync? A never-synced connection is
+ * stale by definition — that is the just-connected case, where the OAuth
+ * redirect lands back on the calendar with an empty agenda and the import
+ * should simply happen rather than waiting on a click.
+ *
+ * A stamp in the future (clock skew) is treated as fresh: re-syncing on a
+ * clock disagreement would fire on every open with no way for the user to
+ * settle it, and the manual control is always there.
+ */
+export function isSyncStale(
+  lastSyncedAt: string | null | undefined,
+  now: Date,
+): boolean {
+  if (!lastSyncedAt) return true;
+
+  const synced = new Date(lastSyncedAt);
+  if (Number.isNaN(synced.getTime())) return true;
+
+  return now.getTime() - synced.getTime() >= SYNC_STALE_AFTER_MS;
+}
+
+/**
+ * The freshness line the calendar surface renders next to Sync now. Deliberately
+ * coarse: the number exists to answer "should I sync again?", not to be a clock,
+ * so it degrades minute → hour → day and never shows a compound value.
+ *
+ * A null stamp is a connected-but-never-synced calendar, which is a real state —
+ * the connect flow records intent before any sync runs, so the surface can be
+ * live with an empty agenda behind it. A stamp in the future (clock skew between
+ * the server that wrote it and the browser reading it) clamps to "just now"
+ * rather than rendering a negative age.
+ */
+export function formatSyncFreshness(
+  lastSyncedAt: string | null | undefined,
+  now: Date,
+): string {
+  if (!lastSyncedAt) return "Google Calendar not synced yet";
+
+  const synced = new Date(lastSyncedAt);
+  if (Number.isNaN(synced.getTime())) return "Google Calendar not synced yet";
+
+  const elapsed = now.getTime() - synced.getTime();
+  if (elapsed < JUST_NOW_MS) return "Google Calendar synced just now";
+
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 60) return `Google Calendar synced ${plural(minutes, "minute")} ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Google Calendar synced ${plural(hours, "hour")} ago`;
+
+  return `Google Calendar synced ${plural(Math.floor(hours / 24), "day")} ago`;
+}
+
+function plural(count: number, unit: string): string {
+  return `${count} ${count === 1 ? unit : `${unit}s`}`;
 }

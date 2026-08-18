@@ -56,6 +56,7 @@ import {
   weekStartFor,
   type CivilDate,
 } from "@/lib/calendar-week";
+import { shortPlaceLabel } from "@/lib/calendar-place";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1028,8 +1029,11 @@ function DaySection({
           {events.map((event, index) => {
             const rail = railTime(event);
             const lastEvent = index === events.length - 1;
+            // `minmax(0,1fr)`, not `1fr`: a grid column's default min-width is
+            // auto, so one long place or title would push its own card wider
+            // than the rest of the day.
             return (
-            <li key={event.id} className="mb-2 grid grid-cols-[4.25rem_1fr] gap-3">
+            <li key={event.id} className="mb-2 grid grid-cols-[4.25rem_minmax(0,1fr)] gap-3">
               {/* The day's spine: start times on the rail, cards hanging off it.
                   The connector bridges the gap to the next card, so the last
                   event's line stops at its own dot. */}
@@ -1237,7 +1241,11 @@ function EventCard({
           {event.placeText ? (
             <TicketField label="Place">
               <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{event.placeText}</span>
+              {/* The place, not the postal address — the full text stays on the
+                  title, and geocoding still runs against it. */}
+              <span className="truncate" title={event.placeText}>
+                {shortPlaceLabel(event.placeText)}
+              </span>
             </TicketField>
           ) : null}
           {event.placeText ? (

@@ -9,7 +9,7 @@ import {
   GoogleCalendarDisclosure,
   useGoogleCalendarConnect,
 } from "@/components/aura/google-calendar-connect-flow";
-import { formatSyncFreshness } from "@/lib/google-calendar-import";
+import { formatSyncFreshness, isSyncStale } from "@/lib/google-calendar-import";
 
 type StatusResponse = {
   connected?: boolean;
@@ -38,10 +38,13 @@ const FRESHNESS_TICK_MS = 60_000;
  * Clerk's OAuth passthrough (adding the `calendar.events.readonly` scope to the
  * existing Google connection, or creating one), which redirects to Google.
  *
- * Once connected, a Sync pulls upcoming events forward-only from today; a lost
- * scope (an ordinary Google sign-in resets Clerk's stored scopes) surfaces as a
- * Reconnect instead. The Google path can't run in Clerk keyless dev — the button
- * simply reports the sign-in isn't available there.
+ * Once connected, a sync pulls upcoming events forward-only from today. Opening
+ * the calendar syncs on its own when the last one has gone stale, so the manual
+ * button is the fallback rather than the only way to stay current; the row it
+ * sits in reports how fresh the import is. A lost scope (an ordinary Google
+ * sign-in resets Clerk's stored scopes) surfaces as a Reconnect instead. The
+ * Google path can't run in Clerk keyless dev — the button simply reports the
+ * sign-in isn't available there.
  */
 export function GoogleCalendarConnect({
   startOfTodayIso,
@@ -87,9 +90,18 @@ export function GoogleCalendarConnect({
     return () => controller.abort();
   }, []);
 
-  /** Pull upcoming events forward-only from today. Re-runnable — a re-sync
-   *  updates by `externalId` rather than duplicating. */
-  async function sync() {
+  /**
+   * Pull upcoming events forward-only from today. Re-runnable — a re-sync
+   * updates by `externalId` rather than duplicating.
+   *
+   * `auto` marks the on-open sync the user didn't ask for, which changes only
+   * how loudly it reports: no success toast (nothing was requested, so nothing
+   * needs confirming — the freshness line is the receipt), no error toast (a
+   * failure leaves the stamp stale and the manual button right there), and no
+   * unprompted disclosure modal on a lapsed scope. The work it does, and the
+   * agenda refresh after it, are identical.
+   */
+  async function sync({ auto = false }: { auto?: boolean } = {}) {
     setSyncing(true);
     try {
       const response = await fetch("/api/aura/calendar/google", {
@@ -102,15 +114,19 @@ export function GoogleCalendarConnect({
       const body = (await response.json().catch(() => null)) as SyncResponse | null;
 
       if (response.status === 403 && body?.code === "reconnect-required") {
-        // The stored scope was dropped — offer the connect flow again.
+        // The stored scope was dropped — offer the connect flow again. An
+        // automatic sync only swaps the row for the reconnect nudge; raising a
+        // modal over a page the user just opened would be an ambush.
         setStatus({ connected: false, needsReconnect: true });
-        setShowDisclosure(true);
+        if (!auto) setShowDisclosure(true);
         return;
       }
       if (!response.ok || !body) {
-        toast.error("We couldn't sync your calendar", {
-          description: body?.error ?? "Please try again.",
-        });
+        if (!auto) {
+          toast.error("We couldn't sync your calendar", {
+            description: body?.error ?? "Please try again.",
+          });
+        }
         return;
       }
 
@@ -125,19 +141,48 @@ export function GoogleCalendarConnect({
       setNow(new Date());
 
       const total = body.total ?? 0;
-      toast.success("Google Calendar synced", {
-        description:
-          total === 0
-            ? "No upcoming events to import."
-            : `${total} ${total === 1 ? "event" : "events"} up to date.`,
-      });
+      if (!auto) {
+        toast.success("Google Calendar synced", {
+          description:
+            total === 0
+              ? "No upcoming events to import."
+              : `${total} ${total === 1 ? "event" : "events"} up to date.`,
+        });
+      }
       onSynced();
     } catch {
-      toast.error("We couldn't sync your calendar", { description: "Please try again." });
+      if (!auto) {
+        toast.error("We couldn't sync your calendar", { description: "Please try again." });
+      }
     } finally {
       setSyncing(false);
     }
   }
+
+  // Keep the newest `sync` closure reachable from the auto-sync effect without
+  // making that effect depend on its identity: `onSynced` is an inline prop, so
+  // `sync` is a new function on every render and would retrigger the effect.
+  const syncRef = React.useRef(sync);
+  React.useEffect(() => {
+    syncRef.current = sync;
+  });
+
+  // Auto-sync on open when the import has gone stale. Once per mount — the ref
+  // guard, not the dependency list, is what bounds it, so a re-render or the
+  // stamp landing afterwards can't fire a second pull.
+  //
+  // It waits on `startOfTodayIso`, which the surface resolves client-side and
+  // passes as null on the first render. Syncing before it lands would let the
+  // route fall back to the server's clock and drop an event earlier today in a
+  // timezone behind UTC.
+  const autoSyncedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoSyncedRef.current) return;
+    if (!connected || !startOfTodayIso) return;
+    if (!isSyncStale(status?.lastSyncedAt, new Date())) return;
+    autoSyncedRef.current = true;
+    void syncRef.current({ auto: true });
+  }, [connected, startOfTodayIso, status?.lastSyncedAt]);
 
   if (!isLoaded || !status) return null;
 

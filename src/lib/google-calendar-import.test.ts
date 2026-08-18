@@ -3,8 +3,10 @@ import { describe, expect, it } from "bun:test";
 import {
   GOOGLE_CALENDAR_LOOKAHEAD_DAYS,
   GOOGLE_EVENT_FALLBACK_TITLE,
+  SYNC_STALE_AFTER_MS,
   formatSyncFreshness,
   googleSyncWindow,
+  isSyncStale,
   mapGoogleEvent,
   toImportRecords,
   type GoogleCalendarEvent,
@@ -220,5 +222,31 @@ describe("formatSyncFreshness", () => {
     expect(formatSyncFreshness(ago(2 * HOUR - MINUTE), NOW)).toBe(
       "Google Calendar synced 1 hour ago",
     );
+  });
+});
+
+describe("isSyncStale", () => {
+  const NOW = new Date("2026-08-18T12:00:00.000Z");
+  const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
+
+  it("treats a never-synced connection as stale, so connecting imports at once", () => {
+    expect(isSyncStale(null, NOW)).toBe(true);
+    expect(isSyncStale(undefined, NOW)).toBe(true);
+  });
+
+  it("treats an unparseable stamp as stale rather than trusting it", () => {
+    expect(isSyncStale("not-a-date", NOW)).toBe(true);
+  });
+
+  it("holds off inside the window, and fires at the boundary", () => {
+    expect(isSyncStale(ago(0), NOW)).toBe(false);
+    expect(isSyncStale(ago(SYNC_STALE_AFTER_MS - 1), NOW)).toBe(false);
+    expect(isSyncStale(ago(SYNC_STALE_AFTER_MS), NOW)).toBe(true);
+    expect(isSyncStale(ago(4 * SYNC_STALE_AFTER_MS), NOW)).toBe(true);
+  });
+
+  it("treats a future stamp (clock skew) as fresh, so it can't loop on every open", () => {
+    const future = new Date(NOW.getTime() + 60 * 60_000).toISOString();
+    expect(isSyncStale(future, NOW)).toBe(false);
   });
 });

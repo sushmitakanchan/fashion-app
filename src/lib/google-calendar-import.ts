@@ -177,6 +177,34 @@ export function toImportRecords(
  *  number to report, and a ticking "1 second ago" reads as noise. */
 const JUST_NOW_MS = 60_000;
 
+/** How old an import may be before opening the calendar re-syncs it on its own.
+ *  A compromise, not a guarantee: long enough that revisiting the page in one
+ *  sitting doesn't re-hit Google, short enough that an event added on your phone
+ *  this morning is there by the time you plan an outfit for it. */
+export const SYNC_STALE_AFTER_MS = 15 * 60_000;
+
+/**
+ * Should opening the calendar trigger a sync? A never-synced connection is
+ * stale by definition — that is the just-connected case, where the OAuth
+ * redirect lands back on the calendar with an empty agenda and the import
+ * should simply happen rather than waiting on a click.
+ *
+ * A stamp in the future (clock skew) is treated as fresh: re-syncing on a
+ * clock disagreement would fire on every open with no way for the user to
+ * settle it, and the manual control is always there.
+ */
+export function isSyncStale(
+  lastSyncedAt: string | null | undefined,
+  now: Date,
+): boolean {
+  if (!lastSyncedAt) return true;
+
+  const synced = new Date(lastSyncedAt);
+  if (Number.isNaN(synced.getTime())) return true;
+
+  return now.getTime() - synced.getTime() >= SYNC_STALE_AFTER_MS;
+}
+
 /**
  * The freshness line the calendar surface renders next to Sync now. Deliberately
  * coarse: the number exists to answer "should I sync again?", not to be a clock,

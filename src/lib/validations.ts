@@ -44,6 +44,22 @@ const PHOTO_WRONG_TYPE = "Use a JPEG, PNG, or WebP image";
  *  validates against — the two can't drift. */
 export const AURA_NAME_MIN_LENGTH = 2;
 
+/** The soft cap on the free-text style note — enforced HERE (form + wire), never
+ *  on the `StylePreference.text` DB column, which stays uncapped. A sentence or two
+ *  is the intent; this keeps a run-on from becoming the whole generation prompt. */
+export const STYLE_PREFERENCE_MAX_LENGTH = 200;
+
+const STYLE_PREFERENCE_TOO_LONG = "Keep it to a sentence or two";
+
+// The style note is optional and empty-tolerant: a blank value means "no
+// preference", which the planner simply omits. Captured once at profile creation
+// (the chip picker composes a sentence) and stored on `StylePreference.text`; the
+// plan/replan routes read it back automatically when generating an outfit.
+const stylePreferenceText = z
+  .string()
+  .trim()
+  .max(STYLE_PREFERENCE_MAX_LENGTH, STYLE_PREFERENCE_TOO_LONG);
+
 const auraFields = {
   // The AURA display name. It belongs to the AURA profile, not to the Google or
   // Clerk account it was seeded from, so editing it never travels back upstream.
@@ -57,6 +73,12 @@ const auraFields = {
   consent: z
     .boolean()
     .refine((v) => v === true, "Please agree before generating your AURA"),
+  // Optional free-text style note the planner leans on when generating outfits.
+  // The profile chip picker composes it into a sentence; a blank/absent value is
+  // a first-class "no preference" (the route normalizes undefined → "" → clear).
+  // Kept `.optional()` rather than `.default("")` so the Zod input and output
+  // types match, which React Hook Form's resolver typing requires.
+  style: stylePreferenceText.optional(),
 };
 
 const photoFile = z
@@ -623,38 +645,3 @@ export const googleCalendarSyncSchema = z.object({
 });
 
 export type GoogleCalendarSyncInput = z.infer<typeof googleCalendarSyncSchema>;
-
-/* -------------------------------------------------------------------------- */
-/*                    Outfit Calendar — style preference                      */
-/* -------------------------------------------------------------------------- */
-
-/** The soft cap on the free-text style preference — enforced HERE (form + wire),
- *  never on the `StylePreference.text` DB column, which stays uncapped. A sentence
- *  or two is the intent; this keeps a run-on from becoming the whole prompt. */
-export const STYLE_PREFERENCE_MAX_LENGTH = 200;
-
-const STYLE_PREFERENCE_TOO_LONG = "Keep it to a sentence or two";
-
-// The preference is optional and empty-tolerant: a blank field is a legitimate
-// value meaning "no preference". The route treats an empty string as a clear
-// (the row is removed), so the participant returns to the absent state the
-// planner simply omits — never a stored empty string masquerading as a signal.
-const stylePreferenceText = z
-  .string()
-  .trim()
-  .max(STYLE_PREFERENCE_MAX_LENGTH, STYLE_PREFERENCE_TOO_LONG);
-
-/**
- * The single policy for the style preference, shared by the browser form and the
- * `PUT /api/aura/calendar/style-preference` wire. One free-text field, soft-capped
- * here (never on the DB column), so the counter the form shows and the limit the
- * server holds can't drift. Unlike the event/profile schemas — where the form
- * (Files / local datetimes) and the wire (data URIs / ISO instants) genuinely
- * differ — capture and submission are byte-identical here, so one schema serves
- * both. An empty `text` is valid and clears the preference.
- */
-export const stylePreferenceSchema = z.object({
-  text: stylePreferenceText,
-});
-
-export type StylePreferenceInput = z.infer<typeof stylePreferenceSchema>;

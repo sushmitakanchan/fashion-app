@@ -721,9 +721,12 @@ export function CalendarSurface() {
             <Settings2 />
             <span className="sr-only sm:not-sr-only">Settings</span>
           </Button>
+          {/* Secondary to "Plan my week": the CTA fill is the app's single action
+              colour (`--cta`, declared once and never themed), so only the
+              week's primary action may wear it. */}
           <Button
             type="button"
-            variant="cta-flat"
+            variant="outline"
             onClick={() => openAdd(today ?? "")}
             disabled={!today}
             className="rounded-full"
@@ -784,10 +787,33 @@ export function CalendarSurface() {
         <SmartPlanningBanner onTurnOn={() => setShowDisclosure(true)} />
       ) : null}
 
-      {/* "Plan my week" — the top-level primary. It fills only the unplanned days
-          of the viewed week, sequentially, revealing each outfit as it lands. */}
+      {/* The week-level invitation, sitting directly above the agenda it fills.
+          Deliberately borderless: two bordered strips already precede the
+          calendar, and a third box would push the week itself below the fold.
+          It renders only while the viewed week still has unplanned events, so
+          it retires as you work through them rather than nagging every visit. */}
       {today && weekPlanTargets.length > 0 ? (
-        <div className="mt-6 flex flex-col items-center gap-1.5">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <p className="flex items-start gap-2 text-sm text-pretty">
+            <Sparkles
+              className="text-brand-magenta mt-0.5 size-4 shrink-0"
+              aria-hidden="true"
+            />
+            <span>
+              {weekPlan ? (
+                "Each outfit appears as AURA finishes it."
+              ) : (
+                <>
+                  Wish someone would plan your outfits?{" "}
+                  <span className="text-muted-foreground">
+                    {weekPlanTargets.length}{" "}
+                    {weekPlanTargets.length === 1 ? "event" : "events"}, from your
+                    own wardrobe.
+                  </span>
+                </>
+              )}
+            </span>
+          </p>
           <Button
             type="button"
             variant="cta-flat"
@@ -801,17 +827,9 @@ export function CalendarSurface() {
                 Planning your week… ({weekPlan.done}/{weekPlan.total})
               </>
             ) : (
-              <>
-                <Sparkles />
-                Plan my week
-              </>
+              "Plan my week"
             )}
           </Button>
-          <p className="text-muted-foreground text-xs">
-            {weekPlan
-              ? "Each outfit appears as AURA finishes it."
-              : `${weekPlanTargets.length} ${weekPlanTargets.length === 1 ? "event" : "events"} to plan from your wardrobe`}
-          </p>
         </div>
       ) : null}
 

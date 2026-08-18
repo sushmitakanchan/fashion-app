@@ -12,30 +12,40 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { PLANNING_POLICY_VERSION } from "@/lib/planning-policy";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { SmartPlanningDisclosure } from "@/components/aura/smart-planning-disclosure";
+import {
+  GoogleCalendarDisclosure,
+  useGoogleCalendarConnect,
+} from "@/components/aura/google-calendar-connect-flow";
 
 /**
- * The Outfit Calendar's review/revoke settings surface (spec §7). It shows the
- * current state of the two outside-contact grants and lets the user undo them:
+ * The Outfit Calendar's settings surface (spec §7). It shows the current state of
+ * the two outside-contact grants and lets the user turn each one on or off:
  *
- *  - **Smart Planning** — review the `PlanningConsent` state and revoke it. Revoke
- *    is forward-only: it bars future geocoding/weather/AI at the boundary gate
- *    while leaving existing outfits and events untouched.
- *  - **Google Calendar** — disconnect the read-only import. Also forward-only:
- *    future syncs stop while already-imported events are kept (per-event
- *    hard-delete on the calendar remains the purge path).
+ *  - **Smart Planning** — a `PlanningConsent` toggle. Turning it off is
+ *    forward-only: it bars future geocoding/weather/AI at the boundary gate while
+ *    leaving existing outfits and events untouched. Turning it *on* raises the
+ *    same versioned disclosure the calendar shows, because consent is only
+ *    recorded against a policy version the user was actually shown.
+ *  - **Google Calendar** — the read-only import. Off is a plain state write, also
+ *    forward-only (future syncs stop, already-imported events are kept). On is
+ *    not a state write at all: it hands off to Clerk's OAuth passthrough and
+ *    leaves the page for Google, so the switch starts that flow rather than
+ *    flipping anything itself.
  *
- * This is the *review* surface, deliberately distinct from the just-in-time
- * grant surfaces (the Smart Planning disclosure and the Google connect nudge)
- * that live on the calendar. Granting/reconnecting happens there; this page only
- * reviews and undoes. Opening it is a pure read of our own state — no outside
- * contact.
+ * Both grant paths reuse the calendar's own disclosure components, so this page
+ * can never disclose different terms than the just-in-time prompts do. Opening
+ * the page is a pure read of our own state — no outside contact.
  */
 
 type ConsentResponse = {
   active?: boolean;
   consentedAt?: string | null;
   withdrawnAt?: string | null;
+  error?: string;
 };
 
 type GoogleResponse = { connected?: boolean; needsReconnect?: boolean };
@@ -60,8 +70,17 @@ export function CalendarSettings() {
   const [google, setGoogle] = React.useState<Loadable<GoogleResponse>>({
     status: "loading",
   });
-  const [revoking, setRevoking] = React.useState(false);
+  const [planningBusy, setPlanningBusy] = React.useState(false);
   const [disconnecting, setDisconnecting] = React.useState(false);
+  const [showPlanningDisclosure, setShowPlanningDisclosure] = React.useState(false);
+  const [showGoogleDisclosure, setShowGoogleDisclosure] = React.useState(false);
+
+  // Come back here, not to the calendar, once Google is done with us.
+  const {
+    isLoaded: clerkLoaded,
+    connecting,
+    beginConnect,
+  } = useGoogleCalendarConnect("/aura/calendar/settings");
 
   // Read both grant states once after mount. Each is an internal read of our own
   // Clerk/DB state — no third-party contact — so the review surface stays
@@ -97,10 +116,43 @@ export function CalendarSettings() {
     return () => controller.abort();
   }, []);
 
+  /** Record Smart Planning consent for the version the disclosure just showed.
+   *  The route refuses a stale version rather than silently recording consent to
+   *  terms the user didn't read. */
+  async function grantSmartPlanning() {
+    setPlanningBusy(true);
+    try {
+      const response = await fetch("/api/aura/calendar/consent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION }),
+      });
+      const body = (await response.json().catch(() => null)) as ConsentResponse | null;
+      if (!response.ok || !body?.active) {
+        toast.error("We couldn't turn on Smart Planning", {
+          description: body?.error ?? "Please try again.",
+        });
+        return;
+      }
+      setConsent({ status: "ready", data: body });
+      setShowPlanningDisclosure(false);
+      toast.success("Smart Planning turned on", {
+        description:
+          "AURA can now fetch the weather for placed events and plan outfits when you ask.",
+      });
+    } catch {
+      toast.error("We couldn't turn on Smart Planning", {
+        description: "Please try again.",
+      });
+    } finally {
+      setPlanningBusy(false);
+    }
+  }
+
   /** Revoke Smart Planning consent — forward-only. Future geocoding/weather/AI is
    *  barred at the boundary gate; existing outfits and events are untouched. */
   async function revokeSmartPlanning() {
-    setRevoking(true);
+    setPlanningBusy(true);
     try {
       const response = await fetch("/api/aura/calendar/consent", { method: "DELETE" });
       if (!response.ok) throw new Error("revoke failed");
@@ -115,7 +167,7 @@ export function CalendarSettings() {
         description: "Please try again.",
       });
     } finally {
-      setRevoking(false);
+      setPlanningBusy(false);
     }
   }
 
@@ -159,48 +211,108 @@ export function CalendarSettings() {
           Data &amp; connections
         </h1>
         <p className="text-muted-foreground mt-2 max-w-lg text-sm text-pretty">
-          Review and undo the outside-contact grants that power the Outfit
-          Calendar. Turning either off is forward-only — it stops future contact
-          and never touches events or outfits you already have.
+          Turn the outside-contact grants that power the Outfit Calendar on or
+          off. Turning either off is forward-only — it stops future contact and
+          never touches events or outfits you already have.
         </p>
       </header>
 
       <div className="mt-8 grid gap-5">
         <SmartPlanningCard
           state={consent}
-          revoking={revoking}
-          onRevoke={() => void revokeSmartPlanning()}
+          busy={planningBusy}
+          onToggle={(next) =>
+            next ? setShowPlanningDisclosure(true) : void revokeSmartPlanning()
+          }
         />
         <GoogleCalendarCard
           state={google}
-          disconnecting={disconnecting}
+          busy={disconnecting || connecting}
+          canConnect={clerkLoaded}
+          onToggle={(next) =>
+            next ? setShowGoogleDisclosure(true) : void disconnectGoogle()
+          }
           onDisconnect={() => void disconnectGoogle()}
         />
       </div>
+
+      {showPlanningDisclosure ? (
+        <SmartPlanningDisclosure
+          onAgree={() => void grantSmartPlanning()}
+          onCancel={() => setShowPlanningDisclosure(false)}
+        />
+      ) : null}
+      {showGoogleDisclosure ? (
+        <GoogleCalendarDisclosure
+          connecting={connecting}
+          onAgree={() => void beginConnect()}
+          onCancel={() => setShowGoogleDisclosure(false)}
+        />
+      ) : null}
     </main>
   );
 }
 
-/** A shared card shell so the two grants read as one settings surface. */
+/** A shared card shell so the two grants read as one settings surface. The
+ *  switch sits in the header, opposite the title it acts on. */
 function SettingsCard({
   icon,
   title,
+  control,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
+  control: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="bg-card text-card-foreground rounded-3xl border p-5 sm:p-6">
-      <div className="flex items-center gap-3">
-        <span className="text-brand-magenta" aria-hidden="true">
-          {icon}
-        </span>
-        <h2 className="font-heading text-xl tracking-wide uppercase">{title}</h2>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-brand-magenta" aria-hidden="true">
+            {icon}
+          </span>
+          <h2 className="font-heading text-xl tracking-wide uppercase">{title}</h2>
+        </div>
+        {control}
       </div>
       <div className="mt-4">{children}</div>
     </section>
+  );
+}
+
+/** The card's on/off control: the switch, with a spinner while a flip is in
+ *  flight so a slow round-trip doesn't read as an unresponsive toggle. */
+function ToggleControl({
+  label,
+  checked,
+  busy,
+  disabled,
+  onToggle,
+}: {
+  label: string;
+  checked: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      {busy ? (
+        <Loader2 className="text-muted-foreground size-4 animate-spin" aria-hidden="true" />
+      ) : null}
+      <Switch
+        checked={checked}
+        onCheckedChange={onToggle}
+        disabled={disabled || busy}
+        aria-label={label}
+        // The card already says "on" in magenta (pill and icon); the switch is
+        // the third signal, so it matches rather than falling back to the
+        // theme's default fill (lime in dark, ink in light).
+        className="data-checked:bg-brand-magenta"
+      />
+    </span>
   );
 }
 
@@ -215,13 +327,14 @@ function CardSkeleton() {
 
 function SmartPlanningCard({
   state,
-  revoking,
-  onRevoke,
+  busy,
+  onToggle,
 }: {
   state: Loadable<ConsentResponse>;
-  revoking: boolean;
-  onRevoke: () => void;
+  busy: boolean;
+  onToggle: (next: boolean) => void;
 }) {
+  const loading = state.status === "loading";
   const active = state.status === "ready" && state.data.active === true;
   const consentedAt =
     state.status === "ready" ? formatWhen(state.data.consentedAt) : null;
@@ -232,51 +345,47 @@ function SmartPlanningCard({
     <SettingsCard
       icon={active ? <ShieldCheck className="size-5" /> : <ShieldOff className="size-5" />}
       title="Smart Planning"
+      control={
+        <ToggleControl
+          label="Smart Planning"
+          checked={active}
+          busy={busy}
+          disabled={loading}
+          onToggle={onToggle}
+        />
+      }
     >
-      {state.status === "loading" ? (
+      {loading ? (
         <CardSkeleton />
       ) : active ? (
-        <div className="flex flex-col gap-4">
-          <div>
-            <StatusPill tone="on">On</StatusPill>
-            <p className="text-muted-foreground mt-3 text-sm text-pretty">
-              AURA may contact Open-Meteo (to resolve places and fetch weather)
-              and our AI provider (to plan outfits) when you view a placed event
-              or ask it to plan. Your event titles are never sent.
-              {consentedAt ? ` Turned on ${consentedAt}.` : ""}
-            </p>
-          </div>
-          <div>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={onRevoke}
-              disabled={revoking}
-              className="rounded-full"
-            >
-              {revoking ? <Loader2 className="animate-spin" /> : <ShieldOff />}
-              {revoking ? "Turning off…" : "Turn off Smart Planning"}
-            </Button>
-            <p className="text-muted-foreground mt-2 text-xs text-pretty">
-              Forward-only: future planning is barred immediately. Outfits and
-              events you already have stay exactly as they are.
-            </p>
-          </div>
+        <div className="flex flex-col gap-3">
+          <StatusPill tone="on">On</StatusPill>
+          <p className="text-muted-foreground text-sm text-pretty">
+            AURA may contact Open-Meteo (to resolve places and fetch weather) and
+            our AI provider (to plan outfits) when you view a placed event or ask
+            it to plan. Your event titles are never sent.
+            {consentedAt ? ` Turned on ${consentedAt}.` : ""}
+          </p>
+          <p className="text-muted-foreground text-xs text-pretty">
+            Turning it off is forward-only: future planning is barred immediately.
+            Outfits and events you already have stay exactly as they are.
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
           <StatusPill tone="off">Off</StatusPill>
           <p className="text-muted-foreground text-sm text-pretty">
             Smart Planning is off — nothing about your events leaves the app.
-            {withdrawnAt ? ` Turned off ${withdrawnAt}.` : ""} You can turn it
-            back on from the{" "}
+            {withdrawnAt ? ` Turned off ${withdrawnAt}.` : ""}{" "}
+            Turn it back on here (we&apos;ll show you what gets sent first), or
+            the next time you view a placed event or plan an outfit on the{" "}
             <Link
               href="/aura/calendar"
               className="hover:text-foreground underline underline-offset-2"
             >
               calendar
-            </Link>{" "}
-            the next time you view a placed event or plan an outfit.
+            </Link>
+            .
           </p>
         </div>
       )}
@@ -286,37 +395,64 @@ function SmartPlanningCard({
 
 function GoogleCalendarCard({
   state,
-  disconnecting,
+  busy,
+  canConnect,
+  onToggle,
   onDisconnect,
 }: {
   state: Loadable<GoogleResponse>;
-  disconnecting: boolean;
+  busy: boolean;
+  canConnect: boolean;
+  onToggle: (next: boolean) => void;
   onDisconnect: () => void;
 }) {
+  const loading = state.status === "loading";
   const connected = state.status === "ready" && state.data.connected === true;
   const needsReconnect =
     state.status === "ready" && state.data.needsReconnect === true;
-  // Offer Disconnect whenever a grant is on record (connected, or scope-lapsed
-  // but not yet disconnected). A clean "not connected" state has nothing to undo.
-  const canDisconnect = connected || needsReconnect;
 
   return (
     <SettingsCard
       icon={connected ? <CalendarCheck className="size-5" /> : <CalendarX className="size-5" />}
       title="Google Calendar"
+      control={
+        <ToggleControl
+          label="Google Calendar"
+          checked={connected}
+          busy={busy}
+          // Turning it on needs Clerk loaded (the OAuth handoff runs on the
+          // user object); turning it off is just our own state write.
+          disabled={loading || (!connected && !canConnect)}
+          onToggle={onToggle}
+        />
+      }
     >
-      {state.status === "loading" ? (
+      {loading ? (
         <CardSkeleton />
-      ) : canDisconnect ? (
+      ) : connected ? (
+        <div className="flex flex-col gap-3">
+          <StatusPill tone="on">Connected — read-only</StatusPill>
+          <p className="text-muted-foreground text-sm text-pretty">
+            AURA imports your upcoming events (read-only) so you can plan outfits
+            for them. It can never change your calendar.
+          </p>
+          <p className="text-muted-foreground text-xs text-pretty">
+            Turning it off is forward-only: future syncs stop. Events you already
+            imported are kept — delete them individually on the calendar to
+            remove them.
+          </p>
+        </div>
+      ) : needsReconnect ? (
+        // A grant is still on record but the scope lapsed, so the switch reads
+        // off while there is something left to undo. Keep an explicit disconnect
+        // alongside it — otherwise the only way out is to reconnect first.
         <div className="flex flex-col gap-4">
-          <div>
-            <StatusPill tone={connected ? "on" : "off"}>
-              {connected ? "Connected — read-only" : "Reconnect needed"}
-            </StatusPill>
-            <p className="text-muted-foreground mt-3 text-sm text-pretty">
-              {connected
-                ? "AURA imports your upcoming events (read-only) so you can plan outfits for them. It can never change your calendar."
-                : "Your calendar access lapsed. You can reconnect from the calendar, or disconnect to stop importing entirely."}
+          <div className="flex flex-col gap-3">
+            <StatusPill tone="off">Reconnect needed</StatusPill>
+            <p className="text-muted-foreground text-sm text-pretty">
+              Your calendar access lapsed — an ordinary Google sign-in can reset
+              it. Switch it back on to reconnect, or disconnect to stop importing
+              entirely.
             </p>
           </div>
           <div>
@@ -324,15 +460,15 @@ function GoogleCalendarCard({
               type="button"
               variant="destructive"
               onClick={onDisconnect}
-              disabled={disconnecting}
+              disabled={busy}
               className="rounded-full"
             >
-              {disconnecting ? <Loader2 className="animate-spin" /> : <CalendarX />}
-              {disconnecting ? "Disconnecting…" : "Disconnect Google Calendar"}
+              <CalendarX />
+              Disconnect Google Calendar
             </Button>
             <p className="text-muted-foreground mt-2 text-xs text-pretty">
-              Forward-only: future syncs stop. Events you already imported are
-              kept — delete them individually on the calendar to remove them.
+              Forward-only: events you already imported are kept — delete them
+              individually on the calendar to remove them.
             </p>
           </div>
         </div>
@@ -340,15 +476,9 @@ function GoogleCalendarCard({
         <div className="flex flex-col gap-3">
           <StatusPill tone="off">Not connected</StatusPill>
           <p className="text-muted-foreground text-sm text-pretty">
-            Google Calendar isn&apos;t connected. You can connect it (read-only)
-            from the{" "}
-            <Link
-              href="/aura/calendar"
-              className="hover:text-foreground underline underline-offset-2"
-            >
-              calendar
-            </Link>{" "}
-            to import your upcoming events.
+            Google Calendar isn&apos;t connected. Switch it on to import your
+            upcoming events (read-only) — we&apos;ll show you what that covers,
+            then hand off to Google to sign in.
           </p>
         </div>
       )}
@@ -365,7 +495,7 @@ function StatusPill({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide uppercase ${
+      className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide uppercase ${
         tone === "on"
           ? "bg-brand-magenta/10 text-brand-magenta"
           : "bg-muted text-muted-foreground"

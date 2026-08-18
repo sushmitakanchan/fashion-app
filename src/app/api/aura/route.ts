@@ -164,5 +164,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
   }
 
+  // Persist the optional style note the plan/replan routes read verbatim when
+  // generating an outfit — so AURA leans on it automatically, with no separate
+  // surface for the participant to manage. Secondary to the profile: a failure
+  // here is logged, never surfaced, so it can't turn a saved profile into an
+  // error. An empty note clears any prior one (back to the "no preference" state
+  // the planner omits). `deleteMany` rather than `delete` so a first-time save
+  // with no note doesn't throw on a missing row.
+  try {
+    const style = (parsed.data.style ?? "").trim();
+    if (style.length > 0) {
+      await prisma.stylePreference.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, text: style },
+        update: { text: style },
+      });
+    } else {
+      await prisma.stylePreference.deleteMany({ where: { userId: user.id } });
+    }
+  } catch (error) {
+    console.error("AURA style note persistence failed", error);
+  }
+
   return NextResponse.json({ id: aura.id }, { status: 201 });
 }

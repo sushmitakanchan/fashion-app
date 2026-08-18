@@ -41,6 +41,10 @@ export default async function AuraPage() {
     portraitUrl: string | null;
   } | null = null;
 
+  // The participant's saved style note (the sentence stored on
+  // `StylePreference.text`), used to re-light the chip picker when editing.
+  let savedStyle = "";
+
   // Refused identities do not need profile data and must not reach the database.
   // The route handler returns the clear 403 when they attempt to save.
   if (admission?.ok) {
@@ -59,9 +63,11 @@ export default async function AuraPage() {
               portraitUrl: true,
             },
           },
+          stylePreference: { select: { text: true } },
         },
       });
       savedProfile = user?.auraProfile ?? null;
+      savedStyle = user?.stylePreference?.text ?? "";
     } catch {
       // The save endpoint remains the authoritative live-config failure boundary.
       // Falling back here lets a first-time form still show its empty placeholder.
@@ -78,6 +84,7 @@ export default async function AuraPage() {
     <main className="min-h-[calc(100vh-4rem)]">
       <AuraForm
         initialName={initialName}
+        initialStyle={savedStyle}
         initialProfile={
           savedProfile
             ? {

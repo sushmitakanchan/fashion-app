@@ -37,6 +37,14 @@ type UpsertArgs = {
   update: Record<string, unknown>;
 };
 type UpsertStub = (args: UpsertArgs) => Promise<{ id: string }>;
+type StyleUpsertArgs = {
+  where: { userId: string };
+  create: { userId: string; text: string };
+  update: { text: string };
+};
+type StyleUpsertStub = (args: StyleUpsertArgs) => Promise<{ id: string }>;
+type StyleDeleteArgs = { where: { userId: string } };
+type StyleDeleteStub = (args: StyleDeleteArgs) => Promise<{ count: number }>;
 
 let live = true;
 let userId: string | null = "clerk_user_1";
@@ -58,10 +66,15 @@ let clerkUser: {
 } | null = null;
 
 const profiles = new Map<string, Record<string, unknown> & { id: string }>();
+// The style note store, keyed like the real one-per-user unique constraint, so
+// "sets the note vs clears it" is observable rather than merely asserted about args.
+const styles = new Map<string, string>();
 
 let upload: ReturnType<typeof mock<UploadStub>>;
 let userUpsert: ReturnType<typeof mock<UpsertStub>>;
 let auraUpsert: ReturnType<typeof mock<UpsertStub>>;
+let styleUpsert: ReturnType<typeof mock<StyleUpsertStub>>;
+let styleDelete: ReturnType<typeof mock<StyleDeleteStub>>;
 
 mock.module("@/lib/aura-config", () => ({
   AURA_CONFIGURATION_UNAVAILABLE_MESSAGE:
@@ -93,6 +106,10 @@ mock.module("@/lib/prisma", () => ({
   getPrisma: () => ({
     user: { upsert: (args: UpsertArgs) => userUpsert(args) },
     auraProfile: { upsert: (args: UpsertArgs) => auraUpsert(args) },
+    stylePreference: {
+      upsert: (args: StyleUpsertArgs) => styleUpsert(args),
+      deleteMany: (args: StyleDeleteArgs) => styleDelete(args),
+    },
   }),
 }));
 
@@ -168,6 +185,16 @@ beforeEach(() => {
       ...(existing ? { ...existing, ...update } : create),
     });
     return { id: profiles.get(where.userId)!.id as string };
+  });
+
+  styles.clear();
+  styleUpsert = mock(async ({ where, update }: StyleUpsertArgs) => {
+    styles.set(where.userId, update.text);
+    return { id: `style_${where.userId}` };
+  });
+  styleDelete = mock(async ({ where }: StyleDeleteArgs) => {
+    const existed = styles.delete(where.userId);
+    return { count: existed ? 1 : 0 };
   });
 });
 
@@ -256,6 +283,17 @@ describe("POST /api/aura — refused submissions", () => {
       expect(auraUpsert).not.toHaveBeenCalled();
     },
   );
+
+  it("rejects an over-long style note, without persisting", async () => {
+    const response = await post({ ...validBody(), style: "x".repeat(201) });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { issues?: { path: string[] }[] };
+    expect(body.issues?.some((issue) => issue.path[0] === "style")).toBe(true);
+    expect(upload).not.toHaveBeenCalled();
+    expect(auraUpsert).not.toHaveBeenCalled();
+    expect(styleUpsert).not.toHaveBeenCalled();
+  });
 
   it("refuses an unsupported photo type, without persisting", async () => {
     const body = validBody();
@@ -440,6 +478,54 @@ describe("POST /api/aura — a valid live submission", () => {
     expect(new Set(upload.mock.calls.map(([, opts]) => opts.public_id)).size).toBe(
       AURA_REFERENCE_PHOTO_ANGLES.length,
     );
+  });
+
+  it("persists the composed style note the planner reads when generating outfits", async () => {
+    const response = await post({
+      ...validBody(),
+      style: "You lean minimal & dark tones — and rarely wear dresses & heels.",
+    });
+
+    expect(response.status).toBe(201);
+    expect(styleUpsert).toHaveBeenCalledTimes(1);
+    expect(styleDelete).not.toHaveBeenCalled();
+    expect(styles.get("db_user_1")).toBe(
+      "You lean minimal & dark tones — and rarely wear dresses & heels.",
+    );
+  });
+
+  it("clears any prior style note when the profile is saved without one", async () => {
+    styles.set("db_user_1", "You lean minimal.");
+
+    const response = await post(validBody());
+
+    expect(response.status).toBe(201);
+    // A blank note returns to the absent state the planner simply omits — never a
+    // stored empty string masquerading as a signal.
+    expect(styleDelete).toHaveBeenCalledTimes(1);
+    expect(styleUpsert).not.toHaveBeenCalled();
+    expect(styles.has("db_user_1")).toBe(false);
+  });
+
+  it("treats a whitespace-only style note as a clear", async () => {
+    const response = await post({ ...validBody(), style: "   " });
+
+    expect(response.status).toBe(201);
+    expect(styleUpsert).not.toHaveBeenCalled();
+    expect(styleDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("still saves the profile when the style note fails to persist", async () => {
+    styleUpsert = mock(async () => {
+      throw new Error("style write conflict");
+    });
+
+    const response = await post({ ...validBody(), style: "You lean minimal." });
+
+    // The style note is secondary: its failure is logged, never surfaced, so the
+    // profile save the participant asked for still succeeds.
+    expect(response.status).toBe(201);
+    expect(profiles.get("db_user_1")).toMatchObject({ name: "Ada Lovelace" });
   });
 
   it("keeps an existing portrait when profile data is replaced", async () => {

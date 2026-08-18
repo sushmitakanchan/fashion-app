@@ -22,6 +22,7 @@ import type { PortraitRequest } from "@/lib/aura-portrait-state";
 import { AuraProfileResult } from "@/components/aura/aura-profile-result";
 import { AuraProgress } from "@/components/aura/aura-progress";
 import { PhotoUploadField } from "@/components/aura/photo-upload-field";
+import { StylePicker } from "@/components/aura/style-picker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -60,10 +61,15 @@ function FieldError({ message }: { message?: string }) {
 
 export function AuraForm({
   initialName = "",
+  initialStyle = "",
   initialProfile = null,
   avatarUrl,
 }: {
   initialName?: string;
+  // The participant's saved style note (the sentence stored on
+  // `StylePreference.text`). Seeds the chip picker so editing re-lights the same
+  // words. Empty ⇒ nothing picked yet.
+  initialStyle?: string;
   // A profile the user has already saved. Present ⇒ the page opens on the
   // result view rather than an empty form, which is what makes a returning
   // visitor land on their created AURA instead of the creation screen again.
@@ -100,7 +106,7 @@ export function AuraForm({
     formState: { errors, isSubmitting },
   } = useForm<AuraFormInput>({
     resolver: zodResolver(auraFormSchema),
-    defaultValues: { name: initialName, consent: false },
+    defaultValues: { name: initialName, style: initialStyle, consent: false },
   });
 
   // `useWatch` rather than `watch()`: it scopes the re-render to these fields
@@ -407,6 +413,38 @@ export function AuraForm({
                 />
               ))}
             </div>
+          </section>
+
+          <section className="grid gap-4">
+            <div className="grid gap-1">
+              <span className="text-upload-label text-[11px] tracking-[0.14em] uppercase">
+                Step four
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-heading text-2xl tracking-wide uppercase">
+                  Your style
+                </h2>
+                <span className="text-upload-label border-upload-accent rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase">
+                  Optional
+                </span>
+              </div>
+              <p className="text-muted-foreground text-sm">
+                Tap the words that are you. AURA reads them back as a sentence and
+                leans on it whenever it plans an outfit — you never have to set it
+                again.
+              </p>
+            </div>
+            <Controller
+              control={control}
+              name="style"
+              render={({ field }) => (
+                <StylePicker
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  disabled={isSubmitting || isSeedingPhotos}
+                />
+              )}
+            />
           </section>
 
           <Separator />

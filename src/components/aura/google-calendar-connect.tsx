@@ -186,25 +186,26 @@ export function GoogleCalendarConnect({
 
   if (!isLoaded || !status) return null;
 
-  // Connected: a quiet utility row, not a banner. It reports freshness rather
-  // than connection state — "connected — read-only" already lives on the
-  // settings card, and repeating it here framed the row as a success notice the
-  // user expected to dismiss. What it can't get anywhere else is how stale the
-  // import is, and nothing syncs automatically, so the control stays put.
+  // Connected: a card carrying the freshness of the import and the control that
+  // refreshes it. The card matches the connect nudge above it and the settings
+  // cards, so the calendar reads as one surface rather than a banner with a
+  // stray line of text under it. What it reports is freshness, not connection
+  // state — "connected — read-only" already lives on the settings card, and the
+  // stamp is the one thing this surface can't get anywhere else.
   if (status.connected) {
     return (
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1">
+      <div className="border-border bg-muted/30 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3">
         <span className="text-muted-foreground inline-flex items-center gap-2 text-sm">
-          <CalendarCheck className="size-4 shrink-0" aria-hidden="true" />
+          <CalendarCheck className="text-brand-magenta size-4 shrink-0" aria-hidden="true" />
           {formatSyncFreshness(status.lastSyncedAt, now)}
         </span>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={() => void sync()}
           disabled={syncing}
-          className="text-muted-foreground hover:text-foreground -mr-2 h-auto px-2 py-1"
+          className="rounded-full"
         >
           {syncing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
           {syncing ? "Syncing…" : "Sync now"}

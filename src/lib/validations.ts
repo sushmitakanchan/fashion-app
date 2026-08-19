@@ -618,6 +618,11 @@ export const plannedEventCreateSchema = z
     startsAt: z.iso.datetime({ offset: true }),
     endsAt: z.iso.datetime({ offset: true }).optional(),
     placeText: plannedEventPlaceWire,
+    // Overlap is a soft rule: the route warns on a time clash with an existing
+    // event (409) unless the client has already shown that warning and the owner
+    // chose to add anyway, which echoes back as `allowOverlap: true`. Absent or
+    // false means "check for clashes". Not a stored field.
+    allowOverlap: z.boolean().optional(),
   })
   .refine(
     (value) =>

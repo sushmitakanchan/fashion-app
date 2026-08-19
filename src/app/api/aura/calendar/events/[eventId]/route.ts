@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
 import { getPrisma } from "@/lib/prisma";
-import { eventSelect, serializeEvent } from "@/lib/planned-event";
+import {
+  eventSelect,
+  findEventClashes,
+  serializeEvent,
+} from "@/lib/planned-event";
 import {
   DEFAULT_PLANNED_OCCASION,
   plannedEventUpdateSchema,
@@ -11,6 +15,7 @@ import {
 type RouteContext = { params: Promise<{ eventId: string }> };
 
 const SAVE_FAILED = "We couldn't save that event. Please try again.";
+const TIME_CLASH = "This event overlaps another on your calendar.";
 
 /**
  * Edit one planned event's owner-facing fields (title, occasion, timing, place).
@@ -38,7 +43,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     );
   }
 
-  const { title, occasion, allDay, startsAt, endsAt, placeText } = parsed.data;
+  const { title, occasion, allDay, startsAt, endsAt, placeText, allowOverlap } =
+    parsed.data;
 
   try {
     const prisma = getPrisma();
@@ -48,6 +54,24 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Soft overlap guard, matching the create route: warn on a time clash with
+    // another event unless the owner chose to save anyway (`allowOverlap`). The
+    // event being edited is excluded so its new timing never clashes with itself.
+    if (!allowOverlap) {
+      const clashes = await findEventClashes(
+        prisma,
+        { user: { clerkId: userId } },
+        { startsAt, endsAt: endsAt ?? null, allDay },
+        existing.id,
+      );
+      if (clashes.length > 0) {
+        return NextResponse.json(
+          { error: TIME_CLASH, code: "time-clash", clashes },
+          { status: 409 },
+        );
+      }
     }
 
     const nextPlace = placeText ?? null;

@@ -100,21 +100,27 @@ const prismaStub = {
     },
   },
   plannedEvent: {
+    // Backs both the range listing (scoped by `user.clerkId`) and the overlap
+    // guard (scoped by `userId`, filtered to timed events).
     findMany: async ({
       where,
     }: {
       where: {
-        user: { clerkId: string };
+        user?: { clerkId: string };
+        userId?: string;
+        allDay?: boolean;
         startsAt?: { gte?: Date; lt?: Date };
       };
     }) => {
-      const owner = usersByClerk[where.user.clerkId];
+      const owner =
+        where.userId ?? (where.user ? usersByClerk[where.user.clerkId] : undefined);
       const gte = where.startsAt?.gte;
       const lt = where.startsAt?.lt;
       return rows
         .filter(
           (row) =>
             row.userId === owner &&
+            (where.allDay === undefined || row.allDay === where.allDay) &&
             (!gte || row.startsAt.getTime() >= gte.getTime()) &&
             (!lt || row.startsAt.getTime() < lt.getTime()),
         )
@@ -383,5 +389,51 @@ describe("POST /api/aura/calendar/events", () => {
 
     const listed = await (await get(WEEK_FROM, WEEK_TO)).json();
     expect(listed.events.map((e: { title: string }) => e.title)).toContain("First plan");
+  });
+
+  it("warns (409) instead of adding when the event overlaps an existing one", async () => {
+    // 08:30–09:30 brackets seed_1 "Team offsite" (09:00).
+    const response = await post(
+      validEvent({
+        title: "Standup",
+        startsAt: "2026-08-12T08:30:00.000Z",
+        endsAt: "2026-08-12T09:30:00.000Z",
+      }),
+    );
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.code).toBe("time-clash");
+    expect(body.clashes.map((clash: { title: string }) => clash.title)).toEqual([
+      "Team offsite",
+    ]);
+    // The soft guard blocks the write until the owner chooses to proceed.
+    expect(lastCreateData).toBeNull();
+  });
+
+  it("adds the event anyway when allowOverlap waives the guard", async () => {
+    const response = await post(
+      validEvent({
+        title: "Standup",
+        startsAt: "2026-08-12T08:30:00.000Z",
+        endsAt: "2026-08-12T09:30:00.000Z",
+        allowOverlap: true,
+      }),
+    );
+    expect(response.status).toBe(201);
+    const { event } = await response.json();
+    expect(event.title).toBe("Standup");
+  });
+
+  it("does not warn for an all-day event, even alongside a timed one", async () => {
+    // seed_1 is a timed event on the same day; an all-day day-marker never clashes.
+    const response = await post(
+      validEvent({
+        title: "Festival",
+        allDay: true,
+        startsAt: "2026-08-12T00:00:00.000Z",
+        placeText: "",
+      }),
+    );
+    expect(response.status).toBe(201);
   });
 });

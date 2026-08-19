@@ -1770,7 +1770,7 @@ function AddEventDialog({
     handleSubmit,
     setValue,
     getValues,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<PlannedEventFormInput>({
     resolver: zodResolver(plannedEventFormSchema),
     defaultValues: editing
@@ -1859,7 +1859,11 @@ function AddEventDialog({
       aria-label={isEditing ? "Edit event" : "Add an event"}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-brand-ink/60 p-4 backdrop-blur-sm"
       onMouseDown={(mouseEvent) => {
-        if (mouseEvent.target === mouseEvent.currentTarget) onClose();
+        // A click on the backdrop dismisses the form — but only while it's
+        // untouched. Once there's unsaved input, a stray outside-click (easy to
+        // trigger while reaching for the native date picker) must not discard
+        // the whole form: close it deliberately with Cancel or Add event.
+        if (mouseEvent.target === mouseEvent.currentTarget && !isDirty) onClose();
       }}
     >
       <section className="bg-card text-card-foreground my-auto w-full max-w-lg rounded-3xl border p-6 shadow-2xl sm:p-8">

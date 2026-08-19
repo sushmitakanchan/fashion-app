@@ -7,7 +7,11 @@ import {
 } from "@/lib/aura-config";
 import { getPrisma } from "@/lib/prisma";
 import { getOrProvisionUserId } from "@/lib/wardrobe-user";
-import { eventSelect, serializeEvent } from "@/lib/planned-event";
+import {
+  eventSelect,
+  findEventClashes,
+  serializeEvent,
+} from "@/lib/planned-event";
 import {
   DEFAULT_PLANNED_OCCASION,
   plannedEventCreateSchema,
@@ -56,6 +60,7 @@ export async function GET(request: Request) {
 }
 
 const SAVE_FAILED = "We couldn't add your event. Please try again.";
+const TIME_CLASH = "This event overlaps another on your calendar.";
 
 /**
  * Add one manual planned event. This is the always-works base of the calendar:
@@ -87,7 +92,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const { title, occasion, allDay, startsAt, endsAt, placeText } = parsed.data;
+  const { title, occasion, allDay, startsAt, endsAt, placeText, allowOverlap } =
+    parsed.data;
 
   try {
     const prisma = getPrisma();
@@ -99,6 +105,22 @@ export async function POST(request: Request) {
     if (!ownerId) {
       console.error("Calendar event save can't provision a user for", userId);
       return NextResponse.json({ error: SAVE_FAILED }, { status: 500 });
+    }
+
+    // Soft overlap guard: warn on a time clash with an existing event unless the
+    // owner already saw the warning and chose to add anyway (`allowOverlap`).
+    if (!allowOverlap) {
+      const clashes = await findEventClashes(
+        prisma,
+        { userId: ownerId },
+        { startsAt, endsAt: endsAt ?? null, allDay },
+      );
+      if (clashes.length > 0) {
+        return NextResponse.json(
+          { error: TIME_CLASH, code: "time-clash", clashes },
+          { status: 409 },
+        );
+      }
     }
 
     const event = await prisma.plannedEvent.create({

@@ -70,6 +70,29 @@ const prismaStub = {
       const owner = usersByClerk[where.user.clerkId];
       return rows.find((r) => r.id === where.id && r.userId === owner) ?? null;
     },
+    // Backs the overlap guard: the owner's timed events in the candidate's window.
+    findMany: async ({
+      where,
+    }: {
+      where: {
+        user?: { clerkId: string };
+        userId?: string;
+        allDay?: boolean;
+        startsAt?: { gte?: Date; lt?: Date };
+      };
+    }) => {
+      const owner =
+        where.userId ?? (where.user ? usersByClerk[where.user.clerkId] : undefined);
+      const gte = where.startsAt?.gte;
+      const lt = where.startsAt?.lt;
+      return rows.filter(
+        (r) =>
+          r.userId === owner &&
+          (where.allDay === undefined || r.allDay === where.allDay) &&
+          (!gte || r.startsAt.getTime() >= gte.getTime()) &&
+          (!lt || r.startsAt.getTime() < lt.getTime()),
+      );
+    },
     update: async ({
       where,
       data,
@@ -231,5 +254,49 @@ describe("PATCH /api/aura/calendar/events/[eventId]", () => {
     await patch("evt_1", validEdit({ placeText: "Colaba" }));
     expect(rows[0]?.latitude).toBe(18.9);
     expect(rows[0]?.timezone).toBe("Asia/Kolkata");
+  });
+
+  it("does not clash with itself when the same event is edited in place", async () => {
+    // Rename evt_1 while keeping its own time — it must not warn against itself.
+    const response = await patch(
+      "evt_1",
+      validEdit({ startsAt: "2026-08-20T13:00:00.000Z", title: "Dinner renamed" }),
+    );
+    expect(response.status).toBe(200);
+    expect(rows[0]?.title).toBe("Dinner renamed");
+  });
+
+  it("warns (409) when the edit's new time overlaps another event", async () => {
+    rows.push(
+      seedRow({
+        id: "evt_3",
+        userId: "u1",
+        title: "Gym",
+        startsAt: new Date("2026-08-21T12:30:00.000Z"),
+        endsAt: new Date("2026-08-21T13:30:00.000Z"),
+      }),
+    );
+    // Move evt_1 to 13:00 — inside Gym's 12:30–13:30.
+    const response = await patch("evt_1", validEdit());
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.code).toBe("time-clash");
+    expect(body.clashes.map((clash: { title: string }) => clash.title)).toEqual(["Gym"]);
+    expect(rows[0]?.title).toBe("Dinner"); // unchanged
+  });
+
+  it("saves the overlapping edit when allowOverlap waives the guard", async () => {
+    rows.push(
+      seedRow({
+        id: "evt_3",
+        userId: "u1",
+        title: "Gym",
+        startsAt: new Date("2026-08-21T12:30:00.000Z"),
+        endsAt: new Date("2026-08-21T13:30:00.000Z"),
+      }),
+    );
+    const response = await patch("evt_1", validEdit({ allowOverlap: true }));
+    expect(response.status).toBe(200);
+    expect(rows[0]?.title).toBe("Dinner (moved)");
   });
 });

@@ -64,6 +64,7 @@ import {
   type CivilDate,
 } from "@/lib/calendar-week";
 import { shortPlaceLabel } from "@/lib/calendar-place";
+import { findClashes } from "@/lib/calendar-clash";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -962,6 +963,7 @@ export function CalendarSurface() {
         <AddEventDialog
           defaultDate={addFor}
           event={editEvent}
+          existingEvents={events}
           onClose={() => {
             setAdding(false);
             setEditEvent(null);
@@ -2085,19 +2087,50 @@ function SmartPlanningBanner({ onTurnOn }: { onTurnOn: () => void }) {
   );
 }
 
+/** Sentence fragment naming the events a new/edited event overlaps, e.g.
+ *  `"Lunch"` or `"Lunch" and "Gym"`. */
+function clashSentence(titles: string[]): string {
+  const quoted = titles.map((title) => `“${title}”`);
+  if (quoted.length <= 1) return quoted[0] ?? "another event";
+  if (quoted.length === 2) return `${quoted[0]} and ${quoted[1]}`;
+  return `${quoted.slice(0, -1).join(", ")}, and ${quoted[quoted.length - 1]}`;
+}
+
+/** The wire body for a create/edit, before the overlap flag is attached. */
+type EventPayload = {
+  title: string;
+  occasion: string;
+  allDay: boolean;
+  startsAt: string;
+  endsAt: string | undefined;
+  placeText: string;
+};
+
 function AddEventDialog({
   defaultDate,
   event: editing,
+  existingEvents,
   onClose,
   onSaved,
 }: {
   defaultDate: CivilDate | null;
   // The event being edited, or `null`/undefined to add a new one.
   event?: PlannedEventDto | null;
+  // The loaded week's events, for the instant client-side overlap pre-check. The
+  // server re-checks authoritatively (it sees events outside the loaded week).
+  existingEvents: PlannedEventDto[];
   onClose: () => void;
   onSaved: (event: PlannedEventDto, mode: "created" | "updated") => void;
 }) {
   const isEditing = Boolean(editing);
+  // A raised overlap warning: the titles it clashes with, plus the exact payload
+  // to re-send with `allowOverlap` if the owner chooses to save anyway. `null`
+  // when no warning is showing.
+  const [clash, setClash] = React.useState<{
+    titles: string[];
+    payload: EventPayload;
+  } | null>(null);
+  const [overlapSaving, setOverlapSaving] = React.useState(false);
   const {
     register,
     control,
@@ -2141,8 +2174,52 @@ function AddEventDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  // POST/PATCH the event. `allowOverlap` waives the server's soft time-clash
+  // guard — set once the owner has seen the warning and chosen to save anyway.
+  async function sendEvent(payload: EventPayload, allowOverlap: boolean) {
+    let response: Response;
+    try {
+      response = await fetch(
+        editing
+          ? `/api/aura/calendar/events/${editing.id}`
+          : "/api/aura/calendar/events",
+        {
+          method: editing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, allowOverlap }),
+        },
+      );
+    } catch {
+      toast.error("Couldn't reach the server", {
+        description: "Check your connection and try again.",
+      });
+      return;
+    }
+
+    const body = (await response.json().catch(() => null)) as
+      | (EventResponse & { code?: string; clashes?: { id: string; title: string }[] })
+      | null;
+
+    // The server is authoritative — it sees events outside the loaded week the
+    // client pre-check can't. A clash it catches raises the same confirm prompt
+    // rather than a hard error.
+    if (response.status === 409 && body?.code === "time-clash") {
+      setClash({ titles: (body.clashes ?? []).map((c) => c.title), payload });
+      return;
+    }
+
+    if (!response.ok || !body?.event) {
+      toast.error(isEditing ? "We couldn't save your changes" : "We couldn't add your event", {
+        description: body?.error ?? "Please try again.",
+      });
+      return;
+    }
+
+    onSaved(body.event, isEditing ? "updated" : "created");
+  }
+
   async function onSubmit(values: PlannedEventFormInput) {
-    const payload = {
+    const payload: EventPayload = {
       title: values.title,
       occasion: values.occasion,
       allDay: values.allDay,
@@ -2153,34 +2230,34 @@ function AddEventDialog({
       placeText: values.placeText,
     };
 
-    let response: Response;
+    // Instant pre-check against the loaded week: a clash raises the confirm
+    // prompt before any request, so an accidental double-book is caught even
+    // offline. Editing excludes the event itself.
+    const clashes = findClashes(
+      { startsAt: payload.startsAt, endsAt: payload.endsAt ?? null, allDay: payload.allDay },
+      existingEvents,
+      editing?.id,
+    );
+    if (clashes.length > 0) {
+      setClash({ titles: clashes.map((c) => c.title), payload });
+      return;
+    }
+
+    await sendEvent(payload, false);
+  }
+
+  /** Save despite the overlap warning: re-send the held payload with the guard
+   *  waived. */
+  async function confirmOverlap() {
+    if (!clash) return;
+    const { payload } = clash;
+    setClash(null);
+    setOverlapSaving(true);
     try {
-      response = await fetch(
-        editing
-          ? `/api/aura/calendar/events/${editing.id}`
-          : "/api/aura/calendar/events",
-        {
-          method: editing ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
-    } catch {
-      toast.error("Couldn't reach the server", {
-        description: "Check your connection and try again.",
-      });
-      return;
+      await sendEvent(payload, true);
+    } finally {
+      setOverlapSaving(false);
     }
-
-    const body = (await response.json().catch(() => null)) as EventResponse | null;
-    if (!response.ok || !body?.event) {
-      toast.error(isEditing ? "We couldn't save your changes" : "We couldn't add your event", {
-        description: body?.error ?? "Please try again.",
-      });
-      return;
-    }
-
-    onSaved(body.event, isEditing ? "updated" : "created");
   }
 
   const fieldClass =
@@ -2200,7 +2277,49 @@ function AddEventDialog({
         if (mouseEvent.target === mouseEvent.currentTarget && !isDirty) onClose();
       }}
     >
-      <section className="bg-card text-card-foreground my-auto w-full max-w-lg rounded-3xl border p-6 shadow-2xl sm:p-8">
+      <section className="bg-card text-card-foreground relative my-auto w-full max-w-lg rounded-3xl border p-6 shadow-2xl sm:p-8">
+        {/* Soft overlap warning, in place of a hard block: a time clash is often
+            deliberate, so this catches the accidental double-book and lets the
+            owner proceed on purpose. */}
+        {clash ? (
+          <div className="bg-card/95 absolute inset-0 z-10 grid place-items-center rounded-3xl p-6 backdrop-blur-sm">
+            <div role="alertdialog" aria-label="Time clash" className="w-full max-w-sm text-center">
+              <div className="mx-auto grid size-12 place-items-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                <TriangleAlert className="size-6" aria-hidden="true" />
+              </div>
+              <h3 className="font-heading mt-3 text-xl tracking-wide uppercase">
+                Times overlap
+              </h3>
+              <p className="text-muted-foreground mt-2 text-sm text-pretty">
+                This {isEditing ? "new time" : "event"} overlaps {clashSentence(clash.titles)}.
+                Add it anyway?
+              </p>
+              <div className="mt-5 flex justify-center gap-3">
+                <Button
+                  type="button"
+                  onClick={() => void confirmOverlap()}
+                  disabled={overlapSaving}
+                  className="bg-brand-magenta text-brand-magenta-foreground rounded-full px-6 hover:brightness-105"
+                >
+                  {overlapSaving
+                    ? "Saving…"
+                    : isEditing
+                      ? "Save anyway"
+                      : "Add anyway"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setClash(null)}
+                  disabled={overlapSaving}
+                  className="rounded-full px-6"
+                >
+                  Go back
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <h2 className="font-heading text-brand-magenta text-2xl tracking-wide uppercase sm:text-3xl">
           {isEditing ? "Edit event" : "Add an event"}
         </h2>
@@ -2311,7 +2430,7 @@ function AddEventDialog({
           <div className="mt-1 flex gap-3">
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || overlapSaving}
               className="bg-brand-magenta text-brand-magenta-foreground rounded-full px-6 hover:brightness-105"
             >
               {isEditing

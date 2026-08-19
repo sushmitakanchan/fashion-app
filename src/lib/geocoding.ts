@@ -194,3 +194,72 @@ export async function geocodePlace(
   }
   return { status: "unresolved" };
 }
+
+/** One autocomplete candidate: a resolvable label plus the coordinates it
+ *  resolves to, so a pick needs no second lookup. */
+export type PlaceSuggestion = {
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone: string | null;
+};
+
+/**
+ * Autocomplete candidates for a partial place query, best-ranked first — the
+ * live-typing companion to {@link geocodePlace}. It searches the most-specific
+ * token and ranks by the same region-hint-then-population rule, so every option
+ * the owner sees is one the planner would actually resolve (picking a bare venue
+ * name that geocodes to nothing is what this prevents). De-duplicates by label
+ * and returns `[]` for an empty query or on any failure — this feeds a dropdown,
+ * never an error. Only the `placeText` a caller typed reaches here; no title.
+ */
+export async function searchPlaces(
+  query: string,
+  signal?: AbortSignal,
+  limit = 5,
+): Promise<PlaceSuggestion[]> {
+  const tokens = placeTokens(query);
+  if (tokens.length === 0) return [];
+
+  const results = await fetchGeocoding(tokens[0], signal);
+  if (!Array.isArray(results) || results.length === 0) return [];
+
+  const hints = tokens
+    .slice(1)
+    .map(fold)
+    .filter((hint) => hint.length > 0);
+
+  const scored = results.map((place) => {
+    const regionText = fold(
+      [place.admin1, place.admin2, place.admin3, place.country]
+        .filter((part): part is string => Boolean(part))
+        .join(" "),
+    );
+    const regionMatch = hints.some(
+      (hint) => regionText.length > 0 && regionText.includes(hint),
+    );
+    const population = typeof place.population === "number" ? place.population : 0;
+    return {
+      place,
+      score: (regionMatch ? Number.MAX_SAFE_INTEGER : 0) + population,
+    };
+  });
+  scored.sort((a, b) => b.score - a.score);
+
+  const seen = new Set<string>();
+  const suggestions: PlaceSuggestion[] = [];
+  for (const { place } of scored) {
+    const label = buildLabel(place);
+    const key = fold(label);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    suggestions.push({
+      label,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      timezone: place.timezone ?? null,
+    });
+    if (suggestions.length >= limit) break;
+  }
+  return suggestions;
+}

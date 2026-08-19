@@ -569,6 +569,33 @@ const plannedEventPlaceWire = z
   .optional();
 
 /**
+ * Body for the place-resolution probe the Add/Edit event form fires on blur — a
+ * dry run of the same geocoding the planner does, used only to tell the owner
+ * whether the place they typed will produce weather-based outfit suggestions. A
+ * non-empty place is required (an empty field has nothing to resolve).
+ */
+export const plannedEventPlaceResolveSchema = z.object({
+  placeText: z
+    .string()
+    .trim()
+    .min(1, "Type a place to check")
+    .max(PLANNED_EVENT_PLACE_MAX_LENGTH, PLANNED_EVENT_PLACE_TOO_LONG),
+});
+
+/**
+ * Query for the place autocomplete the Add/Edit event form calls while typing.
+ * A 2-char floor keeps a single stray keystroke from hitting the network; the
+ * same length cap as the field bounds the token that leaves.
+ */
+export const plannedEventPlaceSearchSchema = z.object({
+  q: z
+    .string()
+    .trim()
+    .min(2, "Keep typing to search")
+    .max(PLANNED_EVENT_PLACE_MAX_LENGTH, PLANNED_EVENT_PLACE_TOO_LONG),
+});
+
+/**
  * The browser form for adding a manual event. Fields mirror the `PlannedEvent`
  * shape, but `when` is captured as local `datetime-local` / `date` strings the
  * viewer's browser interprets in their own timezone; the component converts them

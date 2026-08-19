@@ -3,7 +3,12 @@
 import * as React from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Controller, useForm, useWatch } from "react-hook-form";
+import {
+  Controller,
+  useForm,
+  useWatch,
+  type ControllerRenderProps,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -1732,6 +1737,327 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-destructive text-sm">{message}</p>;
 }
 
+/**
+ * The result of dry-running the planner's place geocoding for the typed place.
+ * `checking`/`error`/`idle` are client-only; the other three mirror the probe
+ * route's JSON. `consent_required` is what turns the hint into a Smart Planning
+ * nudge rather than a place-found/not-found message.
+ */
+type PlaceProbe =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "resolved"; placeLabel: string; approximate: boolean }
+  | { status: "unresolved" }
+  | { status: "consent_required" }
+  | { status: "error" };
+
+/**
+ * Inline feedback under the Place field. It answers one question — "will this
+ * place get me weather-based outfit suggestions?" — and, when Smart Planning is
+ * off, nudges the owner to turn it on (the only reason the lookup is withheld).
+ */
+function PlaceProbeHint({ probe }: { probe: PlaceProbe }) {
+  const base = "mt-1 flex items-center gap-1.5 text-sm";
+
+  switch (probe.status) {
+    case "idle":
+      return null;
+    case "checking":
+      return (
+        <p className={`${base} text-muted-foreground`}>
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+          Checking this place…
+        </p>
+      );
+    case "resolved":
+      // Whether the place matched exactly or coarsened to its area (the expected
+      // path for a "venue, area" entry), the weather comes from the same place —
+      // so we confirm it the same way, without a "nearest match" caveat.
+      return (
+        <p className={`${base} text-brand-magenta`}>
+          <Sparkles className="size-3.5 shrink-0" aria-hidden />
+          <span>
+            Weather-ready — we&rsquo;ll use <strong>{probe.placeLabel}</strong> to
+            suggest an outfit.
+          </span>
+        </p>
+      );
+    case "unresolved":
+      return (
+        <p className={`${base} text-muted-foreground`}>
+          <TriangleAlert className="size-3.5 shrink-0" aria-hidden />
+          Couldn&rsquo;t find that place. Add a neighbourhood or city so we can
+          check the weather.
+        </p>
+      );
+    case "consent_required":
+      return (
+        <p className={`${base} text-muted-foreground`}>
+          <Sparkles className="text-brand-magenta size-3.5 shrink-0" aria-hidden />
+          <span>
+            <Link
+              href="/aura/calendar/settings"
+              className="text-brand-magenta font-medium underline underline-offset-2"
+            >
+              Turn on Smart Planning
+            </Link>{" "}
+            to check the weather and suggest an outfit for this place.
+          </span>
+        </p>
+      );
+    case "error":
+      return (
+        <p className={`${base} text-muted-foreground`}>
+          Couldn&rsquo;t check that place right now.
+        </p>
+      );
+  }
+}
+
+/** One autocomplete candidate — mirrors `PlaceSuggestion` from the server-only
+ *  geocoding lib, redeclared here so this client file never imports it. */
+type PlaceSuggestion = {
+  label: string;
+  latitude: number;
+  longitude: number;
+  timezone: string | null;
+};
+
+/** The place segment currently being typed — the text after the last comma. */
+function lastSegment(value: string): string {
+  return value.split(",").pop()?.trim() ?? "";
+}
+
+/** Swap the last comma segment for a chosen area, keeping any venue prefix:
+ *  ("Amudham Cafe, Brooke", "Brookefield") → "Amudham Cafe, Brookefield". */
+function replaceLastSegment(value: string, replacement: string): string {
+  const commaIndex = value.lastIndexOf(",");
+  if (commaIndex === -1) return replacement;
+  return `${value.slice(0, commaIndex)}, ${replacement}`;
+}
+
+/**
+ * The Place field: a place-name combobox over the same Open-Meteo index the
+ * planner uses. As the owner types we suggest resolvable names — so they pick a
+ * label that geocodes (and gets weather) instead of a bare venue name that
+ * doesn't. Picking a suggestion is resolvable by construction; free-typing is
+ * still checked on blur via {@link PlaceProbeHint}. All outside contact is
+ * consent-gated server-side; a `consent_required` reply turns the hint into the
+ * Smart Planning nudge. An edited event's existing place seeds `lastProbed` so
+ * an unchanged place isn't re-checked.
+ */
+function PlaceField({
+  field,
+  inputClassName,
+  invalid,
+  error,
+  initialPlace,
+}: {
+  field: ControllerRenderProps<PlannedEventFormInput, "placeText">;
+  inputClassName: string;
+  invalid: boolean;
+  error?: string;
+  initialPlace: string | null;
+}) {
+  const [probe, setProbe] = React.useState<PlaceProbe>({ status: "idle" });
+  const [suggestions, setSuggestions] = React.useState<PlaceSuggestion[]>([]);
+  const [open, setOpen] = React.useState(false);
+  const [activeIndex, setActiveIndex] = React.useState(-1);
+
+  const lastProbed = React.useRef<string | null>(initialPlace);
+  const searchAbort = React.useRef<AbortController | null>(null);
+  const probeAbort = React.useRef<AbortController | null>(null);
+  const debounce = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listId = React.useId();
+
+  React.useEffect(
+    () => () => {
+      searchAbort.current?.abort();
+      probeAbort.current?.abort();
+      if (debounce.current) clearTimeout(debounce.current);
+    },
+    [],
+  );
+
+  function closeList() {
+    setOpen(false);
+    setActiveIndex(-1);
+  }
+
+  async function runSearch(text: string) {
+    searchAbort.current?.abort();
+    const controller = new AbortController();
+    searchAbort.current = controller;
+    try {
+      const response = await fetch(
+        `/api/aura/calendar/place/search?q=${encodeURIComponent(text)}`,
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      const data = (await response.json().catch(() => null)) as
+        | { status: "ok"; places: PlaceSuggestion[] }
+        | { status: "consent_required" }
+        | null;
+      if (controller.signal.aborted || !response.ok || !data) return;
+      if (data.status === "consent_required") {
+        setSuggestions([]);
+        closeList();
+        // Surface the nudge as soon as we know egress is gated.
+        setProbe({ status: "consent_required" });
+        return;
+      }
+      setSuggestions(data.places);
+      setActiveIndex(-1);
+      setOpen(data.places.length > 0);
+    } catch {
+      // A failed search just yields no dropdown; the blur probe still speaks.
+    }
+  }
+
+  function onType(next: string) {
+    field.onChange(next);
+    if (probe.status !== "idle") setProbe({ status: "idle" });
+    if (debounce.current) clearTimeout(debounce.current);
+    // Autocomplete only the segment being typed — the part after the last comma.
+    // A "Amudham Cafe, Brooke" entry searches "Brooke", so a venue with an area
+    // hint still surfaces the resolvable area (Open-Meteo indexes places, not
+    // venues); picking it keeps the venue prefix.
+    const segment = lastSegment(next);
+    if (segment.length < 2) {
+      searchAbort.current?.abort();
+      setSuggestions([]);
+      closeList();
+      return;
+    }
+    debounce.current = setTimeout(() => void runSearch(segment), 250);
+  }
+
+  function choose(suggestion: PlaceSuggestion) {
+    const next = replaceLastSegment(field.value ?? "", suggestion.label);
+    field.onChange(next);
+    // Seed with the FULL text so the blur probe doesn't re-check what we resolved.
+    lastProbed.current = next;
+    setSuggestions([]);
+    closeList();
+    // A picked suggestion resolves by construction — confirm without a probe.
+    setProbe({
+      status: "resolved",
+      placeLabel: suggestion.label,
+      approximate: false,
+    });
+  }
+
+  async function runProbe(raw: string) {
+    const text = raw.trim();
+    if (!text) {
+      lastProbed.current = "";
+      setProbe({ status: "idle" });
+      return;
+    }
+    if (text === lastProbed.current) return;
+    lastProbed.current = text;
+
+    probeAbort.current?.abort();
+    const controller = new AbortController();
+    probeAbort.current = controller;
+    setProbe({ status: "checking" });
+    try {
+      const response = await fetch("/api/aura/calendar/place/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeText: text }),
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      const data = (await response.json().catch(() => null)) as PlaceProbe | null;
+      if (controller.signal.aborted) return;
+      setProbe(response.ok && data ? data : { status: "error" });
+    } catch {
+      if (!controller.signal.aborted) setProbe({ status: "error" });
+    }
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open || suggestions.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((index) => (index + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((index) =>
+        index <= 0 ? suggestions.length - 1 : index - 1,
+      );
+    } else if (event.key === "Enter" && activeIndex >= 0) {
+      // Pick the highlighted suggestion — never submit the form from here.
+      event.preventDefault();
+      choose(suggestions[activeIndex]);
+    } else if (event.key === "Escape") {
+      closeList();
+    }
+  }
+
+  return (
+    <div className="relative">
+      <Input
+        {...field}
+        id="event-place"
+        className={inputClassName}
+        placeholder="e.g. Amudham Cafe, Brookefield"
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={
+          activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined
+        }
+        aria-invalid={invalid}
+        onChange={(event) => onType(event.currentTarget.value)}
+        onKeyDown={onKeyDown}
+        onBlur={(event) => {
+          void field.onBlur();
+          closeList();
+          void runProbe(event.currentTarget.value);
+        }}
+      />
+      {open && suggestions.length > 0 && (
+        <ul
+          id={listId}
+          role="listbox"
+          className="bg-popover text-popover-foreground absolute z-50 mt-1 w-full overflow-hidden rounded-xl border shadow-lg"
+        >
+          {suggestions.map((suggestion, index) => (
+            <li
+              key={suggestion.label}
+              id={`${listId}-opt-${index}`}
+              role="option"
+              aria-selected={index === activeIndex}
+              // Select on mousedown so the pick lands before the input blurs.
+              onMouseDown={(event) => {
+                event.preventDefault();
+                choose(suggestion);
+              }}
+              onMouseEnter={() => setActiveIndex(index)}
+              className={cn(
+                "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm",
+                index === activeIndex && "bg-accent text-accent-foreground",
+              )}
+            >
+              <MapPin
+                className="text-muted-foreground size-3.5 shrink-0"
+                aria-hidden
+              />
+              {suggestion.label}
+            </li>
+          ))}
+        </ul>
+      )}
+      <FieldError message={error} />
+      {!error && <PlaceProbeHint probe={probe} />}
+    </div>
+  );
+}
+
 /** Inline invitation to turn on Smart Planning, shown before any outside contact
  *  when the viewed week has a placed event whose weather we could fetch. */
 function SmartPlanningBanner({ onTurnOn }: { onTurnOn: () => void }) {
@@ -1967,14 +2293,19 @@ function AddEventDialog({
               Place{" "}
               <span className="text-muted-foreground font-normal">(optional)</span>
             </Label>
-            <Input
-              id="event-place"
-              className={fieldClass}
-              placeholder="e.g. Bandra, or a venue name"
-              aria-invalid={!!errors.placeText}
-              {...register("placeText")}
+            <Controller
+              control={control}
+              name="placeText"
+              render={({ field }) => (
+                <PlaceField
+                  field={field}
+                  inputClassName={fieldClass}
+                  invalid={!!errors.placeText}
+                  error={errors.placeText?.message}
+                  initialPlace={editing?.placeText ?? null}
+                />
+              )}
             />
-            <FieldError message={errors.placeText?.message} />
           </div>
 
           <div className="mt-1 flex gap-3">

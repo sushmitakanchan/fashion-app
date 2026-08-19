@@ -1082,6 +1082,7 @@ function DaySection({
                 today={today}
                 tz={tz}
                 weatherEnabled={weatherEnabled && !past}
+                canEdit={!past}
                 canPlan={!past}
                 planning={planningId === event.id}
                 weekPlanning={weekPlanning}
@@ -1198,6 +1199,7 @@ function EventCard({
   today,
   tz,
   weatherEnabled,
+  canEdit,
   canPlan,
   planning,
   weekPlanning,
@@ -1213,6 +1215,7 @@ function EventCard({
   today: CivilDate;
   tz: string;
   weatherEnabled: boolean;
+  canEdit: boolean;
   canPlan: boolean;
   planning: boolean;
   weekPlanning: boolean;
@@ -1252,16 +1255,21 @@ function EventCard({
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={onEdit}
-              aria-label={`Edit ${event.title}`}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <Pencil className="size-4" />
-            </Button>
+            {/* A passed event is history — its plan can't change, so it loses its
+                pencil just as it loses "Plan this outfit". Delete stays: pruning
+                the archive is still allowed. */}
+            {canEdit ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={onEdit}
+                aria-label={`Edit ${event.title}`}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <Pencil className="size-4" />
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"

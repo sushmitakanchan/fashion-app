@@ -22,6 +22,7 @@ import { shortPlaceLabel } from "@/lib/calendar-place";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { EventWeather, TicketField } from "@/components/aura/event-weather";
+import { AuraPortraitLoading, PLAN_CAPTIONS } from "@/components/aura/aura-portrait-loading";
 import { SmartPlanningDisclosure } from "@/components/aura/smart-planning-disclosure";
 import { WardrobeOutfitPicker } from "@/components/aura/wardrobe-outfit-picker";
 import {
@@ -568,6 +569,12 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
             <div className="border-border bg-card text-muted-foreground rounded-xl border p-5 text-center text-sm text-pretty">
               This event has passed — its outfit is history now.
             </div>
+          ) : planning ? (
+            // Planning-in-progress: the panel that held the CTA becomes the
+            // darkroom loader while AURA assembles the look (#209), so the ~minute
+            // wait gets the same treatment as preview generation rather than a bare
+            // button spinner. The ghost cards shimmer alongside it.
+            <AuraPortraitLoading title="Planning your outfit" captions={PLAN_CAPTIONS} />
           ) : (
             // Ghost Rack action panel: the single action an unplanned event offers.
             <div className="border-border bg-card flex flex-col gap-3 rounded-xl border p-5 text-center">
@@ -575,29 +582,14 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
               <p className="text-muted-foreground text-xs text-pretty">
                 Let AURA pick a look from your wardrobe for this event, or build one by hand.
               </p>
-              <Button
-                type="button"
-                onClick={() => void plan()}
-                disabled={planning}
-                className="rounded-full"
-              >
-                {planning ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    Planning your outfit…
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="size-4" />
-                    Plan this outfit
-                  </>
-                )}
+              <Button type="button" onClick={() => void plan()} className="rounded-full">
+                <Sparkles className="size-4" />
+                Plan this outfit
               </Button>
               <Button
                 type="button"
                 variant="ghost"
                 onClick={() => setPickerOpen(true)}
-                disabled={planning}
                 className="text-muted-foreground hover:text-foreground rounded-full"
               >
                 Build it myself

@@ -28,6 +28,17 @@ export const TRY_ON_CAPTIONS = [
   "Almost runway-ready…",
 ] as const;
 
+// The planner's own narration: choosing pieces from the wardrobe for the
+// occasion and forecast. Loops like the others — the real finish is the outfit
+// appearing on the Rack — and never claims a gap it hasn't found.
+export const PLAN_CAPTIONS = [
+  "Reading the occasion…",
+  "Checking the forecast…",
+  "Browsing your wardrobe…",
+  "Assembling a look…",
+  "Balancing the palette…",
+] as const;
+
 const CAPTION_INTERVAL_MS = 2800;
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";

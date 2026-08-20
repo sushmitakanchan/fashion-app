@@ -63,18 +63,27 @@ function eventEndMs(event: PlannedEventDto): number {
  *  grid, so an unplanned event previews three empty places to fill. */
 const GHOST_SLOTS = 3;
 
-/** One empty place on the Ghost Rack: a dashed placeholder that reuses the
- *  gap-card visual language. It shimmers while a plan is being generated. */
+/** One empty place on the Ghost Rack. It mirrors the planned `GarmentCard` shell
+ *  — a dashed image area over a faint name/colour meta row — so the empty grid
+ *  occupies the exact footprint the filled 3-up will, and the pieces drop into
+ *  place without a reflow. It shimmers while a plan is being generated (stilled
+ *  under reduced-motion). */
 function GhostCard({ shimmer }: { shimmer: boolean }) {
   return (
     <div
       className={cn(
-        "border-border/70 bg-muted/30 flex aspect-[1/1.12] flex-col items-center justify-center gap-2 rounded-xl border border-dashed",
-        shimmer && "animate-pulse",
+        "border-border/70 bg-card/40 flex flex-col overflow-hidden rounded-xl border border-dashed",
+        shimmer && "animate-pulse motion-reduce:animate-none",
       )}
       aria-hidden="true"
     >
-      <Shirt className="text-muted-foreground/40 size-6" />
+      <div className="bg-muted/30 grid aspect-[1/1.12] w-full place-items-center">
+        <Shirt className="text-muted-foreground/40 size-6" />
+      </div>
+      <div className="flex flex-col gap-1.5 p-3">
+        <span className="bg-muted-foreground/15 h-2.5 w-2/3 rounded-full" />
+        <span className="bg-muted-foreground/10 h-2 w-1/3 rounded-full" />
+      </div>
     </div>
   );
 }
@@ -576,24 +585,49 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
             // button spinner. The ghost cards shimmer alongside it.
             <AuraPortraitLoading title="Planning your outfit" captions={PLAN_CAPTIONS} />
           ) : (
-            // Ghost Rack action panel: the single action an unplanned event offers.
-            <div className="border-border bg-card flex flex-col gap-3 rounded-xl border p-5 text-center">
-              <p className="text-sm font-medium">No outfit planned yet</p>
-              <p className="text-muted-foreground text-xs text-pretty">
-                Let AURA pick a look from your wardrobe for this event, or build one by hand.
-              </p>
-              <Button type="button" onClick={() => void plan()} className="rounded-full">
-                <Sparkles className="size-4" />
-                Plan this outfit
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setPickerOpen(true)}
-                className="text-muted-foreground hover:text-foreground rounded-full"
+            // Ghost Rack action panel. It fills the try-on panel's footprint — a
+            // dashed portrait placeholder where the preview will land once planned
+            // — so the empty state is a ghost of the filled look and the actions
+            // sit exactly where "Plan" (and, mid-plan, the darkroom loader) puts
+            // its result. No reflow between empty → planning → planned.
+            <div className="border-border bg-card flex flex-col gap-4 rounded-xl border p-5 text-center">
+              <div
+                className="border-border/70 bg-muted/30 grid aspect-[3/4] place-items-center rounded-lg border border-dashed"
+                aria-hidden="true"
               >
-                Build it myself
-              </Button>
+                {/* The forming subject: a faint bust marking where the portrait
+                    wearing this look will render. */}
+                <svg
+                  viewBox="0 0 120 160"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-muted-foreground/30 w-1/2"
+                >
+                  <circle cx="60" cy="46" r="26" />
+                  <path d="M18 152c0-27 19-46 42-46s42 19 42 46" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium">No outfit planned yet</p>
+                <p className="text-muted-foreground mt-1.5 text-xs text-pretty">
+                  Let AURA pick a look from your wardrobe for this event, or build one by hand.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button type="button" onClick={() => void plan()} className="rounded-full">
+                  <Sparkles className="size-4" />
+                  Plan this outfit
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setPickerOpen(true)}
+                  className="text-muted-foreground hover:text-foreground rounded-full"
+                >
+                  Build it myself
+                </Button>
+              </div>
             </div>
           )}
         </aside>

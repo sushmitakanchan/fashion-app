@@ -11,6 +11,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRight,
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
@@ -33,7 +34,6 @@ import {
 } from "@/lib/validations";
 import {
   planWeekSequentially,
-  shouldSuggestReplan,
   type PlannedOutfitDto,
 } from "@/lib/aura-outfit-planner";
 import { PLANNING_POLICY_VERSION } from "@/lib/planning-policy";
@@ -61,13 +61,7 @@ import {
 } from "@/components/aura/event-weather";
 import { SmartPlanningDisclosure } from "@/components/aura/smart-planning-disclosure";
 import { GoogleCalendarConnect } from "@/components/aura/google-calendar-connect";
-import {
-  PlannedOutfitView,
-  PlanOutfitButton,
-  requestPlan,
-  requestReplan,
-  type OutfitEdit,
-} from "@/components/aura/outfit";
+import { requestPlan } from "@/components/aura/outfit";
 
 export type PlannedEventDto = {
   id: string;
@@ -218,24 +212,14 @@ export function CalendarSurface() {
   // is what triggers it.
   const [consentActive, setConsentActive] = React.useState<boolean | null>(null);
   const [showDisclosure, setShowDisclosure] = React.useState(false);
-  // The event currently being planned (drives its inline spinner), and — when a
-  // plan is blocked on consent — the event to resume once Smart Planning is on.
-  const [planningId, setPlanningId] = React.useState<string | null>(null);
-  const pendingPlanRef = React.useRef<PlannedEventDto | null>(null);
   // Sequential "Plan my week" progress (null when not running), and a pending
   // flag so a week plan blocked on consent resumes once Smart Planning is on.
+  // Per-event planning now lives on the detail page, so the week batch is the
+  // only planning this surface still drives.
   const [weekPlan, setWeekPlan] = React.useState<{ done: number; total: number } | null>(
     null,
   );
   const pendingWeekRef = React.useRef(false);
-  // The outfit currently being edited inline (Regenerate/Swap) and, for a Swap,
-  // the specific piece — so only the touched tile and the touched outfit show a
-  // spinner. Held apart from `planningId` (the initial plan) so both can coexist.
-  const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [swapItemId, setSwapItemId] = React.useState<string | null>(null);
-  const pendingReplanRef = React.useRef<{ event: PlannedEventDto; edit: OutfitEdit } | null>(
-    null,
-  );
   const queryClient = useQueryClient();
 
   // Resolve the viewer's zone and today's civil date once, after mount. Done
@@ -325,17 +309,10 @@ export function CalendarSurface() {
       }
       setShowDisclosure(false);
       setConsentActive(true);
-      // Resume whatever raised the disclosure: a single "Plan this outfit", a
-      // whole-week "Plan my week", or an inline Regenerate/Swap.
-      const pendingEvent = pendingPlanRef.current;
+      // Resume the "Plan my week" batch if that's what raised the disclosure.
       const pendingWeek = pendingWeekRef.current;
-      const pendingReplan = pendingReplanRef.current;
-      pendingPlanRef.current = null;
       pendingWeekRef.current = false;
-      pendingReplanRef.current = null;
       if (pendingWeek) void planWeek();
-      else if (pendingEvent) void planOutfit(pendingEvent);
-      else if (pendingReplan) void replanOutfit(pendingReplan.event, pendingReplan.edit);
     } catch {
       toast.error("We couldn't turn on Smart Planning", {
         description: "Please try again.",
@@ -351,36 +328,6 @@ export function CalendarSurface() {
         candidate.id === eventId ? { ...candidate, outfit } : candidate,
       ),
     );
-  }
-
-  /** Plan one event's outfit with a single AI call, gated by Smart Planning
-   *  consent. If consent isn't active yet, the route replies 403 and we raise the
-   *  disclosure, resuming this plan on agreement. */
-  async function planOutfit(event: PlannedEventDto) {
-    setPlanningId(event.id);
-    try {
-      const result = await requestPlan(event.id, []);
-      if ("consentRequired" in result) {
-        pendingPlanRef.current = event;
-        setShowDisclosure(true);
-        return;
-      }
-      if ("error" in result) {
-        toast.error("We couldn't plan this outfit", { description: result.error });
-        return;
-      }
-      injectOutfit(event.id, result.outfit);
-      toast.success("Outfit planned", {
-        description:
-          result.outfit.items.length > 0
-            ? `${result.outfit.items.length} ${result.outfit.items.length === 1 ? "piece" : "pieces"} from your wardrobe`
-            : "AURA flagged a wardrobe gap.",
-      });
-    } catch {
-      toast.error("We couldn't plan this outfit", { description: "Please try again." });
-    } finally {
-      setPlanningId((current) => (current === event.id ? null : current));
-    }
   }
 
   /** "Plan my week": fill only the unplanned, non-past events of the viewed week,
@@ -430,48 +377,6 @@ export function CalendarSurface() {
       }
     } finally {
       setWeekPlan(null);
-    }
-  }
-
-  /** Nudge an already-planned outfit inline (#178): Regenerate the whole pick or
-   *  Swap one piece. Exclusion is applied server-side in the prompt (soft), so the
-   *  result is a fresh outfit that flips provenance to `user_edited`. Like the
-   *  initial plan, a withdrawn consent replies 403 and we raise the disclosure,
-   *  resuming this exact edit on agreement. */
-  async function replanOutfit(event: PlannedEventDto, edit: OutfitEdit) {
-    if (!event.outfit) return;
-    setEditingId(event.id);
-    if (edit.mode === "swap") setSwapItemId(edit.itemId);
-    try {
-      const result = await requestReplan(event.id, edit);
-
-      if ("consentRequired" in result) {
-        pendingReplanRef.current = { event, edit };
-        setShowDisclosure(true);
-        return;
-      }
-      if ("error" in result) {
-        toast.error(
-          edit.mode === "swap"
-            ? "We couldn't swap that piece"
-            : "We couldn't regenerate this outfit",
-          { description: result.error },
-        );
-        return;
-      }
-
-      injectOutfit(event.id, result.outfit);
-      toast.success(edit.mode === "swap" ? "Piece swapped" : "Outfit regenerated");
-    } catch {
-      toast.error(
-        edit.mode === "swap"
-          ? "We couldn't swap that piece"
-          : "We couldn't regenerate this outfit",
-        { description: "Please try again." },
-      );
-    } finally {
-      setEditingId((current) => (current === event.id ? null : current));
-      setSwapItemId(null);
     }
   }
 
@@ -706,19 +611,12 @@ export function CalendarSurface() {
                 key={day}
                 date={day}
                 today={today}
-                tz={tz}
                 events={eventsByDay.get(day) ?? []}
                 loading={loading}
                 weatherEnabled={weatherEnabled}
-                planningId={planningId}
-                weekPlanning={weekPlan !== null}
-                editingId={editingId}
-                swapItemId={swapItemId}
                 onAdd={() => openAdd(day)}
                 onEdit={setEditEvent}
                 onDelete={deleteEvent}
-                onPlan={planOutfit}
-                onReplan={replanOutfit}
               />
             ))
           )}
@@ -778,8 +676,7 @@ export function CalendarSurface() {
         <SmartPlanningDisclosure
           onAgree={() => void enableSmartPlanning()}
           onCancel={() => {
-            pendingPlanRef.current = null;
-            pendingReplanRef.current = null;
+            pendingWeekRef.current = false;
             setShowDisclosure(false);
           }}
         />
@@ -791,35 +688,21 @@ export function CalendarSurface() {
 function DaySection({
   date,
   today,
-  tz,
   events,
   loading,
   weatherEnabled,
-  planningId,
-  weekPlanning,
-  editingId,
-  swapItemId,
   onAdd,
   onEdit,
   onDelete,
-  onPlan,
-  onReplan,
 }: {
   date: CivilDate;
   today: CivilDate;
-  tz: string;
   events: PlannedEventDto[];
   loading: boolean;
   weatherEnabled: boolean;
-  planningId: string | null;
-  weekPlanning: boolean;
-  editingId: string | null;
-  swapItemId: string | null;
   onAdd: () => void;
   onEdit: (event: PlannedEventDto) => void;
   onDelete: (event: PlannedEventDto) => void;
-  onPlan: (event: PlannedEventDto) => void;
-  onReplan: (event: PlannedEventDto, edit: OutfitEdit) => void;
 }) {
   const past = isPastDate(date, today);
   const isToday = date === today;
@@ -876,20 +759,11 @@ function DaySection({
               </div>
               <EventCard
                 event={event}
-                eventDate={date}
-                today={today}
-                tz={tz}
                 weatherEnabled={weatherEnabled && !past}
                 canEdit={!past}
                 canPlan={!past}
-                planning={planningId === event.id}
-                weekPlanning={weekPlanning}
-                editing={editingId === event.id}
-                swapItemId={editingId === event.id ? swapItemId : null}
                 onEdit={() => onEdit(event)}
                 onDelete={() => onDelete(event)}
-                onPlan={() => onPlan(event)}
-                onReplan={(edit) => onReplan(event, edit)}
               />
             </li>
             );
@@ -991,55 +865,92 @@ function AuraSeal({ idSuffix }: { idSuffix: string }) {
   );
 }
 
+/** The planned/unplanned seal in a slim card's footer. A read-only summary — all
+ *  outfit interaction now lives on the detail page — so it only signals state:
+ *  the AURA seal for an AI plan, a quieter "Your pick" for a hand-built one, and
+ *  a navigational hint when nothing is planned yet. */
+function OutfitSeal({
+  outfit,
+  eventId,
+  canPlan,
+}: {
+  outfit: PlannedOutfitDto | null;
+  eventId: string;
+  canPlan: boolean;
+}) {
+  if (!outfit) {
+    return canPlan ? (
+      <span className="text-muted-foreground flex items-center gap-1 text-xs font-medium">
+        <Sparkles className="text-brand-magenta size-3.5" aria-hidden="true" />
+        Plan this outfit
+        <ArrowRight className="size-3.5" aria-hidden="true" />
+      </span>
+    ) : (
+      <span className="text-muted-foreground text-[0.62rem] font-medium tracking-[0.16em] uppercase">
+        Not planned
+      </span>
+    );
+  }
+
+  // Provenance reads off the pick's origin: an AI plan wears the AURA seal; a
+  // hand-built look (`user_edited`, no AI rationale) gets a quieter mark, so the
+  // seal never claims AURA planned something the participant chose themselves.
+  if (outfit.provenance === "user_edited") {
+    return (
+      <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
+        <Pencil className="size-3.5" aria-hidden="true" />
+        Your pick
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="flex flex-none flex-col items-center gap-1"
+      role="img"
+      aria-label="Planned by AURA"
+    >
+      <span className="rotate-[-9deg] leading-none">
+        <AuraSeal idSuffix={eventId} />
+      </span>
+      <span className="text-foreground font-mono text-[0.56rem] font-semibold tracking-[0.16em] uppercase">
+        Planned by AURA
+      </span>
+    </span>
+  );
+}
+
+/** A slim event summary that links to the outfit detail page. Every card — planned
+ *  or not — is a whole-card link to `/aura/calendar/events/[eventId]`, where all
+ *  planning, preview, swap and manual-pick now live. The card itself carries no
+ *  outfit interaction: it shows the event's facts (title, occasion, time, place,
+ *  weather) and a read-only planned/unplanned seal. Edit and delete stay as
+ *  affordances, layered above the link so they stay independently clickable. */
 function EventCard({
   event,
-  eventDate,
-  today,
-  tz,
   weatherEnabled,
   canEdit,
   canPlan,
-  planning,
-  weekPlanning,
-  editing,
-  swapItemId,
   onEdit,
   onDelete,
-  onPlan,
-  onReplan,
 }: {
   event: PlannedEventDto;
-  eventDate: CivilDate;
-  today: CivilDate;
-  tz: string;
   weatherEnabled: boolean;
   canEdit: boolean;
   canPlan: boolean;
-  planning: boolean;
-  weekPlanning: boolean;
-  editing: boolean;
-  swapItemId: string | null;
   onEdit: () => void;
   onDelete: () => void;
-  onPlan: () => void;
-  onReplan: (edit: OutfitEdit) => void;
 }) {
-  // Storage-free re-plan nudge: an already-planned, placed event that was planned
-  // weather-less but has since entered the forecast window. Derived from the
-  // outfit's updatedAt — no weather is persisted to compute it.
-  const showReplanNudge = Boolean(
-    event.outfit &&
-      canPlan &&
-      shouldSuggestReplan({
-        placed: Boolean(event.placeText),
-        eventDate,
-        outfitUpdatedDate: civilDateInTimeZone(new Date(event.outfit.updatedAt), tz),
-        today,
-      }),
-  );
-
   return (
-    <article className="border-border bg-card group rounded-xl border shadow-sm">
+    <article className="border-border bg-card group focus-within:border-brand-magenta/50 hover:border-brand-magenta/50 relative rounded-xl border shadow-sm transition">
+      {/* The whole card navigates. A positioned overlay link covers it, so the
+          summary reads as one target; the edit/delete controls sit above it (z-10)
+          and stay independently clickable. */}
+      <Link
+        href={`/aura/calendar/events/${event.id}`}
+        aria-label={`Open outfit for ${event.title}`}
+        className="focus-visible:ring-brand-magenta/50 absolute inset-0 z-0 rounded-xl focus-visible:ring-2 focus-visible:outline-none"
+      />
       <div className="flex flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1052,10 +963,9 @@ function EventCard({
               </span>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
+          <div className="relative z-10 flex shrink-0 items-center gap-0.5">
             {/* A passed event is history — its plan can't change, so it loses its
-                pencil just as it loses "Plan this outfit". Delete stays: pruning
-                the archive is still allowed. */}
+                pencil. Delete stays: pruning the archive is still allowed. */}
             {canEdit ? (
               <Button
                 type="button"
@@ -1100,18 +1010,6 @@ function EventCard({
             <EventWeather eventId={event.id} enabled={weatherEnabled} />
           ) : null}
         </div>
-
-        {event.outfit ? (
-          <PlannedOutfitView
-            eventId={event.id}
-            outfit={event.outfit}
-            showReplanNudge={showReplanNudge}
-            canEdit={canPlan}
-            editing={editing}
-            swapItemId={swapItemId}
-            onReplan={onReplan}
-          />
-        ) : null}
       </div>
 
       {/* The tear line. Its notches are punched in the page colour, so the card
@@ -1129,22 +1027,7 @@ function EventCard({
         ) : (
           <span />
         )}
-        {event.outfit ? (
-          <span
-            className="flex flex-none flex-col items-center gap-1"
-            role="img"
-            aria-label="Planned by AURA"
-          >
-            <span className="rotate-[-9deg] leading-none">
-              <AuraSeal idSuffix={event.id} />
-            </span>
-            <span className="text-foreground font-mono text-[0.56rem] font-semibold tracking-[0.16em] uppercase">
-              Planned by AURA
-            </span>
-          </span>
-        ) : canPlan ? (
-          <PlanOutfitButton planning={planning} disabled={weekPlanning} onPlan={onPlan} />
-        ) : null}
+        <OutfitSeal outfit={event.outfit} eventId={event.id} canPlan={canPlan} />
       </div>
     </article>
   );

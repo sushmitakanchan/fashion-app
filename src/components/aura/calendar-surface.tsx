@@ -61,7 +61,7 @@ import {
 } from "@/components/aura/event-weather";
 import { SmartPlanningDisclosure } from "@/components/aura/smart-planning-disclosure";
 import { GoogleCalendarConnect } from "@/components/aura/google-calendar-connect";
-import { requestPlan } from "@/components/aura/outfit";
+import { OutfitItemTile, requestPlan } from "@/components/aura/outfit";
 
 export type PlannedEventDto = {
   id: string;
@@ -1010,6 +1010,32 @@ function EventCard({
             <EventWeather eventId={event.id} enabled={weatherEnabled} />
           ) : null}
         </div>
+
+        {/* A read-only glance at the planned pieces — the same wardrobe tiles the
+            detail page shows, without the Swap/Regenerate controls (those live on
+            the Rack). Non-interactive, so a click anywhere still opens the detail
+            page. Honest amber gap chips ride alongside for anything the wardrobe
+            couldn't cover. */}
+        {event.outfit && (event.outfit.items.length > 0 || event.outfit.gaps.length > 0) ? (
+          <ul className="flex flex-wrap items-start gap-2">
+            {event.outfit.items.map((item) => (
+              <li key={item.id}>
+                <OutfitItemTile item={item} />
+              </li>
+            ))}
+            {event.outfit.gaps.map((gap, index) => (
+              <li key={`${gap.slot}-${index}`} className="self-center">
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                  title={gap.note}
+                >
+                  <TriangleAlert className="size-3" aria-hidden="true" />
+                  {gap.slot}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
 
       {/* The tear line. Its notches are punched in the page colour, so the card

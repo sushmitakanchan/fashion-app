@@ -23,16 +23,11 @@ import {
   CloudRain,
   CloudSnow,
   CloudSun,
-  Eye,
   Loader2,
   MapPin,
   Pencil,
   Plus,
-  RefreshCw,
-  Replace,
-  RotateCcw,
   Settings2,
-  Shirt,
   Sun,
   Sparkles,
   Trash2,
@@ -73,9 +68,12 @@ import { Label } from "@/components/ui/label";
 import { SmartPlanningDisclosure } from "@/components/aura/smart-planning-disclosure";
 import { GoogleCalendarConnect } from "@/components/aura/google-calendar-connect";
 import {
-  AuraPortraitLoading,
-  TRY_ON_CAPTIONS,
-} from "@/components/aura/aura-portrait-loading";
+  PlannedOutfitView,
+  PlanOutfitButton,
+  requestPlan,
+  requestReplan,
+  type OutfitEdit,
+} from "@/components/aura/outfit";
 
 export type PlannedEventDto = {
   id: string;
@@ -91,11 +89,6 @@ export type PlannedEventDto = {
 
 type EventsResponse = { events?: PlannedEventDto[]; error?: string };
 type EventResponse = { event?: PlannedEventDto; error?: string };
-type PlanResponse = { outfit?: PlannedOutfitDto; error?: string; code?: string };
-
-/** An inline nudge to an already-planned outfit (#178): Regenerate the whole pick
- *  or Swap one wardrobe piece. Mirrors the route's discriminated body. */
-type OutfitEdit = { mode: "regenerate" } | { mode: "swap"; itemId: string };
 
 // Civil-date formatters are anchored to UTC noon (via `civilToUtcNoon`) and read
 // back with `timeZone: "UTC"`, so the label matches the civil date exactly,
@@ -529,41 +522,13 @@ export function CalendarSurface() {
     );
   }
 
-  type PlanResult =
-    | { outfit: PlannedOutfitDto }
-    | { consentRequired: true }
-    | { error: string };
-
-  /** One planner exchange: POST the event's plan with the echoed policy version
-   *  and, for a week pass, the ids already committed to earlier events. Shared by
-   *  the single-event action and the sequential week plan so the request contract
-   *  can't drift between them. */
-  async function requestPlan(
-    event: PlannedEventDto,
-    priorItemIds: readonly string[],
-  ): Promise<PlanResult> {
-    const response = await fetch(`/api/aura/calendar/events/${event.id}/plan`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION, priorItemIds }),
-    });
-    const body = (await response.json().catch(() => null)) as PlanResponse | null;
-    if (response.status === 403 && body?.code === "consent-required") {
-      return { consentRequired: true };
-    }
-    if (!response.ok || !body?.outfit) {
-      return { error: body?.error ?? "Please try again." };
-    }
-    return { outfit: body.outfit };
-  }
-
   /** Plan one event's outfit with a single AI call, gated by Smart Planning
    *  consent. If consent isn't active yet, the route replies 403 and we raise the
    *  disclosure, resuming this plan on agreement. */
   async function planOutfit(event: PlannedEventDto) {
     setPlanningId(event.id);
     try {
-      const result = await requestPlan(event, []);
+      const result = await requestPlan(event.id, []);
       if ("consentRequired" in result) {
         pendingPlanRef.current = event;
         setShowDisclosure(true);
@@ -606,7 +571,7 @@ export function CalendarSurface() {
       const outcomes = await planWeekSequentially(
         weekPlanTargets,
         async (event, priorItemIds) => {
-          const result = await requestPlan(event, priorItemIds);
+          const result = await requestPlan(event.id, priorItemIds);
           // A consent-required or errored day resolves to null — continue-on-error
           // records it as a failure and the week carries on.
           return "outfit" in result ? result.outfit : null;
@@ -647,29 +612,24 @@ export function CalendarSurface() {
     setEditingId(event.id);
     if (edit.mode === "swap") setSwapItemId(edit.itemId);
     try {
-      const response = await fetch(`/api/aura/calendar/events/${event.id}/replan`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ policyVersion: PLANNING_POLICY_VERSION, ...edit }),
-      });
-      const body = (await response.json().catch(() => null)) as PlanResponse | null;
+      const result = await requestReplan(event.id, edit);
 
-      if (response.status === 403 && body?.code === "consent-required") {
+      if ("consentRequired" in result) {
         pendingReplanRef.current = { event, edit };
         setShowDisclosure(true);
         return;
       }
-      if (!response.ok || !body?.outfit) {
+      if ("error" in result) {
         toast.error(
           edit.mode === "swap"
             ? "We couldn't swap that piece"
             : "We couldn't regenerate this outfit",
-          { description: body?.error ?? "Please try again." },
+          { description: result.error },
         );
         return;
       }
 
-      injectOutfit(event.id, body.outfit);
+      injectOutfit(event.id, result.outfit);
       toast.success(edit.mode === "swap" ? "Piece swapped" : "Outfit regenerated");
     } catch {
       toast.error(
@@ -1356,368 +1316,6 @@ function EventCard({
         ) : null}
       </div>
     </article>
-  );
-}
-
-/** The per-event "Plan this outfit" action, shown on an unplanned, non-past
- *  event. Clicking it runs one AI planner call (raising the Smart Planning
- *  disclosure first if consent isn't active yet). */
-function PlanOutfitButton({
-  planning,
-  disabled,
-  onPlan,
-}: {
-  planning: boolean;
-  disabled: boolean;
-  onPlan: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={onPlan}
-      disabled={planning || disabled}
-      className="rounded-full"
-    >
-      {planning ? (
-        <>
-          <Loader2 className="animate-spin" />
-          Planning…
-        </>
-      ) : (
-        <>
-          <Sparkles />
-          Plan this outfit
-        </>
-      )}
-    </Button>
-  );
-}
-
-/** A planned outfit inline in the event row: wardrobe-item tiles, the AURA
- *  rationale, amber gap chips for anything the wardrobe couldn't cover, the
- *  storage-free re-plan nudge, and — when editable — inline Regenerate / Swap
- *  actions (#178). Each tile carries its own hover Swap affordance; Regenerate
- *  redoes the whole pick. */
-function PlannedOutfitView({
-  eventId,
-  outfit,
-  showReplanNudge,
-  canEdit,
-  editing,
-  swapItemId,
-  onReplan,
-}: {
-  eventId: string;
-  outfit: PlannedOutfitDto;
-  showReplanNudge: boolean;
-  canEdit: boolean;
-  editing: boolean;
-  swapItemId: string | null;
-  onReplan: (edit: OutfitEdit) => void;
-}) {
-  // A Regenerate is in flight when the outfit is editing but no specific tile is.
-  const regenerating = editing && swapItemId === null;
-
-  return (
-    <div className="mt-3 space-y-2">
-      {/* On-demand try-on preview — the portrait wearing this outfit — foregrounded
-          as the hero. Only offered when there's a pick to render (an all-gaps
-          outfit has nothing to try on). A Regenerate/Swap that changes the item
-          set clears previewImageUrl server-side (#178), so the cache is keyed on
-          the current item set. */}
-      {outfit.items.length > 0 ? (
-        <OutfitPreview
-          key={outfit.previewImageUrl ?? "none"}
-          eventId={eventId}
-          cachedPreviewUrl={outfit.previewImageUrl}
-        />
-      ) : null}
-      {showReplanNudge ? (
-        <p className="text-brand-magenta flex items-start gap-1.5 text-xs font-medium">
-          <CloudSun className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          <span>There&apos;s a forecast for this day now — re-plan to factor in the weather.</span>
-        </p>
-      ) : null}
-      {outfit.items.length > 0 ? (
-        <ul className="flex flex-wrap gap-2">
-          {outfit.items.map((item) => (
-            <li key={item.id}>
-              <OutfitItemTile
-                item={item}
-                canSwap={canEdit && outfit.items.length > 1}
-                swapping={swapItemId === item.id}
-                disabled={editing}
-                onSwap={() => onReplan({ mode: "swap", itemId: item.id })}
-              />
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {outfit.rationale ? (
-        <p className="text-muted-foreground flex items-start gap-1.5 text-xs text-pretty">
-          <Shirt className="text-brand-magenta mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          <span>{outfit.rationale}</span>
-        </p>
-      ) : null}
-
-      {outfit.gaps.length > 0 ? (
-        <ul className="flex flex-wrap gap-1.5">
-          {outfit.gaps.map((gap, index) => (
-            <li key={`${gap.slot}-${index}`}>
-              <span
-                className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
-                title={gap.note}
-              >
-                <TriangleAlert className="size-3" aria-hidden="true" />
-                {gap.slot}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {canEdit ? (
-        <div className="pt-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onReplan({ mode: "regenerate" })}
-            disabled={editing}
-            className="text-muted-foreground hover:text-brand-magenta h-7 gap-1.5 rounded-full px-2.5 text-xs"
-          >
-            {regenerating ? (
-              <>
-                <Loader2 className="size-3.5 animate-spin" />
-                Regenerating…
-              </>
-            ) : (
-              <>
-                <RefreshCw className="size-3.5" />
-                Regenerate
-              </>
-            )}
-          </Button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-type PreviewResponse = {
-  previewImageUrl?: string;
-  error?: string;
-  retryable?: boolean;
-};
-
-/**
- * The on-demand try-on preview for one planned outfit: the saved portrait wearing
- * the outfit, generated server-side and cached to `previewImageUrl` (#169). The
- * outfit-id → preview binding is server-authoritative — this only offers the
- * trigger and shows the result. "Generate preview" (none yet) becomes "See
- * preview" once a preview is cached; "Regenerate preview" re-runs it in place
- * (distinct from the outfit-level Regenerate, which re-plans the pieces). While it
- * generates it reuses the try-on surface's darkroom loading + retry treatment
- * (up to ~2 minutes, per the generator's timeout).
- */
-function OutfitPreview({
-  eventId,
-  cachedPreviewUrl,
-}: {
-  eventId: string;
-  cachedPreviewUrl: string | null;
-}) {
-  const [previewUrl, setPreviewUrl] = React.useState(cachedPreviewUrl);
-  // A cached preview stays collapsed behind "See preview"; a freshly generated
-  // one reveals itself. (A cleared cache remounts this component — see the parent
-  // `key` — so there's no stale state to reset here.)
-  const [open, setOpen] = React.useState(false);
-  const [phase, setPhase] = React.useState<"idle" | "generating" | "error">("idle");
-  const [errorMessage, setErrorMessage] = React.useState("");
-
-  async function generate() {
-    setPhase("generating");
-    setOpen(true);
-    setErrorMessage("");
-    try {
-      const response = await fetch(
-        `/api/aura/calendar/events/${eventId}/preview`,
-        { method: "POST" },
-      );
-      const body = (await response.json().catch(() => null)) as PreviewResponse | null;
-      if (!response.ok || !body?.previewImageUrl) {
-        setPhase("error");
-        setErrorMessage(body?.error ?? "We couldn't generate this preview. Please try again.");
-        return;
-      }
-      setPreviewUrl(body.previewImageUrl);
-      setPhase("idle");
-    } catch {
-      setPhase("error");
-      setErrorMessage("Couldn't reach the server. Please try again.");
-    }
-  }
-
-  const generating = phase === "generating";
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {previewUrl && !open ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setOpen(true)}
-            className="rounded-full"
-          >
-            <Eye />
-            See preview
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void generate()}
-            disabled={generating}
-            className="rounded-full"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="animate-spin" />
-                Generating…
-              </>
-            ) : previewUrl ? (
-              <>
-                <RotateCcw />
-                Regenerate preview
-              </>
-            ) : (
-              <>
-                <Sparkles />
-                Generate preview
-              </>
-            )}
-          </Button>
-        )}
-      </div>
-
-      {open ? (
-        <div className="mx-auto w-full max-w-xs">
-          {generating ? (
-            <AuraPortraitLoading
-              title="Styling your preview"
-              captions={TRY_ON_CAPTIONS}
-              note="This can take up to ~2 minutes."
-            />
-          ) : phase === "error" ? (
-            <div className="border-destructive/40 bg-destructive/5 flex flex-col items-center gap-3 rounded-xl border p-6 text-center">
-              <p className="text-sm font-medium">We couldn&apos;t generate this preview</p>
-              <p className="text-muted-foreground text-xs text-pretty">{errorMessage}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void generate()}
-                className="rounded-full"
-              >
-                <RotateCcw />
-                Try again
-              </Button>
-            </div>
-          ) : previewUrl ? (
-            <figure className="space-y-1.5">
-              <div className="bg-muted aspect-[2/3] w-full overflow-hidden rounded-xl border">
-                {/* eslint-disable-next-line @next/next/no-img-element -- Cloudinary preview asset, kept off next/image to avoid a remote-host round-trip here */}
-                <img
-                  src={previewUrl}
-                  alt="Your portrait wearing this outfit"
-                  className="size-full object-cover"
-                />
-              </div>
-              <figcaption className="text-muted-foreground text-center text-[11px]">
-                Your portrait wearing this outfit
-              </figcaption>
-            </figure>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** One wardrobe-item tile in a planned outfit. It fetches its own short-lived,
- *  server-authorized media URL — the browser never receives a durable asset URL —
- *  exactly as the wardrobe gallery does. When the outfit is editable it carries a
- *  hover/focus Swap affordance that replaces just this piece (#178). */
-function OutfitItemTile({
-  item,
-  canSwap = false,
-  swapping = false,
-  disabled = false,
-  onSwap,
-}: {
-  item: PlannedOutfitDto["items"][number];
-  canSwap?: boolean;
-  swapping?: boolean;
-  disabled?: boolean;
-  onSwap?: () => void;
-}) {
-  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    async function loadImage() {
-      try {
-        const response = await fetch(`/api/wardrobe/${item.id}/media?variant=normalized`, {
-          signal: controller.signal,
-        });
-        const body = (await response.json().catch(() => null)) as { url?: string } | null;
-        if (!controller.signal.aborted && response.ok && body?.url) setImageUrl(body.url);
-      } catch {
-        // A missing tile image is non-fatal — the label still identifies the piece.
-      }
-    }
-    void loadImage();
-    return () => controller.abort();
-  }, [item.id]);
-
-  return (
-    <div className="group/tile w-16" title={`${item.name} · ${item.color}`}>
-      <div className="bg-muted relative aspect-square w-16 overflow-hidden rounded-lg border">
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not a durable asset
-          <img src={imageUrl} alt={item.name} className="size-full object-cover" />
-        ) : (
-          <div className="size-full animate-pulse" aria-hidden="true" />
-        )}
-        {canSwap ? (
-          <button
-            type="button"
-            onClick={onSwap}
-            disabled={disabled}
-            aria-label={`Swap ${item.name}`}
-            className="bg-brand-ink/55 focus-visible:ring-ring absolute inset-0 grid place-items-center text-white opacity-0 transition-opacity group-focus-within/tile:opacity-100 group-hover/tile:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-0"
-          >
-            {swapping ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Replace className="size-4" />
-            )}
-          </button>
-        ) : null}
-        {swapping && !canSwap ? (
-          <div className="bg-brand-ink/55 absolute inset-0 grid place-items-center text-white">
-            <Loader2 className="size-4 animate-spin" />
-          </div>
-        ) : null}
-      </div>
-      <p className="text-muted-foreground mt-1 truncate text-[10px]">{item.name}</p>
-    </div>
   );
 }
 

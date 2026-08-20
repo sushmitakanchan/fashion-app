@@ -388,17 +388,17 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-24 sm:px-6">
-      {/* Tear-off ticket header */}
-      <header className="border-border bg-card relative mt-6 rounded-xl border p-6 shadow-sm sm:p-8">
-        <Link
-          href="/aura/calendar"
-          className="text-muted-foreground hover:text-brand-magenta inline-flex items-center gap-1.5 text-sm"
-        >
-          <ArrowLeft className="size-4" />
-          Back to calendar
-        </Link>
+      <Link
+        href="/aura/calendar"
+        className="text-muted-foreground hover:text-brand-magenta mt-6 inline-flex items-center gap-1.5 text-sm"
+      >
+        <ArrowLeft className="size-4" />
+        Back to calendar
+      </Link>
 
-        <p className="text-brand-magenta mt-4 font-mono text-[0.7rem] font-semibold tracking-[0.18em] uppercase">
+      {/* Tear-off ticket header */}
+      <header className="border-border bg-card relative mt-4 rounded-xl border p-6 shadow-sm sm:p-8">
+        <p className="text-brand-magenta font-mono text-[0.7rem] font-semibold tracking-[0.18em] uppercase">
           {mounted ? eyebrowFmt.format(new Date(event.startsAt)) : " "}
         </p>
         <div className="mt-1.5 flex flex-wrap items-start justify-between gap-3">

@@ -526,6 +526,36 @@ export const outfitEditSchema = z.discriminatedUnion("mode", [
 
 export type OutfitEditInput = z.infer<typeof outfitEditSchema>;
 
+/** An outfit is a handful of pieces, not a wardrobe dump — a manual pick is
+ *  bounded so one event can't reference an unbounded set. */
+export const MANUAL_OUTFIT_MAX_ITEMS = 8;
+
+/**
+ * The manual-outfit request body (#207): the participant's own COMPLETE desired
+ * pick, which replaces whatever the outfit held. One deep endpoint serves both
+ * "replace one slot" and "build the whole look" — the client always sends the
+ * full set it wants, so a single-slot swap is just the current set with one id
+ * changed, and the server sets the outfit to exactly this (a true PUT).
+ *
+ * Deliberately NOT part of `outfitEditSchema` and NOT an extension of
+ * `planningEgressSchema`: a manual pick makes no external call, so no
+ * `policyVersion` exists on this path and consent data can't leak onto it. At
+ * least one piece (an empty save is rejected, never a silent un-plan), at most
+ * {@link MANUAL_OUTFIT_MAX_ITEMS}, no duplicates. Ownership and the live/deleted
+ * check are enforced route-side against the caller's own wardrobe.
+ */
+export const manualOutfitSchema = z.object({
+  itemIds: z
+    .array(z.string().trim().min(1))
+    .min(1, "Pick at least one piece")
+    .max(MANUAL_OUTFIT_MAX_ITEMS)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "An outfit can't include the same piece twice",
+    }),
+});
+
+export type ManualOutfitInput = z.infer<typeof manualOutfitSchema>;
+
 /* -------------------------------------------------------------------------- */
 /*                   Outfit Calendar — manual planned events                  */
 /* -------------------------------------------------------------------------- */

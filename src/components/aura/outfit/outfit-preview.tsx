@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Eye, Loader2, RotateCcw, Shirt, Sparkles, X } from "lucide-react";
+import { Eye, RotateCcw, Shirt, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -85,41 +85,20 @@ export function OutfitPreview({
 
   return (
     <div className="space-y-2">
-      {previewUrl ? (
+      {/* A cached preview stays collapsed behind "See preview"; regenerating it
+          is an icon on the open preview itself (below), not a button here. */}
+      {previewUrl && !open ? (
         <div className="flex flex-wrap items-center gap-2">
-          {!open ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setOpen(true)}
-              className="rounded-full"
-            >
-              <Eye />
-              See preview
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void generate()}
-              disabled={generating}
-              className="rounded-full"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <RotateCcw />
-                  Regenerate preview
-                </>
-              )}
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(true)}
+            className="rounded-full"
+          >
+            <Eye />
+            See preview
+          </Button>
         </div>
       ) : null}
 
@@ -191,13 +170,24 @@ export function OutfitPreview({
             </div>
           ) : previewUrl ? (
             <figure className="space-y-1.5">
-              <div className="bg-muted aspect-[2/3] w-full overflow-hidden rounded-xl border">
+              <div className="bg-muted relative aspect-[2/3] w-full overflow-hidden rounded-xl border">
                 {/* eslint-disable-next-line @next/next/no-img-element -- Cloudinary preview asset, kept off next/image to avoid a remote-host round-trip here */}
                 <img
                   src={previewUrl}
                   alt="Your portrait wearing this outfit"
                   className="size-full object-cover"
                 />
+                {/* Regenerate in place — an icon on the preview, not a separate
+                    button. Clicking it swaps the image for the darkroom loader. */}
+                <button
+                  type="button"
+                  onClick={() => void generate()}
+                  disabled={generating}
+                  aria-label="Regenerate preview"
+                  className="bg-brand-ink/55 hover:bg-brand-ink/80 focus-visible:ring-ring absolute top-2 right-2 grid size-8 place-items-center rounded-full text-white backdrop-blur-sm transition focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+                >
+                  <RotateCcw className="size-4" />
+                </button>
               </div>
               <figcaption className="text-muted-foreground text-center text-[11px]">
                 Your portrait wearing this outfit

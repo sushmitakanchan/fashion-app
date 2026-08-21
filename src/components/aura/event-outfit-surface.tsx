@@ -12,6 +12,7 @@ import {
   Shirt,
   Sparkles,
   TriangleAlert,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -98,16 +99,22 @@ function GarmentCard({
   swapping,
   disabled,
   canEdit,
+  canRemove,
+  removing,
   onSwap,
   onReplace,
+  onRemove,
 }: {
   item: PlannedOutfitDto["items"][number];
   canSwap: boolean;
   swapping: boolean;
   disabled: boolean;
   canEdit: boolean;
+  canRemove: boolean;
+  removing: boolean;
   onSwap: () => void;
   onReplace: () => void;
+  onRemove: () => void;
 }) {
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
 
@@ -140,7 +147,20 @@ function GarmentCard({
         <span className="bg-background/80 text-muted-foreground absolute top-2.5 left-2.5 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-[0.15em] uppercase backdrop-blur-sm">
           {item.category}
         </span>
-        {swapping ? (
+        {/* Remove this piece from the look (a manual edit of the item set). Hidden
+            on the last piece — an outfit can't be emptied from here. */}
+        {canRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={disabled}
+            aria-label={`Remove ${item.name}`}
+            className="bg-background/80 text-muted-foreground hover:text-destructive absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-full backdrop-blur-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <X className="size-3.5" />
+          </button>
+        ) : null}
+        {swapping || removing ? (
           <div className="bg-brand-ink/55 absolute inset-0 grid place-items-center text-white">
             <Loader2 className="size-5 animate-spin" />
           </div>
@@ -254,6 +274,9 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
 
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [savingManual, setSavingManual] = React.useState(false);
+  // The piece currently being removed (drives its card spinner). Held apart from
+  // the picker's `savingManual` so a one-tap remove has its own affordance.
+  const [removingId, setRemovingId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time resolve of the client-only clock on mount
@@ -392,6 +415,38 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
     }
   }
 
+  /** Drop one piece from the look — a manual edit of the item set (the remaining
+   *  ids, via the same `PUT /outfit` endpoint). The last piece can't be removed
+   *  here (an outfit can't be emptied), so the card hides its × at one item. */
+  async function removeItem(itemId: string) {
+    if (!outfit) return;
+    const remaining = outfit.items.map((piece) => piece.id).filter((id) => id !== itemId);
+    if (remaining.length === 0) return;
+    setRemovingId(itemId);
+    try {
+      const response = await fetch(`/api/aura/calendar/events/${event.id}/outfit`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ itemIds: remaining }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { outfit?: PlannedOutfitDto; error?: string }
+        | null;
+      if (!response.ok || !body?.outfit) {
+        toast.error("We couldn't remove that piece", {
+          description: body?.error ?? "Please try again.",
+        });
+        return;
+      }
+      setOutfit(body.outfit);
+      toast.success("Piece removed");
+    } catch {
+      toast.error("We couldn't remove that piece", { description: "Please try again." });
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
   const weatherEnabled = mounted && consentActive === true && Boolean(event.placeText);
   const hasPieces = Boolean(outfit && outfit.items.length > 0);
   const currentItemIds = outfit ? outfit.items.map((item) => item.id) : [];
@@ -487,10 +542,13 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
                 item={item}
                 canSwap={canEdit && outfit.items.length > 1}
                 swapping={swapItemId === item.id}
-                disabled={editing}
+                disabled={editing || removingId !== null}
                 canEdit={canEdit}
+                canRemove={canEdit && outfit.items.length > 1}
+                removing={removingId === item.id}
                 onSwap={() => replan({ mode: "swap", itemId: item.id })}
                 onReplace={() => setPickerOpen(true)}
+                onRemove={() => removeItem(item.id)}
               />
             ))}
             {outfit.gaps.map((gap, index) => (

@@ -477,144 +477,126 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
-        {/* The rack */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {outfit ? (
-            <>
-              {outfit.items.map((item) => (
-                <GarmentCard
-                  key={item.id}
-                  item={item}
-                  canSwap={canEdit && outfit.items.length > 1}
-                  swapping={swapItemId === item.id}
-                  disabled={editing || planning}
-                  canEdit={canEdit}
-                  onSwap={() => replan({ mode: "swap", itemId: item.id })}
-                  onReplace={() => setPickerOpen(true)}
-                />
-              ))}
-              {outfit.gaps.map((gap, index) => (
-                <GapCard
-                  key={`${gap.slot}-${index}`}
-                  gap={gap}
-                  canEdit={canEdit}
-                  disabled={editing || planning}
-                  onAdd={() => setPickerOpen(true)}
-                />
-              ))}
-            </>
-          ) : (
-            Array.from({ length: GHOST_SLOTS }).map((_, index) => (
-              <GhostCard key={index} shimmer={planning} />
-            ))
-          )}
-        </div>
-
-        {/* Sticky action / preview column */}
-        <aside className="flex flex-col gap-3 lg:sticky lg:top-6">
-          {hasPieces && outfit ? (
-            <>
-              <OutfitPreview
-                key={`${outfit.updatedAt}-${outfit.previewImageUrl ?? "none"}`}
-                eventId={event.id}
-                cachedPreviewUrl={outfit.previewImageUrl}
+      {outfit ? (
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+          {/* Garment cards beside the sticky try-on preview */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {outfit.items.map((item) => (
+              <GarmentCard
+                key={item.id}
+                item={item}
+                canSwap={canEdit && outfit.items.length > 1}
+                swapping={swapItemId === item.id}
+                disabled={editing}
+                canEdit={canEdit}
+                onSwap={() => replan({ mode: "swap", itemId: item.id })}
+                onReplace={() => setPickerOpen(true)}
               />
-              {canEdit ? (
-                <>
+            ))}
+            {outfit.gaps.map((gap, index) => (
+              <GapCard
+                key={`${gap.slot}-${index}`}
+                gap={gap}
+                canEdit={canEdit}
+                disabled={editing}
+                onAdd={() => setPickerOpen(true)}
+              />
+            ))}
+          </div>
+
+          {/* Sticky preview + edit actions */}
+          <aside className="flex flex-col gap-3 lg:sticky lg:top-6">
+            {hasPieces ? (
+              <>
+                <OutfitPreview
+                  key={`${outfit.updatedAt}-${outfit.previewImageUrl ?? "none"}`}
+                  eventId={event.id}
+                  cachedPreviewUrl={outfit.previewImageUrl}
+                />
+                {canEdit ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => replan({ mode: "regenerate" })}
+                      disabled={editing}
+                      className="w-full rounded-full"
+                    >
+                      {editing && swapItemId === null ? (
+                        <>
+                          <Loader2 className="animate-spin" />
+                          Regenerating…
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="size-4" />
+                          Regenerate whole look
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setPickerOpen(true)}
+                      className="text-muted-foreground hover:text-foreground w-full rounded-full"
+                    >
+                      Build it myself
+                    </Button>
+                  </>
+                ) : null}
+                <p className="text-muted-foreground text-center text-xs text-pretty">
+                  Renders this look on your saved portrait. Regenerating is free.
+                </p>
+              </>
+            ) : (
+              // Planned, but every slot was a gap — nothing to try on yet.
+              <div className="border-border bg-card flex flex-col gap-3 rounded-xl border p-5 text-center">
+                <p className="text-sm font-medium">Nothing to try on yet</p>
+                <p className="text-muted-foreground text-xs text-pretty">
+                  AURA couldn&apos;t fill this look from your wardrobe. Add the missing pieces, or
+                  build the look by hand.
+                </p>
+                {canEdit ? (
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => replan({ mode: "regenerate" })}
-                    disabled={editing}
-                    className="w-full rounded-full"
-                  >
-                    {editing && swapItemId === null ? (
-                      <>
-                        <Loader2 className="animate-spin" />
-                        Regenerating…
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="size-4" />
-                        Regenerate whole look
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
                     onClick={() => setPickerOpen(true)}
-                    className="text-muted-foreground hover:text-foreground w-full rounded-full"
+                    className="rounded-full"
                   >
                     Build it myself
                   </Button>
-                </>
-              ) : null}
-              <p className="text-muted-foreground text-center text-xs text-pretty">
-                Renders this look on your saved portrait. Regenerating is free.
-              </p>
-            </>
-          ) : outfit ? (
-            // Planned, but every slot was a gap — nothing to try on yet.
-            <div className="border-border bg-card flex flex-col gap-3 rounded-xl border p-5 text-center">
-              <p className="text-sm font-medium">Nothing to try on yet</p>
-              <p className="text-muted-foreground text-xs text-pretty">
-                AURA couldn&apos;t fill this look from your wardrobe. Add the missing pieces, or
-                build the look by hand.
-              </p>
-              {canEdit ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setPickerOpen(true)}
-                  className="rounded-full"
-                >
-                  Build it myself
-                </Button>
-              ) : null}
-            </div>
-          ) : isPast ? (
-            <div className="border-border bg-card text-muted-foreground rounded-xl border p-5 text-center text-sm text-pretty">
-              This event has passed — its outfit is history now.
-            </div>
-          ) : planning ? (
-            // Planning-in-progress: the panel that held the CTA becomes the
-            // darkroom loader while AURA assembles the look (#209), so the ~minute
-            // wait gets the same treatment as preview generation rather than a bare
-            // button spinner. The ghost cards shimmer alongside it.
+                ) : null}
+              </div>
+            )}
+          </aside>
+        </div>
+      ) : isPast ? (
+        // Never planned and the day has passed — nothing left to fill.
+        <div className="border-border bg-card text-muted-foreground rounded-xl border p-6 text-center text-sm text-pretty">
+          This event has passed — its outfit is history now.
+        </div>
+      ) : (
+        // Unplanned: clothing-sized garment placeholders across the full width (a
+        // ghost of the 3-up Rack), with a clean action band below. While a plan
+        // runs, the band becomes the darkroom loader (#209/#219) and the cards
+        // shimmer above it.
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {Array.from({ length: GHOST_SLOTS }).map((_, index) => (
+              <GhostCard key={index} shimmer={planning} />
+            ))}
+          </div>
+          {planning ? (
             <AuraPortraitLoading title="Planning your outfit" captions={PLAN_CAPTIONS} />
           ) : (
-            // Ghost Rack action panel. It fills the try-on panel's footprint — a
-            // dashed portrait placeholder where the preview will land once planned
-            // — so the empty state is a ghost of the filled look and the actions
-            // sit exactly where "Plan" (and, mid-plan, the darkroom loader) puts
-            // its result. No reflow between empty → planning → planned.
-            <div className="border-border bg-card flex flex-col gap-4 rounded-xl border p-5 text-center">
-              <div
-                className="border-border/70 bg-muted/30 grid aspect-[3/4] place-items-center rounded-lg border border-dashed"
-                aria-hidden="true"
-              >
-                {/* The forming subject: a faint bust marking where the portrait
-                    wearing this look will render. */}
-                <svg
-                  viewBox="0 0 120 160"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-muted-foreground/30 w-1/2"
-                >
-                  <circle cx="60" cy="46" r="26" />
-                  <path d="M18 152c0-27 19-46 42-46s42 19 42 46" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium">No outfit planned yet</p>
-                <p className="text-muted-foreground mt-1.5 text-xs text-pretty">
+            <div className="border-border bg-card flex flex-wrap items-center justify-between gap-5 rounded-2xl border p-5 sm:p-6">
+              <div className="max-w-md">
+                <p className="text-base font-semibold">No outfit planned yet</p>
+                <p className="text-muted-foreground mt-1 text-sm text-pretty">
                   Let AURA pick a look from your wardrobe for this event, or build one by hand.
                 </p>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" onClick={() => void plan()} className="rounded-full">
                   <Sparkles className="size-4" />
                   Plan this outfit
@@ -630,8 +612,8 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
               </div>
             </div>
           )}
-        </aside>
-      </div>
+        </div>
+      )}
 
       {showDisclosure ? (
         <SmartPlanningDisclosure

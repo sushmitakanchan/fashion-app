@@ -414,6 +414,66 @@
   }
 }
 
+/*
+ * AURA planning scan — the outfit planner's own loader. Reads as AURA going
+ * through your wardrobe: an attention wave brightens each tile in turn, a lens
+ * sweeps down the grid, and a couple of pieces settle with a lime check.
+ * Decorative and looped — the planner is a single non-streaming call, so there is
+ * no honest pick order to reflect. Compositor-only; freezes under reduced-motion.
+ */
+.ps-tile {
+  animation: ps-scan 4.8s ease-in-out infinite;
+}
+.ps-scanline {
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in oklch, var(--brand-lime) 16%, transparent) 50%,
+    transparent
+  );
+  animation: ps-sweep 4.8s linear infinite;
+}
+.ps-check {
+  animation: ps-pick 4.8s ease-in-out infinite;
+}
+@keyframes ps-scan {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: scale(0.97);
+    box-shadow: none;
+  }
+  12%,
+  18% {
+    opacity: 1;
+    transform: scale(1.05);
+    box-shadow: 0 0 0 2px var(--brand-lime);
+  }
+  40% {
+    opacity: 0.5;
+  }
+}
+@keyframes ps-sweep {
+  0% {
+    top: -34%;
+  }
+  100% {
+    top: 104%;
+  }
+}
+@keyframes ps-pick {
+  0%,
+  55% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  66%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .aura-perfect-confetti {
     animation: none;
@@ -424,11 +484,23 @@
   .pl-subject,
   .pl-indicator::before,
   .pl-caption,
-  .pl-reveal {
+  .pl-reveal,
+  .ps-tile,
+  .ps-scanline,
+  .ps-check {
     animation: none;
   }
   .pl-subject {
     filter: blur(6px) saturate(0.6);
     opacity: 0.7;
+  }
+  /* Hold the scanned wardrobe legible when motion is off. */
+  .ps-tile {
+    opacity: 0.7;
+    transform: none;
+  }
+  .ps-check {
+    opacity: 1;
+    transform: none;
   }
 }

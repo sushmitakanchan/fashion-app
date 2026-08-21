@@ -23,7 +23,7 @@ import { shortPlaceLabel } from "@/lib/calendar-place";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { EventWeather, TicketField } from "@/components/aura/event-weather";
-import { AuraPortraitLoading, PLAN_CAPTIONS } from "@/components/aura/aura-portrait-loading";
+import { PlanningScan } from "@/components/aura/planning-scan";
 import { SmartPlanningDisclosure } from "@/components/aura/smart-planning-disclosure";
 import { WardrobeOutfitPicker } from "@/components/aura/wardrobe-outfit-picker";
 import {
@@ -645,7 +645,7 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
             ))}
           </div>
           {planning ? (
-            <AuraPortraitLoading title="Planning your outfit" captions={PLAN_CAPTIONS} />
+            <PlanningScan />
           ) : (
             <div className="border-border bg-card flex flex-wrap items-center justify-between gap-5 rounded-2xl border p-5 sm:p-6">
               <div className="max-w-md">

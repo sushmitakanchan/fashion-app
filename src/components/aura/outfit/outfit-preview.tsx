@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Eye, Loader2, RotateCcw, Shirt, Sparkles } from "lucide-react";
+import { Eye, Loader2, RotateCcw, Shirt, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -34,15 +34,19 @@ export function OutfitPreview({
   const [open, setOpen] = React.useState(false);
   const [phase, setPhase] = React.useState<"idle" | "generating" | "error">("idle");
   const [errorMessage, setErrorMessage] = React.useState("");
+  // Holds the in-flight generation so the abort control can cancel it.
+  const abortRef = React.useRef<AbortController | null>(null);
 
   async function generate() {
+    const controller = new AbortController();
+    abortRef.current = controller;
     setPhase("generating");
     setOpen(true);
     setErrorMessage("");
     try {
       const response = await fetch(
         `/api/aura/calendar/events/${eventId}/preview`,
-        { method: "POST" },
+        { method: "POST", signal: controller.signal },
       );
       const body = (await response.json().catch(() => null)) as PreviewResponse | null;
       if (!response.ok || !body?.previewImageUrl) {
@@ -53,9 +57,24 @@ export function OutfitPreview({
       setPreviewUrl(body.previewImageUrl);
       setPhase("idle");
     } catch {
+      // A deliberate abort is a cancel, not a failure — abortGenerate() has
+      // already reset the phase, so don't overwrite it with the error card.
+      if (controller.signal.aborted) return;
       setPhase("error");
       setErrorMessage("Couldn't reach the server. Please try again.");
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
     }
+  }
+
+  // Cancel an in-flight generation and fall back to the last stable state: the
+  // existing preview if we were regenerating, otherwise the idle tile. Only the
+  // client wait is stopped — the server request may still finish and cache its
+  // result, and since `previewImageUrl` is server-authoritative a later "See
+  // preview" (after the parent remounts on fresh data) will still surface it.
+  function abortGenerate() {
+    abortRef.current?.abort();
+    setPhase("idle");
   }
 
   const generating = phase === "generating";
@@ -103,11 +122,23 @@ export function OutfitPreview({
       {open || !previewUrl ? (
         <div className="mx-auto w-full max-w-xs">
           {generating ? (
-            <AuraPortraitLoading
-              title="Styling your preview"
-              captions={TRY_ON_CAPTIONS}
-              note="This can take up to ~2 minutes."
-            />
+            <div className="relative">
+              <AuraPortraitLoading
+                title="Styling your preview"
+                captions={TRY_ON_CAPTIONS}
+                note="This can take up to ~2 minutes."
+              />
+              {/* Abort the in-flight generation and drop back to the idle tile
+                  (or the existing preview when regenerating). */}
+              <button
+                type="button"
+                onClick={abortGenerate}
+                aria-label="Stop generating preview"
+                className="bg-background/80 text-muted-foreground hover:text-destructive absolute top-2.5 right-2.5 z-10 grid size-6 place-items-center rounded-full backdrop-blur-sm transition"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
           ) : phase === "error" ? (
             <div className="border-destructive/40 bg-destructive/5 flex flex-col items-center gap-3 rounded-xl border p-6 text-center">
               <p className="text-sm font-medium">We couldn&apos;t generate this preview</p>

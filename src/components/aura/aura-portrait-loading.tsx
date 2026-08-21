@@ -39,11 +39,11 @@ export const PLAN_CAPTIONS = [
   "Balancing the palette…",
 ] as const;
 
-const CAPTION_INTERVAL_MS = 2800;
+export const CAPTION_INTERVAL_MS = 2800;
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
-function usePrefersReducedMotion() {
+export function usePrefersReducedMotion() {
   return React.useSyncExternalStore(
     (onStoreChange) => {
       const query = window.matchMedia(REDUCED_MOTION_QUERY);

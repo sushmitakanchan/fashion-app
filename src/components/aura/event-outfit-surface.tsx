@@ -9,6 +9,7 @@ import {
   MapPin,
   Pencil,
   RefreshCw,
+  RotateCcw,
   Shirt,
   Sparkles,
   TriangleAlert,
@@ -101,6 +102,7 @@ function GarmentCard({
   canEdit,
   canRemove,
   removing,
+  hasPreview,
   onSwap,
   onReplace,
   onRemove,
@@ -112,6 +114,7 @@ function GarmentCard({
   canEdit: boolean;
   canRemove: boolean;
   removing: boolean;
+  hasPreview: boolean;
   onSwap: () => void;
   onReplace: () => void;
   onRemove: () => void;
@@ -147,9 +150,21 @@ function GarmentCard({
         <span className="bg-background/80 text-muted-foreground absolute top-2.5 left-2.5 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-[0.15em] uppercase backdrop-blur-sm">
           {item.category}
         </span>
-        {/* Remove this piece from the look (a manual edit of the item set). Hidden
-            on the last piece — an outfit can't be emptied from here. */}
-        {canRemove ? (
+        {/* The quick per-piece action, top-right. Before a try-on preview exists
+            you're still composing, so it removes the piece (×, hidden on the last
+            one — an outfit can't be emptied here). Once a preview's been generated
+            you've committed to a look, so it regenerates this piece instead (↻). */}
+        {hasPreview && canSwap ? (
+          <button
+            type="button"
+            onClick={onSwap}
+            disabled={disabled}
+            aria-label={`Regenerate ${item.name}`}
+            className="bg-background/80 text-muted-foreground hover:text-brand-magenta absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-full backdrop-blur-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RotateCcw className="size-3.5" />
+          </button>
+        ) : canRemove ? (
           <button
             type="button"
             onClick={onRemove}
@@ -546,6 +561,7 @@ export function EventOutfitSurface({ event }: { event: PlannedEventDto }) {
                 canEdit={canEdit}
                 canRemove={canEdit && outfit.items.length > 1}
                 removing={removingId === item.id}
+                hasPreview={Boolean(outfit.previewImageUrl)}
                 onSwap={() => replan({ mode: "swap", itemId: item.id })}
                 onReplace={() => setPickerOpen(true)}
                 onRemove={() => removeItem(item.id)}

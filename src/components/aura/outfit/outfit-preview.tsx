@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Eye, Loader2, RotateCcw, Sparkles } from "lucide-react";
+import { Eye, Loader2, RotateCcw, Shirt, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -103,7 +103,7 @@ export function OutfitPreview({
         )}
       </div>
 
-      {open ? (
+      {open || !previewUrl ? (
         <div className="mx-auto w-full max-w-xs">
           {generating ? (
             <AuraPortraitLoading
@@ -140,7 +140,16 @@ export function OutfitPreview({
                 Your portrait wearing this outfit
               </figcaption>
             </figure>
-          ) : null}
+          ) : (
+            // Idle, no preview yet: a standing placeholder frame cues where the
+            // try-on will land, rather than leaving an empty gap by the button.
+            <div className="bg-muted/40 text-muted-foreground flex aspect-[2/3] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-center">
+              <Shirt className="size-6 opacity-60" />
+              <p className="text-xs text-pretty">
+                Generate a preview to see your portrait wearing this look.
+              </p>
+            </div>
+          )}
         </div>
       ) : null}
     </div>

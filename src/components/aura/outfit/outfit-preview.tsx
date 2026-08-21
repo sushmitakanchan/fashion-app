@@ -62,46 +62,43 @@ export function OutfitPreview({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {previewUrl && !open ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setOpen(true)}
-            className="rounded-full"
-          >
-            <Eye />
-            See preview
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void generate()}
-            disabled={generating}
-            className="rounded-full"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="animate-spin" />
-                Generating…
-              </>
-            ) : previewUrl ? (
-              <>
-                <RotateCcw />
-                Regenerate preview
-              </>
-            ) : (
-              <>
-                <Sparkles />
-                Generate preview
-              </>
-            )}
-          </Button>
-        )}
-      </div>
+      {previewUrl ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {!open ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setOpen(true)}
+              className="rounded-full"
+            >
+              <Eye />
+              See preview
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void generate()}
+              disabled={generating}
+              className="rounded-full"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <RotateCcw />
+                  Regenerate preview
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+      ) : null}
 
       {open || !previewUrl ? (
         <div className="mx-auto w-full max-w-xs">
@@ -141,14 +138,22 @@ export function OutfitPreview({
               </figcaption>
             </figure>
           ) : (
-            // Idle, no preview yet: a standing placeholder frame cues where the
-            // try-on will land, rather than leaving an empty gap by the button.
-            <div className="bg-muted/40 text-muted-foreground flex aspect-[2/3] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-center">
-              <Shirt className="size-6 opacity-60" />
-              <p className="text-xs text-pretty">
-                Generate a preview to see your portrait wearing this look.
-              </p>
-            </div>
+            // Idle, no preview yet: the whole placeholder frame is the trigger,
+            // so the full try-on footprint doubles as one large Generate button.
+            <button
+              type="button"
+              onClick={() => void generate()}
+              className="group bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground hover:border-border focus-visible:ring-ring/50 flex aspect-[2/3] w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-6 text-center transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
+            >
+              <Shirt className="size-7 opacity-60 transition-opacity group-hover:opacity-100" />
+              <span className="text-foreground flex items-center gap-1.5 text-sm font-medium">
+                <Sparkles className="size-4" />
+                Generate preview
+              </span>
+              <span className="text-xs text-pretty">
+                See your portrait wearing this look.
+              </span>
+            </button>
           )}
         </div>
       ) : null}

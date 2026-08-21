@@ -34,6 +34,8 @@ export function OutfitPreview({
   const [open, setOpen] = React.useState(false);
   const [phase, setPhase] = React.useState<"idle" | "generating" | "error">("idle");
   const [errorMessage, setErrorMessage] = React.useState("");
+  // Whether the abort X has been clicked and is awaiting confirmation.
+  const [confirmingAbort, setConfirmingAbort] = React.useState(false);
   // Holds the in-flight generation so the abort control can cancel it.
   const abortRef = React.useRef<AbortController | null>(null);
 
@@ -43,6 +45,7 @@ export function OutfitPreview({
     setPhase("generating");
     setOpen(true);
     setErrorMessage("");
+    setConfirmingAbort(false);
     try {
       const response = await fetch(
         `/api/aura/calendar/events/${eventId}/preview`,
@@ -74,6 +77,7 @@ export function OutfitPreview({
   // preview" (after the parent remounts on fresh data) will still surface it.
   function abortGenerate() {
     abortRef.current?.abort();
+    setConfirmingAbort(false);
     setPhase("idle");
   }
 
@@ -128,16 +132,47 @@ export function OutfitPreview({
                 captions={TRY_ON_CAPTIONS}
                 note="This can take up to ~2 minutes."
               />
-              {/* Abort the in-flight generation and drop back to the idle tile
-                  (or the existing preview when regenerating). */}
-              <button
-                type="button"
-                onClick={abortGenerate}
-                aria-label="Stop generating preview"
-                className="bg-background/80 text-muted-foreground hover:text-destructive absolute top-2.5 right-2.5 z-10 grid size-6 place-items-center rounded-full backdrop-blur-sm transition"
-              >
-                <X className="size-3.5" />
-              </button>
+              {confirmingAbort ? (
+                // Confirm before aborting: aborting throws away the in-flight
+                // generation, so guard it behind an explicit choice in place.
+                <div className="bg-background/85 absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-xl p-6 text-center backdrop-blur-sm">
+                  <p className="text-sm font-medium">Stop generating this preview?</p>
+                  <p className="text-muted-foreground text-xs text-pretty">
+                    The preview won&apos;t be saved.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmingAbort(false)}
+                      className="rounded-full"
+                    >
+                      Keep going
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={abortGenerate}
+                      className="rounded-full"
+                    >
+                      Stop
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                // Ask to abort the in-flight generation; confirming drops back to
+                // the idle tile (or the existing preview when regenerating).
+                <button
+                  type="button"
+                  onClick={() => setConfirmingAbort(true)}
+                  aria-label="Stop generating preview"
+                  className="bg-background/80 text-muted-foreground hover:text-destructive absolute top-2.5 right-2.5 z-10 grid size-6 place-items-center rounded-full backdrop-blur-sm transition"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </div>
           ) : phase === "error" ? (
             <div className="border-destructive/40 bg-destructive/5 flex flex-col items-center gap-3 rounded-xl border p-6 text-center">

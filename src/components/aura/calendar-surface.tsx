@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Info,
   Loader2,
   MapPin,
   Pencil,
@@ -460,6 +461,8 @@ export function CalendarSurface() {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-5 py-7 sm:px-6 sm:py-10">
+      <GoogleVerificationBanner />
+
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-brand-magenta text-xs font-bold tracking-[0.18em] uppercase">
@@ -1394,6 +1397,33 @@ function PlaceField({
       )}
       <FieldError message={error} />
       {!error && <PlaceProbeHint probe={probe} />}
+    </div>
+  );
+}
+
+/** A standing notice at the top of the calendar: connecting Google Calendar is
+ *  temporarily unavailable while AURA completes Google's app-verification review.
+ *  It sets expectations up front (the rest of the calendar still works) so the
+ *  Google connect card below doesn't read as broken. Purely informational — no
+ *  state, no dismissal — so every visit re-states it until verification lands. */
+function GoogleVerificationBanner() {
+  return (
+    <div
+      role="status"
+      className="border-brand-magenta/25 bg-brand-magenta/5 mb-6 flex items-start gap-3 rounded-2xl border p-4"
+    >
+      <Info className="text-brand-magenta mt-0.5 size-5 shrink-0" aria-hidden="true" />
+      <div>
+        <p className="text-sm font-semibold">
+          Google Calendar sync is being verified
+        </p>
+        <p className="text-muted-foreground mt-0.5 text-sm text-pretty">
+          We&apos;re completing Google&apos;s security review so you can safely
+          connect your calendar — this can take a little while. Connecting isn&apos;t
+          available just yet, so please check back soon. Everything else in your
+          Outfit Calendar works as usual in the meantime.
+        </p>
+      </div>
     </div>
   );
 }

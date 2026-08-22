@@ -28,15 +28,33 @@ export type AuraPortraitFailureKind =
   | "transient"
   | "invalid-response";
 
-/** A stable, provider-agnostic error contract for the portrait route. */
+/** A stable, provider-agnostic error contract for the portrait route. The
+ *  original provider error is preserved as `cause` so a `transient`/`refused`
+ *  classification never erases what actually went wrong (the route logs only
+ *  this wrapper, so without the cause the root failure is invisible in prod). */
 export class AuraPortraitError extends Error {
   constructor(
     readonly kind: AuraPortraitFailureKind,
     readonly retryable: boolean,
+    options?: { cause?: unknown },
   ) {
-    super(kind);
+    super(kind, options);
     this.name = "AuraPortraitError";
   }
+}
+
+/** Pull the fields worth logging off an unknown provider error — the OpenAI SDK
+ *  puts `status`/`code`/`type` on its `APIError`, and a bare `Error` still has a
+ *  name and message. Kept flat and string-only so it survives JSON log shipping. */
+function describeProviderError(error: unknown): Record<string, unknown> {
+  if (!isErrorRecord(error)) return { value: String(error) };
+  return {
+    name: error.name,
+    message: error.message,
+    status: error.status,
+    code: error.code,
+    type: error.type,
+  };
 }
 
 type PortraitReferences = {
@@ -65,11 +83,11 @@ function classifyProviderError(error: unknown): AuraPortraitError {
     code === "image_generation_user_error" ||
     (typeof status === "number" && status >= 400 && status < 500 && status !== 408 && status !== 409 && status !== 429)
   ) {
-    return new AuraPortraitError("refused", false);
+    return new AuraPortraitError("refused", false, { cause: error });
   }
 
-  if (status === 408) return new AuraPortraitError("timeout", true);
-  return new AuraPortraitError("transient", true);
+  if (status === 408) return new AuraPortraitError("timeout", true, { cause: error });
+  return new AuraPortraitError("transient", true, { cause: error });
 }
 
 async function referenceFile(url: string, filename: string): Promise<File> {
@@ -77,6 +95,12 @@ async function referenceFile(url: string, filename: string): Promise<File> {
     signal: AbortSignal.timeout(REFERENCE_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
+    // Capture the status so a broken/expired reference URL is distinguishable in
+    // logs from an OpenAI-side transient — both otherwise surface as `transient`.
+    console.error("AURA portrait reference fetch failed", {
+      filename,
+      status: response.status,
+    });
     throw new AuraPortraitError("transient", true);
   }
 
@@ -118,6 +142,15 @@ export async function generateAuraPortrait({
     if (!portrait) throw new AuraPortraitError("invalid-response", true);
     return portrait;
   } catch (error) {
+    // Log the ORIGINAL provider error here, before it is classified into the
+    // opaque `AuraPortraitError` the route reports. Without this, a production
+    // failure only ever shows `kind: 'transient'` with no status/code, making
+    // the true cause (quota 429, model access, 5xx, …) undiagnosable from logs.
+    // An already-classified error (e.g. a reference-fetch failure) is skipped —
+    // its own site already logged the detail.
+    if (!(error instanceof AuraPortraitError)) {
+      console.error("AURA portrait provider call failed", describeProviderError(error));
+    }
     throw classifyProviderError(error);
   }
 }

@@ -122,7 +122,7 @@ function PrimaryCta({ className }: { className?: string }) {
         </CtaButton>
       </Show>
       <Show when="signed-out">
-        <GoogleAuthButton cta size="lg" className={className} />
+        <GoogleAuthButton size="lg" className={className} />
       </Show>
     </>
   );

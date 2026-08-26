@@ -1,40 +1,87 @@
 import * as React from "react";
 import { SignInButton } from "@clerk/nextjs";
 
-import { Button } from "@/components/ui/button";
-import { CtaButton } from "@/components/ui/cta-button";
+import { cn } from "@/lib/utils";
 
 /**
- * Starts Clerk's sign-in-or-up flow. The pilot's Clerk Dashboard configuration
- * exposes Google as its only factor/provider; see `.env.example` for the
- * required instance setting that pairs with this intentionally simple entry.
+ * The official Google "G" mark — the four-colour logo, inlined so its fixed
+ * brand colours render identically in both themes (the theme never recolours
+ * it). The viewBox and paths are Google's published Sign-In asset.
+ */
+function GoogleGLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      aria-hidden="true"
+      className={cn("shrink-0", className)}
+    >
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+      />
+    </svg>
+  );
+}
+
+const sizeClasses = {
+  sm: "h-8 gap-2.5 px-3.5 text-[13px]",
+  default: "h-10 gap-3 px-4 text-sm",
+  lg: "h-12 gap-3 px-5 text-[15px]",
+} as const;
+
+const logoSizeClasses = {
+  sm: "size-4",
+  default: "size-[18px]",
+  lg: "size-5",
+} as const;
+
+/**
+ * Google's standard "Continue with Google" sign-in button, matching Google's
+ * Sign-In branding: the four-colour G mark, a neutral surface, and a 1px
+ * outline, with the light and dark variants the guidelines prescribe. Wraps
+ * Clerk's `SignInButton` — Google is the pilot's only configured provider (see
+ * `.env.example`), so this intentionally simple entry is the whole sign-in UI.
  *
- * `cta` switches to the 3D action button for the landing's hero and footer;
- * `variant` styles the plain path (the header uses `cta-flat` for the constant
- * action colour without the 3D weight).
+ * `size` scales the button (the header uses `sm`, the landing hero `lg`);
+ * `className` merges last for layout tweaks. The Google surface, outline, and
+ * label are fixed by the branding and aren't parameterised.
  */
 export function GoogleAuthButton({
   size = "default",
   className,
-  cta = false,
-  variant,
 }: {
   size?: "default" | "sm" | "lg";
   className?: string;
-  cta?: boolean;
-  variant?: React.ComponentProps<typeof Button>["variant"];
 }) {
   return (
     <SignInButton mode="redirect" forceRedirectUrl="/aura" withSignUp>
-      {cta ? (
-        <CtaButton size={size} className={className}>
-          Continue with Google
-        </CtaButton>
-      ) : (
-        <Button size={size} variant={variant} className={className}>
-          Continue with Google
-        </Button>
-      )}
+      <button
+        type="button"
+        className={cn(
+          "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md border font-medium whitespace-nowrap transition-colors outline-none select-none",
+          "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/70",
+          // Google Sign-In neutral surfaces — light and dark per the guidelines.
+          "border-[#747775] bg-white text-[#1f1f1f] hover:bg-[#f7f8fa]",
+          "dark:border-[#8e918f] dark:bg-[#131314] dark:text-[#e3e3e3] dark:hover:bg-[#1e1f20]",
+          sizeClasses[size],
+          className,
+        )}
+      >
+        <GoogleGLogo className={logoSizeClasses[size]} />
+        Continue with Google
+      </button>
     </SignInButton>
   );
 }
